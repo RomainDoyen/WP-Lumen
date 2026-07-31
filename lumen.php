@@ -1,13 +1,13 @@
 <?php
 /**
  * Plugin Name:       Lumen
- * Plugin URI:        https://github.com/RomainDoyen/lumen
+ * Plugin URI:        https://github.com/RomainDoyen/WP-Lumen
  * Description:       Optimise les images de la médiathèque (WebP/AVIF/JPEG) et génère un pack SEO (alts, JSON-LD, Gutenberg).
  * Version:           1.2.12
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Lumen
- * Author URI:        https://github.com/RomainDoyen/lumen
+ * Author URI:        https://github.com/RomainDoyen/WP-Lumen
  * License:           UNLICENSED
  * Text Domain:       lumen-wp
  * Domain Path:       /languages
