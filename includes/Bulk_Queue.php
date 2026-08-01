@@ -7,6 +7,8 @@ namespace LumenWp;
 final class Bulk_Queue
 {
 	public const OPTION = 'lumen_wp_bulk_job';
+	public const HISTORY_OPTION = 'lumen_wp_bulk_history';
+	public const HISTORY_MAX = 10;
 	public const CRON_HOOK = 'lumen_wp_bulk_tick';
 	public const LOCK = 'lumen_wp_bulk_lock';
 
@@ -30,6 +32,8 @@ final class Bulk_Queue
 			'status'         => 'idle',
 			'force'          => false,
 			'use_ai'         => false,
+			'ai_provider'    => 'none',
+			'ai_label'       => '',
 			'cursor'         => 0,
 			'total_estimate' => 0,
 			'processed'      => 0,
@@ -39,8 +43,33 @@ final class Bulk_Queue
 			'started_at'     => '',
 			'updated_at'     => '',
 			'last_tick_at'   => '',
+			'user_id'        => 0,
+			'user_name'      => '',
+			'archived'       => false,
 			'log'            => [],
 		];
+	}
+
+	/**
+	 * Last runs (newest first), for multi-admin visibility.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	public static function history(): array
+	{
+		$stored = get_option(self::HISTORY_OPTION, []);
+		if (! is_array($stored)) {
+			return [];
+		}
+
+		$out = [];
+		foreach ($stored as $row) {
+			if (is_array($row) && ! empty($row['started_at'])) {
+				$out[] = $row;
+			}
+		}
+
+		return array_slice($out, 0, self::HISTORY_MAX);
 	}
 
 	/**
@@ -128,14 +157,24 @@ final class Bulk_Queue
 			wp_send_json_error(['message' => __('Un traitement est déjà en cours.', 'lumen-wp')], 409);
 		}
 
+		// Archive un run précédent non encore historisé (ex. terminé non pollé).
+		if (! empty($current['started_at']) && empty($current['archived'])) {
+			self::push_history($current, ($current['status'] ?? '') === 'done' ? 'done' : 'stopped');
+		}
+
+		$user  = wp_get_current_user();
 		$total = $this->count_pending($force);
 		$job   = self::defaults();
 		$job['status']         = 'running';
 		$job['force']          = $force;
 		$job['use_ai']         = $use_ai;
+		$job['ai_provider']    = $use_ai ? Vision_Ai::active_provider() : 'none';
+		$job['ai_label']       = $use_ai ? Vision_Ai::provider_label(Vision_Ai::active_provider()) : '';
 		$job['cursor']         = 0;
 		$job['total_estimate'] = $total;
 		$job['started_at']     = gmdate('c');
+		$job['user_id']        = (int) $user->ID;
+		$job['user_name']      = (string) ($user->display_name !== '' ? $user->display_name : $user->user_login);
 		$job['last_message']   = sprintf(
 			/* translators: %d: estimated total */
 			__('Démarré — %d image(s) estimée(s).', 'lumen-wp'),
@@ -147,7 +186,10 @@ final class Bulk_Queue
 		$this->schedule_soon();
 		$this->spawn();
 
-		wp_send_json_success(['job' => self::job()]);
+		wp_send_json_success([
+			'job'     => self::job(),
+			'history' => self::history(),
+		]);
 	}
 
 	public function ajax_pause(): void
@@ -185,13 +227,18 @@ final class Bulk_Queue
 	{
 		$this->guard();
 		$job = self::job();
+		self::push_history($job, 'stopped');
 		$job['status'] = 'idle';
+		$job['archived'] = true;
 		$job['last_message'] = __('Arrêté.', 'lumen-wp');
 		$job['log'] = $this->push_log($job['log'] ?? [], $job['last_message'], true);
 		self::save($job);
 		wp_clear_scheduled_hook(self::CRON_HOOK);
 		delete_transient(self::LOCK);
-		wp_send_json_success(['job' => self::job()]);
+		wp_send_json_success([
+			'job'     => self::job(),
+			'history' => self::history(),
+		]);
 	}
 
 	public function ajax_status(): void
@@ -207,6 +254,7 @@ final class Bulk_Queue
 
 		wp_send_json_success([
 			'job'            => $job,
+			'history'        => self::history(),
 			'ai'             => [
 				'provider'       => Vision_Ai::active_provider(),
 				'provider_label' => Vision_Ai::provider_label(Vision_Ai::active_provider()),
@@ -237,8 +285,9 @@ final class Bulk_Queue
 		}
 
 		wp_send_json_success([
-			'job'    => self::job(),
-			'health' => self::health(),
+			'job'     => self::job(),
+			'health'  => self::health(),
+			'history' => self::history(),
 		]);
 	}
 
@@ -271,6 +320,8 @@ final class Bulk_Queue
 					(int) $job['err']
 				);
 				$job['log'] = $this->push_log($job['log'] ?? [], $job['last_message'], true);
+				self::push_history($job, 'done');
+				$job['archived'] = true;
 				self::save($job);
 				wp_clear_scheduled_hook(self::CRON_HOOK);
 
@@ -416,6 +467,69 @@ final class Bulk_Queue
 		}
 
 		return ['sql' => $sql, 'args' => $args];
+	}
+
+	/**
+	 * Persist a light summary of a finished / stopped run.
+	 *
+	 * @param array<string, mixed> $job
+	 */
+	public static function push_history(array $job, string $ended): void
+	{
+		if (! empty($job['archived'])) {
+			return;
+		}
+		if (($job['started_at'] ?? '') === '') {
+			return;
+		}
+
+		$errors = [];
+		$log    = is_array($job['log'] ?? null) ? $job['log'] : [];
+		foreach ($log as $row) {
+			if (! is_array($row) || ($row['ok'] ?? true) !== false) {
+				continue;
+			}
+			$text = trim((string) ($row['t'] ?? ''));
+			if ($text === '') {
+				continue;
+			}
+			$errors[] = $text;
+			if (count($errors) >= 5) {
+				break;
+			}
+		}
+
+		$entry = [
+			'id'             => md5((string) $job['started_at'] . '|' . (string) ($job['user_id'] ?? 0)),
+			'started_at'     => (string) $job['started_at'],
+			'ended_at'       => gmdate('c'),
+			'ended'          => $ended === 'done' ? 'done' : 'stopped',
+			'ok'             => (int) ($job['ok'] ?? 0),
+			'err'            => (int) ($job['err'] ?? 0),
+			'processed'      => (int) ($job['processed'] ?? 0),
+			'total_estimate' => (int) ($job['total_estimate'] ?? 0),
+			'force'          => ! empty($job['force']),
+			'use_ai'         => ! empty($job['use_ai']),
+			'ai_provider'    => (string) ($job['ai_provider'] ?? 'none'),
+			'ai_label'       => (string) ($job['ai_label'] ?? ''),
+			'user_id'        => (int) ($job['user_id'] ?? 0),
+			'user_name'      => (string) ($job['user_name'] ?? ''),
+			'errors'         => $errors,
+		];
+
+		$history = self::history();
+		// Évite un doublon si le même run est archivé deux fois.
+		$history = array_values(
+			array_filter(
+				$history,
+				static function ($row) use ($entry) {
+					return ! is_array($row) || ($row['id'] ?? '') !== $entry['id'];
+				}
+			)
+		);
+		array_unshift($history, $entry);
+		$history = array_slice($history, 0, self::HISTORY_MAX);
+		update_option(self::HISTORY_OPTION, $history, false);
 	}
 
 	/**

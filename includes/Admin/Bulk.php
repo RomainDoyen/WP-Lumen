@@ -33,6 +33,7 @@ final class Bulk
 		}
 
 		$job      = Bulk_Queue::job();
+		$history  = Bulk_Queue::history();
 		$provider = Vision_Ai::active_provider();
 		$usage    = Vision_Ai::usage();
 		$budget   = (int) (\LumenWp\Plugin::instance()->settings()['ai_budget_month'] ?? 0);
@@ -150,7 +151,101 @@ final class Bulk
 					</p>
 				</div>
 			</section>
+
+			<section class="lumen-wp-panel" id="lumen-wp-bulk-history-panel">
+				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Historique', 'lumen-wp'); ?></h2>
+				<p class="description">
+					<?php esc_html_e('10 derniers traitements', 'lumen-wp'); ?>
+				</p>
+				<ul class="lumen-wp-history" id="lumen-wp-bulk-history" aria-live="polite">
+					<?php if ($history === []) : ?>
+						<li class="lumen-wp-history__empty" id="lumen-wp-bulk-history-empty">
+							<?php esc_html_e('Aucun traitement terminé pour le moment.', 'lumen-wp'); ?>
+						</li>
+					<?php else : ?>
+						<?php foreach ($history as $entry) : ?>
+							<?php echo self::render_history_item($entry); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+						<?php endforeach; ?>
+					<?php endif; ?>
+				</ul>
+			</section>
 		</div>
 		<?php
+	}
+
+	/**
+	 * @param array<string, mixed> $entry
+	 */
+	public static function render_history_item(array $entry): string
+	{
+		$started = ! empty($entry['started_at']) ? (int) strtotime((string) $entry['started_at']) : 0;
+		$ended   = ! empty($entry['ended_at']) ? (int) strtotime((string) $entry['ended_at']) : 0;
+		$when    = $started > 0
+			? wp_date('d/m/Y H:i', $started) . ($ended > 0 ? ' → ' . wp_date('H:i', $ended) : '')
+			: '—';
+
+		$ended_key = (string) ($entry['ended'] ?? 'stopped');
+		$ended_label = $ended_key === 'done'
+			? __('Terminé', 'lumen-wp')
+			: __('Arrêté', 'lumen-wp');
+
+		$opts = [];
+		if (! empty($entry['force'])) {
+			$opts[] = __('Déjà OK repris', 'lumen-wp');
+		}
+		if (! empty($entry['use_ai'])) {
+			$label = (string) ($entry['ai_label'] ?? '');
+			$opts[] = $label !== ''
+				? sprintf(
+					/* translators: %s: AI provider label */
+					__('IA (%s)', 'lumen-wp'),
+					$label
+				)
+				: __('IA', 'lumen-wp');
+		} else {
+			$opts[] = __('Sans IA', 'lumen-wp');
+		}
+
+		$user = trim((string) ($entry['user_name'] ?? ''));
+		$ok   = (int) ($entry['ok'] ?? 0);
+		$err  = (int) ($entry['err'] ?? 0);
+		$proc = (int) ($entry['processed'] ?? 0);
+		$tot  = (int) ($entry['total_estimate'] ?? 0);
+		$errors = is_array($entry['errors'] ?? null) ? $entry['errors'] : [];
+
+		ob_start();
+		?>
+		<li class="lumen-wp-history__item is-<?php echo esc_attr($ended_key === 'done' ? 'done' : 'stopped'); ?>">
+			<div class="lumen-wp-history__top">
+				<span class="lumen-wp-history__badge"><?php echo esc_html($ended_label); ?></span>
+				<span class="lumen-wp-history__when"><?php echo esc_html($when); ?></span>
+				<?php if ($user !== '') : ?>
+					<span class="lumen-wp-history__user"><?php echo esc_html($user); ?></span>
+				<?php endif; ?>
+			</div>
+			<p class="lumen-wp-history__stats">
+				<?php
+				printf(
+					/* translators: 1: processed, 2: total estimate, 3: ok, 4: errors */
+					esc_html__('%1$d / %2$d traitées — %3$d OK · %4$d erreur(s)', 'lumen-wp'),
+					$proc,
+					$tot,
+					$ok,
+					$err
+				);
+				?>
+			</p>
+			<p class="lumen-wp-history__opts"><?php echo esc_html(implode(' · ', $opts)); ?></p>
+			<?php if ($errors !== []) : ?>
+				<ul class="lumen-wp-history__errors">
+					<?php foreach ($errors as $err_line) : ?>
+						<li><?php echo esc_html((string) $err_line); ?></li>
+					<?php endforeach; ?>
+				</ul>
+			<?php endif; ?>
+		</li>
+		<?php
+
+		return (string) ob_get_clean();
 	}
 }

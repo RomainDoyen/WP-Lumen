@@ -301,25 +301,73 @@ final class Settings
 							<p class="description"><?php esc_html_e('Utilisé pour « Suggérer », le traitement en masse et le SEO auto à l’upload.', 'lumen-wp'); ?></p>
 						</td>
 					</tr>
-					<tr>
-						<th scope="row"><?php esc_html_e('Clés API', 'lumen-wp'); ?></th>
+					<tr id="lumen-wp-api-key-row" <?php echo $provider === 'none' ? 'hidden' : ''; ?>>
+						<th scope="row"><?php esc_html_e('Clé API', 'lumen-wp'); ?></th>
 						<td>
-							<p>
-								<label for="lumen-wp-key-mistral"><strong>Mistral</strong></label><br />
-								<input type="password" class="regular-text" id="lumen-wp-key-mistral" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[mistral_api_key]" value="<?php echo esc_attr((string) $settings['mistral_api_key']); ?>" autocomplete="off" />
-							</p>
-							<p>
-								<label for="lumen-wp-key-openai"><strong>OpenAI</strong></label><br />
-								<input type="password" class="regular-text" id="lumen-wp-key-openai" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[openai_api_key]" value="<?php echo esc_attr((string) ($settings['openai_api_key'] ?? '')); ?>" autocomplete="off" />
-							</p>
-							<p>
-								<label for="lumen-wp-key-anthropic"><strong>Anthropic</strong></label><br />
-								<input type="password" class="regular-text" id="lumen-wp-key-anthropic" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[anthropic_api_key]" value="<?php echo esc_attr((string) ($settings['anthropic_api_key'] ?? '')); ?>" autocomplete="off" />
-							</p>
-							<p>
-								<label for="lumen-wp-key-gemini"><strong>Gemini</strong></label><br />
-								<input type="password" class="regular-text" id="lumen-wp-key-gemini" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[gemini_api_key]" value="<?php echo esc_attr((string) ($settings['gemini_api_key'] ?? '')); ?>" autocomplete="off" />
-							</p>
+							<?php
+							$api_keys = [
+								'mistral'   => [
+									'label' => 'Mistral',
+									'value' => (string) $settings['mistral_api_key'],
+									'name'  => 'mistral_api_key',
+								],
+								'openai'    => [
+									'label' => 'OpenAI',
+									'value' => (string) ($settings['openai_api_key'] ?? ''),
+									'name'  => 'openai_api_key',
+								],
+								'anthropic' => [
+									'label' => 'Anthropic',
+									'value' => (string) ($settings['anthropic_api_key'] ?? ''),
+									'name'  => 'anthropic_api_key',
+								],
+								'gemini'    => [
+									'label' => 'Gemini',
+									'value' => (string) ($settings['gemini_api_key'] ?? ''),
+									'name'  => 'gemini_api_key',
+								],
+							];
+							foreach ($api_keys as $key_provider => $key_meta) :
+								$field_id = 'lumen-wp-key-' . $key_provider;
+								$visible  = $provider === $key_provider;
+								?>
+								<div
+									class="lumen-wp-api-key"
+									data-provider="<?php echo esc_attr($key_provider); ?>"
+									<?php echo $visible ? '' : 'hidden'; ?>
+								>
+									<label class="screen-reader-text" for="<?php echo esc_attr($field_id); ?>">
+										<?php
+										printf(
+											/* translators: %s: provider name */
+											esc_html__('Clé API %s', 'lumen-wp'),
+											esc_html($key_meta['label'])
+										);
+										?>
+									</label>
+									<div class="lumen-wp-api-key__field">
+										<input
+											type="password"
+											class="regular-text lumen-wp-api-key__input"
+											id="<?php echo esc_attr($field_id); ?>"
+											name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[<?php echo esc_attr($key_meta['name']); ?>]"
+											value="<?php echo esc_attr($key_meta['value']); ?>"
+											autocomplete="off"
+											spellcheck="false"
+										/>
+										<button
+											type="button"
+											class="button lumen-wp-api-key__toggle"
+											aria-controls="<?php echo esc_attr($field_id); ?>"
+											aria-pressed="false"
+											data-label-show="<?php echo esc_attr__('Afficher', 'lumen-wp'); ?>"
+											data-label-hide="<?php echo esc_attr__('Masquer', 'lumen-wp'); ?>"
+										>
+											<?php esc_html_e('Afficher', 'lumen-wp'); ?>
+										</button>
+									</div>
+								</div>
+							<?php endforeach; ?>
 						</td>
 					</tr>
 					<tr>

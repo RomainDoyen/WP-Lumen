@@ -645,21 +645,50 @@ body.lumen-wp-admin #wpfooter {
 	line-height: 2;
 }
 
+.lumen-wp-wrap select:hover,
 .lumen-wp-wrap select:focus,
-.lumen-wp-wrap .lumen-wp-select:focus {
+.lumen-wp-wrap select:active,
+.lumen-wp-wrap .lumen-wp-select:hover,
+.lumen-wp-wrap .lumen-wp-select:focus,
+.lumen-wp-wrap .lumen-wp-select:active {
+	color: var(--lumen-text) !important;
+	background: rgba(0, 0, 0, 0.35);
 	border-color: var(--lumen-border-hover);
 	box-shadow: 0 0 0 1px rgba(232, 121, 249, 0.35);
 	outline: none;
 }
 
-.lumen-wp-wrap select:disabled {
+.lumen-wp-wrap select:disabled,
+.lumen-wp-wrap select:disabled:hover {
 	opacity: 0.45;
+	color: var(--lumen-text) !important;
+	border-color: var(--lumen-border);
+	box-shadow: none;
 }
 
-.lumen-wp-wrap .form-table th {
-	color: var(--lumen-text);
+.lumen-wp-wrap .form-table th,
+.lumen-wp-wrap .form-table th:hover,
+.lumen-wp-wrap .form-table tr:hover > th {
+	color: var(--lumen-text) !important;
 	font-weight: 600;
 	padding-left: 0;
+}
+
+.lumen-wp-api-key__field {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	max-width: 36rem;
+}
+
+.lumen-wp-api-key__field .lumen-wp-api-key__input {
+	flex: 1 1 14rem;
+	min-width: 0;
+}
+
+.lumen-wp-api-key__toggle {
+	flex: 0 0 auto;
 }
 
 .lumen-wp-wrap .form-table td {
@@ -860,7 +889,13 @@ body.lumen-wp-admin #wpfooter {
 }
 
 .lumen-wp-wrap .button,
-.lumen-wp-metabox .button {
+.lumen-wp-metabox .button,
+.lumen-wp-wrap a.button,
+.lumen-wp-metabox a.button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
 	font-family: var(--lumen-font);
 	font-weight: 600;
 	border-radius: var(--lumen-radius-md);
@@ -870,7 +905,10 @@ body.lumen-wp-admin #wpfooter {
 	text-shadow: none;
 	box-shadow: none;
 	min-height: 36px;
-	line-height: 2.1;
+	padding: 0 12px;
+	line-height: 1.2;
+	vertical-align: middle;
+	text-decoration: none;
 }
 
 .lumen-wp-wrap .button:hover,
@@ -901,8 +939,14 @@ body.lumen-wp-admin #wpfooter {
 .lumen-wp-actions-row {
 	display: flex;
 	flex-wrap: wrap;
+	align-items: center;
 	gap: 0.65rem;
 	margin: 1rem 0 0;
+}
+
+.lumen-wp-actions-row .button,
+.lumen-wp-actions-row a.button {
+	margin: 0;
 }
 
 .lumen-wp-progress {
@@ -1876,6 +1920,108 @@ html.lumen-wp-modal-open {
 	.lumen-wp-nav {
 		grid-template-columns: 1fr;
 	}
+}
+
+/* Bulk history */
+.lumen-wp-history {
+	list-style: none;
+	margin: 0.75rem 0 0;
+	padding: 0;
+	display: grid;
+	gap: 0.75rem;
+}
+
+.lumen-wp-history__empty {
+	margin: 0;
+	padding: 1rem 0;
+	color: var(--lumen-text-muted);
+	font-size: 0.9rem;
+}
+
+.lumen-wp-history__item {
+	padding: 0.85rem 1rem;
+	border: 1px solid var(--lumen-border);
+	border-radius: var(--lumen-radius-md);
+	background: rgba(0, 0, 0, 0.28);
+}
+
+.lumen-wp-history__item.is-done {
+	border-color: rgba(134, 239, 172, 0.22);
+}
+
+.lumen-wp-history__item.is-stopped {
+	border-color: rgba(252, 211, 77, 0.22);
+}
+
+.lumen-wp-history__top {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.45rem 0.75rem;
+	margin-bottom: 0.4rem;
+}
+
+.lumen-wp-history__badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.15rem 0.5rem;
+	border-radius: 0.35rem;
+	font-size: 0.72rem;
+	font-weight: 700;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	background: rgba(255, 255, 255, 0.06);
+	color: var(--lumen-text);
+}
+
+.lumen-wp-history__item.is-done .lumen-wp-history__badge {
+	color: #86efac;
+	background: rgba(134, 239, 172, 0.1);
+}
+
+.lumen-wp-history__item.is-stopped .lumen-wp-history__badge {
+	color: #fcd34d;
+	background: rgba(252, 211, 77, 0.1);
+}
+
+.lumen-wp-history__when,
+.lumen-wp-history__user {
+	font-size: 0.82rem;
+	color: var(--lumen-text-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.lumen-wp-history__user::before {
+	content: '·';
+	margin-right: 0.75rem;
+	opacity: 0.5;
+}
+
+.lumen-wp-history__stats {
+	margin: 0 0 0.25rem;
+	font-family: var(--lumen-display);
+	font-size: 0.95rem;
+	font-weight: 650;
+	color: var(--lumen-text);
+}
+
+.lumen-wp-history__opts {
+	margin: 0;
+	font-size: 0.82rem;
+	color: var(--lumen-text-secondary);
+}
+
+.lumen-wp-history__errors {
+	margin: 0.55rem 0 0;
+	padding: 0.45rem 0 0 1rem;
+	border-top: 1px solid rgba(255, 255, 255, 0.06);
+	color: #fca5a5;
+	font-size: 0.8rem;
+	line-height: 1.4;
+}
+
+.lumen-wp-history__errors li + li {
+	margin-top: 0.2rem;
 }
 
 /* Tools — cron health + cleanup */

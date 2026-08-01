@@ -12,3 +12,5 @@ if (! defined('WP_UNINSTALL_PLUGIN')) {
 
 delete_option('lumen_wp_settings');
 delete_option('lumen_wp_icons');
+delete_option('lumen_wp_bulk_job');
+delete_option('lumen_wp_bulk_history');
