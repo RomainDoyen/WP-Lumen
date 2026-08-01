@@ -6,6 +6,7 @@ namespace LumenWp\Admin;
 
 use LumenWp\Icon_Kit;
 use LumenWp\Plugin;
+use LumenWp\Vision_Ai;
 
 final class Dashboard
 {
@@ -46,6 +47,15 @@ final class Dashboard
 		$caps     = Plugin::capabilities();
 		$settings = Plugin::instance()->settings();
 		$icons    = Icon_Kit::stored();
+		$usage    = Vision_Ai::usage();
+		$ai_prov  = Vision_Ai::active_provider();
+		$budget   = (int) ($settings['ai_budget_month'] ?? 0);
+		$consoles = [
+			'mistral'   => 'https://console.mistral.ai/',
+			'openai'    => 'https://platform.openai.com/usage',
+			'anthropic' => 'https://console.anthropic.com/',
+			'gemini'    => 'https://aistudio.google.com/',
+		];
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$recent_page = isset($_GET['lumen_rp']) ? max(1, (int) $_GET['lumen_rp']) : 1;
@@ -78,12 +88,27 @@ final class Dashboard
 					<span class="lumen-wp-stat__label"><?php esc_html_e('Médias image', 'lumen-wp'); ?></span>
 					<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $stats['total']); ?></strong>
 				</article>
+				<article class="lumen-wp-stat">
+					<span class="lumen-wp-stat__label"><?php esc_html_e('Appels IA / mois', 'lumen-wp'); ?></span>
+					<strong class="lumen-wp-stat__value"><?php echo esc_html(number_format_i18n((int) $usage['calls_month'])); ?></strong>
+					<span class="lumen-wp-stat__hint">
+						<?php
+						echo $budget > 0
+							? esc_html(sprintf(
+								/* translators: %s: monthly budget */
+								__('Budget %s', 'lumen-wp'),
+								number_format_i18n($budget)
+							))
+							: esc_html__('Sans plafond Lumen', 'lumen-wp');
+						?>
+					</span>
+				</article>
 			</section>
 
 			<section class="lumen-wp-dash-grid">
 				<a class="lumen-wp-dash-card" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-bulk')); ?>">
 					<span class="lumen-wp-dash-card__eyebrow"><?php esc_html_e('Médiathèque', 'lumen-wp'); ?></span>
-					<h2 class="lumen-wp-dash-card__title"><?php esc_html_e('Bulk', 'lumen-wp'); ?></h2>
+					<h2 class="lumen-wp-dash-card__title"><?php esc_html_e('Traitement', 'lumen-wp'); ?></h2>
 					<p class="lumen-wp-dash-card__text">
 						<?php
 						printf(
@@ -222,20 +247,65 @@ final class Dashboard
 				</div>
 			</section>
 
-			<section class="lumen-wp-panel">
-				<h2 class="lumen-wp-panel__title"><?php esc_html_e('État serveur', 'lumen-wp'); ?></h2>
-				<div class="lumen-wp-dash-caps">
-					<span class="<?php echo $caps['imagick'] ? 'is-ok' : 'is-no'; ?>">Imagick</span>
-					<span class="<?php echo $caps['gd'] ? 'is-ok' : 'is-no'; ?>">GD</span>
-					<span class="<?php echo $caps['webp'] ? 'is-ok' : 'is-no'; ?>">WebP</span>
-					<span class="<?php echo $caps['avif'] ? 'is-ok' : 'is-no'; ?>">AVIF</span>
-					<span class="<?php echo ! empty($settings['site_favicons']) ? 'is-ok' : 'is-no'; ?>">
-						<?php esc_html_e('Favicons site', 'lumen-wp'); ?>
-					</span>
-					<span class="<?php echo ! empty($settings['auto_on_upload']) ? 'is-ok' : 'is-no'; ?>">
-						<?php esc_html_e('Auto upload', 'lumen-wp'); ?>
-					</span>
-				</div>
+			<section class="lumen-wp-dash-footer">
+				<section class="lumen-wp-panel lumen-wp-panel--ai-usage">
+					<h2 class="lumen-wp-panel__title"><?php esc_html_e('Usage IA (compteur local)', 'lumen-wp'); ?></h2>
+					<div class="lumen-wp-ai-usage-grid">
+						<div>
+							<span class="lumen-wp-stat__label"><?php esc_html_e('Ce mois', 'lumen-wp'); ?></span>
+							<strong><?php echo esc_html(number_format_i18n((int) $usage['calls_month'])); ?></strong>
+						</div>
+						<div>
+							<span class="lumen-wp-stat__label"><?php esc_html_e('Total', 'lumen-wp'); ?></span>
+							<strong><?php echo esc_html(number_format_i18n((int) $usage['total_calls'])); ?></strong>
+						</div>
+						<div>
+							<span class="lumen-wp-stat__label"><?php esc_html_e('Rate limits', 'lumen-wp'); ?></span>
+							<strong><?php echo esc_html(number_format_i18n((int) $usage['rate_limits'])); ?></strong>
+						</div>
+						<div>
+							<span class="lumen-wp-stat__label"><?php esc_html_e('Fournisseur', 'lumen-wp'); ?></span>
+							<strong><?php echo esc_html(Vision_Ai::provider_label($ai_prov)); ?></strong>
+						</div>
+					</div>
+					<?php if (! empty($usage['last_error'])) : ?>
+						<p class="lumen-wp-ai-usage-error"><?php echo esc_html((string) $usage['last_error']); ?></p>
+					<?php endif; ?>
+					<p class="lumen-wp-actions-row">
+						<?php if (current_user_can('manage_options')) : ?>
+							<button type="button" class="button" id="lumen-wp-ai-usage-reset">
+								<?php esc_html_e('Réinitialiser', 'lumen-wp'); ?>
+							</button>
+							<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-settings')); ?>">
+								<?php esc_html_e('Réglages IA', 'lumen-wp'); ?>
+							</a>
+						<?php endif; ?>
+						<?php if (isset($consoles[$ai_prov])) : ?>
+							<a class="button" href="<?php echo esc_url($consoles[$ai_prov]); ?>" target="_blank" rel="noopener noreferrer">
+								<?php esc_html_e('Console', 'lumen-wp'); ?>
+							</a>
+						<?php endif; ?>
+					</p>
+				</section>
+
+				<section class="lumen-wp-panel">
+					<h2 class="lumen-wp-panel__title"><?php esc_html_e('État serveur', 'lumen-wp'); ?></h2>
+					<div class="lumen-wp-dash-caps">
+						<span class="<?php echo $caps['imagick'] ? 'is-ok' : 'is-no'; ?>">Imagick</span>
+						<span class="<?php echo $caps['gd'] ? 'is-ok' : 'is-no'; ?>">GD</span>
+						<span class="<?php echo $caps['webp'] ? 'is-ok' : 'is-no'; ?>">WebP</span>
+						<span class="<?php echo $caps['avif'] ? 'is-ok' : 'is-no'; ?>">AVIF</span>
+						<span class="<?php echo ! empty($settings['site_favicons']) ? 'is-ok' : 'is-no'; ?>">
+							<?php esc_html_e('Favicons site', 'lumen-wp'); ?>
+						</span>
+						<span class="<?php echo ! empty($settings['auto_on_upload']) ? 'is-ok' : 'is-no'; ?>">
+							<?php esc_html_e('Auto upload', 'lumen-wp'); ?>
+						</span>
+						<span class="<?php echo Vision_Ai::is_configured() ? 'is-ok' : 'is-no'; ?>">
+							<?php echo esc_html('IA · ' . Vision_Ai::provider_label($ai_prov)); ?>
+						</span>
+					</div>
+				</section>
 			</section>
 		</div>
 		<?php

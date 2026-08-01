@@ -43,8 +43,13 @@ final class Brand
 				'cap'   => 'upload_files',
 			],
 			'bulk'      => [
-				'label' => __('Bulk', 'lumen-wp'),
+				'label' => __('Traitement', 'lumen-wp'),
 				'url'   => admin_url('admin.php?page=lumen-wp-bulk'),
+				'cap'   => 'upload_files',
+			],
+			'tools'     => [
+				'label' => __('Outils', 'lumen-wp'),
+				'url'   => admin_url('admin.php?page=lumen-wp-tools'),
 				'cap'   => 'upload_files',
 			],
 			'icons'     => [

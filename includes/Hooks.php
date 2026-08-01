@@ -9,6 +9,27 @@ final class Hooks
 	/** @var array<int, true> */
 	private static array $processing = [];
 
+	/** @var bool */
+	private static $skip_auto = false;
+
+	/**
+	 * Run a callback without triggering auto_on_upload processing.
+	 *
+	 * @template T
+	 * @param callable(): T $callback
+	 * @return mixed
+	 */
+	public static function without_auto_process(callable $callback)
+	{
+		$prev = self::$skip_auto;
+		self::$skip_auto = true;
+		try {
+			return $callback();
+		} finally {
+			self::$skip_auto = $prev;
+		}
+	}
+
 	public function register(): void
 	{
 		add_filter('wp_generate_attachment_metadata', [$this, 'on_generate_metadata'], 20, 2);
@@ -20,6 +41,13 @@ final class Hooks
 		add_action('admin_footer', [$this, 'print_feedback_modal']);
 		add_filter('admin_body_class', [$this, 'admin_body_class']);
 		add_action('wp_head', [$this, 'print_site_favicons'], 2);
+		add_action('delete_attachment', [$this, 'on_delete_attachment'], 10, 1);
+	}
+
+	public function on_delete_attachment(int $attachment_id): void
+	{
+		Cleanup::delete_sidecars($attachment_id);
+		Original_Backup::delete($attachment_id, true);
 	}
 
 	public function print_feedback_modal(): void
@@ -126,6 +154,10 @@ final class Hooks
 	 */
 	public function on_generate_metadata(array $metadata, int $attachment_id): array
 	{
+		if (self::$skip_auto) {
+			return $metadata;
+		}
+
 		$settings = Plugin::instance()->settings();
 		if (empty($settings['auto_on_upload'])) {
 			return $metadata;
@@ -135,7 +167,8 @@ final class Hooks
 			return $metadata;
 		}
 
-		$this->process($attachment_id, false);
+		$use_ai = ! empty($settings['auto_seo_on_upload']) && Vision_Ai::is_configured();
+		$this->process($attachment_id, false, $use_ai);
 
 		return $metadata;
 	}
@@ -185,18 +218,13 @@ final class Hooks
 			$seo         = $seo_service->build_from_filename($attachment_id);
 			$rate_limited = false;
 
-			$want_ai = $use_mistral || (
-				! empty($settings['auto_seo_on_upload'])
-				&& trim((string) ($settings['mistral_api_key'] ?? '')) !== ''
-			);
+			// $use_mistral = demande explicite d’IA (bulk, suggest, upload si auto_seo + clé).
+			$want_ai = $use_mistral && Vision_Ai::is_configured();
 
 			if ($want_ai) {
-				$ai = $seo_service->enrich_with_mistral($attachment_id, $seo);
-				$seo = $ai['seo'];
+				$ai           = $seo_service->enrich_with_ai($attachment_id, $seo);
+				$seo          = $ai['seo'];
 				$rate_limited = ! empty($ai['rate_limited']);
-				if (! empty($ai['error']) && empty($ai['rate_limited']) && ($seo['metadata_source'] ?? '') !== 'mistral') {
-					// Soft failure: keep local SEO.
-				}
 			}
 
 			if (! empty($settings['auto_seo_on_upload']) || $use_mistral || $force) {
@@ -321,11 +349,22 @@ final class Hooks
 					'successTitle'  => __('Succès', 'lumen-wp'),
 					'errorTitle'    => __('Échec', 'lumen-wp'),
 					'close'         => __('Fermer', 'lumen-wp'),
-					'bulkDone'      => __('Traitement terminé.', 'lumen-wp'),
-					'bulkEmpty'     => __('Aucune image à traiter.', 'lumen-wp'),
-					'iconsDone'     => __('Kit généré.', 'lumen-wp'),
-					'iconsDoneSite' => __('Kit généré — favicons appliqués au site.', 'lumen-wp'),
-					'suggestDone'   => __('Métadonnées suggérées.', 'lumen-wp'),
+					'bulkDone'       => __('Traitement terminé.', 'lumen-wp'),
+					'bulkEmpty'      => __('Aucune image à traiter.', 'lumen-wp'),
+					'iconsDone'      => __('Kit généré.', 'lumen-wp'),
+					'iconsDoneSite'  => __('Kit généré — favicons appliqués au site.', 'lumen-wp'),
+					'suggestDone'    => __('Métadonnées suggérées.', 'lumen-wp'),
+					'restoreConfirm' => __('Restaurer l’original ? Les variantes Lumen seront supprimées.', 'lumen-wp'),
+					'restored'       => __('Original restauré.', 'lumen-wp'),
+					'tickForced'     => __('Une image a été traitée.', 'lumen-wp'),
+					'cronOk'         => __('Tout va bien. Le traitement avance tout seul en arrière-plan.', 'lumen-wp'),
+					'cronDisabled'   => __('Traitement automatique désactivé — utilisez « Avancer maintenant » si besoin.', 'lumen-wp'),
+					'cronStale'      => __('Le traitement semble bloqué — cliquez sur « Avancer maintenant ».', 'lumen-wp'),
+					'cleanupConfirm' => __('Lancer le nettoyage sélectionné ? Cette action est irréversible.', 'lumen-wp'),
+					'statusIdle'     => __('Inactif', 'lumen-wp'),
+					'statusRunning'  => __('En cours', 'lumen-wp'),
+					'statusPaused'   => __('En pause', 'lumen-wp'),
+					'statusDone'     => __('Terminé', 'lumen-wp'),
 				],
 			]
 		);

@@ -6,10 +6,6 @@ namespace LumenWp;
 
 final class Seo
 {
-	private const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions';
-	private const MISTRAL_VISION_MODEL = 'ministral-14b-latest';
-	private const MISTRAL_THUMB_MAX = 1024;
-
 	/**
 	 * @return array{
 	 *   slug: string,
@@ -30,27 +26,18 @@ final class Seo
 		$human = $this->humanize_filename($base);
 		$slug  = $this->slugify($base);
 
-		$short = $human;
-		if (function_exists('mb_strlen') && mb_strlen($short) > 60) {
-			$short = mb_substr($short, 0, 57) . '…';
-		} elseif (strlen($short) > 60) {
-			$short = substr($short, 0, 57) . '…';
-		}
-
 		$meta = [
-			'slug'           => $slug,
-			'title'          => $human,
-			'alt_text_seo'   => $this->truncate($human, 125),
-			'alt_text_wcag'  => $this->truncate($human, 150),
-			'alt_text_short' => $short,
-			'caption'        => '',
-			'description'    => '',
-			'metadata_source'=> 'filename',
+			'slug'            => $slug,
+			'title'           => $human,
+			'alt_text_seo'    => $human,
+			'alt_text_wcag'   => $human,
+			'alt_text_short'  => $human,
+			'caption'         => '',
+			'description'     => '',
+			'metadata_source' => 'filename',
 		];
 
-		$meta['alt_text'] = $meta['alt_text_wcag'] !== '' ? $meta['alt_text_wcag'] : $meta['alt_text_seo'];
-
-		return $meta;
+		return $this->apply_site_title_prefix($meta);
 	}
 
 	/**
@@ -95,53 +82,25 @@ final class Seo
 	}
 
 	/**
-	 * Enrich SEO via Mistral Vision. Throws on hard errors; rate-limit returns partial flag.
+	 * Enrich SEO via le fournisseur Vision configuré.
+	 *
+	 * @param array<string, string> $fallback
+	 * @return array{seo: array<string, string>, rate_limited: bool, error?: string}
+	 */
+	public function enrich_with_ai(int $attachment_id, array $fallback = []): array
+	{
+		return (new Vision_Ai())->enrich($attachment_id, $fallback);
+	}
+
+	/**
+	 * @deprecated Utiliser enrich_with_ai().
 	 *
 	 * @param array<string, string> $fallback
 	 * @return array{seo: array<string, string>, rate_limited: bool, error?: string}
 	 */
 	public function enrich_with_mistral(int $attachment_id, array $fallback = []): array
 	{
-		$settings = Plugin::instance()->settings();
-		$api_key  = trim((string) ($settings['mistral_api_key'] ?? ''));
-
-		if ($api_key === '') {
-			return [
-				'seo'          => $fallback !== [] ? $fallback : $this->build_from_filename($attachment_id),
-				'rate_limited' => false,
-				'error'        => __('Clé API Mistral manquante.', 'lumen-wp'),
-			];
-		}
-
-		if ($fallback === []) {
-			$fallback = $this->build_from_filename($attachment_id);
-		}
-
-		try {
-			$data_url = $this->build_thumb_data_url($attachment_id);
-			$slug     = $fallback['slug'] ?? 'image';
-			$parsed   = $this->call_mistral($api_key, $data_url, $slug);
-			$merged   = $this->merge_seo($fallback, $parsed);
-			$merged['metadata_source'] = 'mistral';
-			$merged['alt_text'] = $merged['alt_text_wcag'] !== '' ? $merged['alt_text_wcag'] : $merged['alt_text_seo'];
-
-			return [
-				'seo'          => $merged,
-				'rate_limited' => false,
-			];
-		} catch (Mistral_Rate_Limit_Exception $e) {
-			return [
-				'seo'          => $fallback,
-				'rate_limited' => true,
-				'error'        => $e->getMessage(),
-			];
-		} catch (\Throwable $e) {
-			return [
-				'seo'          => $fallback,
-				'rate_limited' => false,
-				'error'        => $e->getMessage(),
-			];
-		}
+		return $this->enrich_with_ai($attachment_id, $fallback);
 	}
 
 	/**
@@ -149,7 +108,7 @@ final class Seo
 	 * @param array<string, string> $incoming
 	 * @return array<string, string>
 	 */
-	private function merge_seo(array $base, array $incoming): array
+	public function merge_seo_fields(array $base, array $incoming): array
 	{
 		foreach (['title', 'alt_text_seo', 'alt_text_wcag', 'alt_text_short', 'caption', 'description'] as $key) {
 			if (! empty($incoming[$key])) {
@@ -157,203 +116,7 @@ final class Seo
 			}
 		}
 
-		$base['alt_text_seo']   = $this->truncate($base['alt_text_seo'] ?? '', 125);
-		$base['alt_text_wcag']  = $this->truncate($base['alt_text_wcag'] ?? '', 150);
-		$base['alt_text_short'] = $this->truncate($base['alt_text_short'] ?? '', 60);
-
-		return $base;
-	}
-
-	/**
-	 * @return array<string, string>
-	 */
-	private function call_mistral(string $api_key, string $image_data_url, string $slug_hint): array
-	{
-		$system = 'Tu es expert SEO, accessibilité web (WCAG 2.2) et rédaction WordPress en français.
-Analyse l\'image fournie et réponds UNIQUEMENT avec un objet JSON valide (sans markdown), avec exactement ces clés :
-- "title" : titre média court
-- "alt_text_seo" : alt orienté mots-clés naturels (max 125 caractères)
-- "alt_text_wcag" : description accessible de ce que voit un utilisateur non voyant (max 150 caractères)
-- "alt_text_short" : variante très courte pour interfaces denses (max 60 caractères)
-- "caption" : légende éditoriale avec une voix engageante (1 phrase)
-- "description" : description média WordPress (1 à 2 phrases)
-Contexte slug fichier : "' . $slug_hint . '".';
-
-		$body = [
-			'model'           => self::MISTRAL_VISION_MODEL,
-			'temperature'     => 0.35,
-			'max_tokens'      => 700,
-			'response_format' => ['type' => 'json_object'],
-			'messages'        => [
-				['role' => 'system', 'content' => $system],
-				[
-					'role'    => 'user',
-					'content' => [
-						[
-							'type' => 'text',
-							'text' => 'Décris cette image pour un site WordPress francophone et remplis le JSON demandé.',
-						],
-						[
-							'type'      => 'image_url',
-							'image_url' => $image_data_url,
-						],
-					],
-				],
-			],
-		];
-
-		$response = wp_remote_post(
-			self::MISTRAL_API_URL,
-			[
-				'timeout' => 60,
-				'headers' => [
-					'Content-Type'  => 'application/json',
-					'Authorization' => 'Bearer ' . $api_key,
-				],
-				'body'    => wp_json_encode($body),
-			]
-		);
-
-		if (is_wp_error($response)) {
-			throw new \RuntimeException($response->get_error_message());
-		}
-
-		$code = (int) wp_remote_retrieve_response_code($response);
-		$raw  = (string) wp_remote_retrieve_body($response);
-		$data = json_decode($raw, true);
-		if (! is_array($data)) {
-			$data = [];
-		}
-
-		if ($this->is_rate_limit($code, $data)) {
-			throw new Mistral_Rate_Limit_Exception(__('Limite de requêtes Mistral atteinte', 'lumen-wp'));
-		}
-
-		if ($code === 401) {
-			throw new \RuntimeException(__('Clé API Mistral invalide ou expirée', 'lumen-wp'));
-		}
-
-		if ($code < 200 || $code >= 300) {
-			$msg = $data['message'] ?? $data['detail'] ?? sprintf('Erreur API (%d)', $code);
-			if (is_array($msg)) {
-				$msg = implode(', ', $msg);
-			}
-			throw new \RuntimeException((string) $msg);
-		}
-
-		$content = $data['choices'][0]['message']['content'] ?? null;
-		if (! is_string($content) || $content === '') {
-			throw new \RuntimeException(__('Réponse Mistral vide', 'lumen-wp'));
-		}
-
-		return $this->parse_mistral_metadata($content);
-	}
-
-	/**
-	 * @param array<string, mixed> $body
-	 */
-	private function is_rate_limit(int $code, array $body): bool
-	{
-		if ($code === 429) {
-			return true;
-		}
-
-		$raw = strtolower(
-			implode(
-				' ',
-				array_filter(
-					[
-						is_string($body['message'] ?? null) ? $body['message'] : '',
-						is_string($body['detail'] ?? null) ? $body['detail'] : '',
-						is_string($body['type'] ?? null) ? $body['type'] : '',
-						is_string($body['code'] ?? null) ? $body['code'] : '',
-					]
-				)
-			)
-		);
-
-		return (bool) preg_match('/rate.?limit|quota|too many|capacity|limit exceeded|service.?unavailable/i', $raw);
-	}
-
-	/**
-	 * @return array<string, string>
-	 */
-	private function parse_mistral_metadata(string $content): array
-	{
-		$raw = trim($content);
-		$parsed = json_decode($raw, true);
-		if (! is_array($parsed)) {
-			if (preg_match('/\{[\s\S]*\}/', $raw, $m)) {
-				$parsed = json_decode($m[0], true);
-			}
-		}
-		if (! is_array($parsed)) {
-			throw new \RuntimeException(__('Réponse JSON illisible', 'lumen-wp'));
-		}
-
-		$pick = static function (array $parsed, array $keys): string {
-			foreach ($keys as $k) {
-				if (isset($parsed[$k]) && is_string($parsed[$k]) && trim($parsed[$k]) !== '') {
-					return trim($parsed[$k]);
-				}
-			}
-
-			return '';
-		};
-
-		return [
-			'title'          => $pick($parsed, ['title', 'titre']),
-			'alt_text_seo'   => $pick($parsed, ['alt_text_seo', 'alt_seo', 'altSeo']),
-			'alt_text_wcag'  => $pick($parsed, ['alt_text_wcag', 'alt_wcag', 'altWcag', 'alt_text']),
-			'alt_text_short' => $pick($parsed, ['alt_text_short', 'alt_short', 'altShort']),
-			'caption'        => $pick($parsed, ['caption', 'legende', 'légende']),
-			'description'    => $pick($parsed, ['description', 'desc']),
-		];
-	}
-
-	private function build_thumb_data_url(int $attachment_id): string
-	{
-		$file = get_attached_file($attachment_id);
-		if (! is_string($file) || ! is_readable($file)) {
-			throw new \RuntimeException(__('Impossible de lire l’image', 'lumen-wp'));
-		}
-
-		$editor = wp_get_image_editor($file);
-		if (is_wp_error($editor)) {
-			$bytes = file_get_contents($file);
-			if ($bytes === false) {
-				throw new \RuntimeException(__('Impossible de lire l’image', 'lumen-wp'));
-			}
-			$mime = (string) get_post_mime_type($attachment_id) ?: 'image/jpeg';
-
-			return 'data:' . $mime . ';base64,' . base64_encode($bytes);
-		}
-
-		$size = $editor->get_size();
-		$w    = (int) ($size['width'] ?? 0);
-		$h    = (int) ($size['height'] ?? 0);
-		$max  = max($w, $h);
-		if ($max > self::MISTRAL_THUMB_MAX) {
-			$editor->resize(self::MISTRAL_THUMB_MAX, self::MISTRAL_THUMB_MAX, false);
-		}
-
-		$tmp = wp_tempnam('lumen-mistral');
-		$saved = $editor->save($tmp, 'image/jpeg');
-		if (is_wp_error($saved) || empty($saved['path'])) {
-			throw new \RuntimeException(__('Impossible de préparer la miniature Mistral', 'lumen-wp'));
-		}
-
-		$bytes = file_get_contents($saved['path']);
-		@unlink($saved['path']);
-		if ($tmp !== $saved['path']) {
-			@unlink($tmp);
-		}
-
-		if ($bytes === false) {
-			throw new \RuntimeException(__('Impossible de lire l’image', 'lumen-wp'));
-		}
-
-		return 'data:image/jpeg;base64,' . base64_encode($bytes);
+		return $this->apply_site_title_prefix($base);
 	}
 
 	public function slugify(string $text): string
@@ -402,8 +165,56 @@ Contexte slug fichier : "' . $slug_hint . '".';
 
 		return substr($text, 0, $max);
 	}
-}
 
-final class Mistral_Rate_Limit_Exception extends \RuntimeException
-{
+	private function site_title(): string
+	{
+		return trim((string) get_bloginfo('name'));
+	}
+
+	private function prefix_with_site_title(string $value): string
+	{
+		$value = trim($value);
+		if ($value === '') {
+			return '';
+		}
+
+		$site = $this->site_title();
+		if ($site === '') {
+			return $value;
+		}
+
+		$prefix = $site . ' — ';
+		$starts = function_exists('mb_strpos')
+			? mb_strpos($value, $prefix) === 0
+			: strpos($value, $prefix) === 0;
+
+		if ($starts) {
+			return $value;
+		}
+
+		return $prefix . $value;
+	}
+
+	/**
+	 * @param array<string, string> $seo
+	 * @return array<string, string>
+	 */
+	private function apply_site_title_prefix(array $seo): array
+	{
+		foreach (['title', 'alt_text_seo', 'alt_text_wcag', 'alt_text_short', 'caption', 'description'] as $key) {
+			if (! isset($seo[$key]) || ! is_string($seo[$key])) {
+				continue;
+			}
+			$seo[$key] = $this->prefix_with_site_title($seo[$key]);
+		}
+
+		$seo['alt_text_seo']   = $this->truncate((string) ($seo['alt_text_seo'] ?? ''), 125);
+		$seo['alt_text_wcag']  = $this->truncate((string) ($seo['alt_text_wcag'] ?? ''), 150);
+		$seo['alt_text_short'] = $this->truncate((string) ($seo['alt_text_short'] ?? ''), 60);
+		$seo['alt_text']       = ($seo['alt_text_wcag'] ?? '') !== ''
+			? (string) $seo['alt_text_wcag']
+			: (string) ($seo['alt_text_seo'] ?? '');
+
+		return $seo;
+	}
 }

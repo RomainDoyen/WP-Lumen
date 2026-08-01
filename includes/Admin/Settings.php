@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LumenWp\Admin;
 
 use LumenWp\Plugin;
+use LumenWp\Vision_Ai;
 
 final class Settings
 {
@@ -12,6 +13,7 @@ final class Settings
 	{
 		add_action('admin_menu', [$this, 'add_menu']);
 		add_action('admin_init', [$this, 'register_settings']);
+		add_action('wp_ajax_lumen_wp_ai_usage_reset', [$this, 'ajax_reset_usage']);
 	}
 
 	public function add_menu(): void
@@ -64,7 +66,11 @@ final class Settings
 			$formats = ['webp', 'jpeg'];
 		}
 
-		$current = Plugin::instance()->settings();
+		$current  = Plugin::instance()->settings();
+		$provider = strtolower(sanitize_key((string) ($input['ai_provider'] ?? 'none')));
+		if (! in_array($provider, Vision_Ai::PROVIDERS, true)) {
+			$provider = 'none';
+		}
 
 		$out = [
 			'formats'            => array_values(array_unique($formats)),
@@ -74,7 +80,17 @@ final class Settings
 			'replace_original'   => ! empty($input['replace_original']),
 			'auto_on_upload'     => ! empty($input['auto_on_upload']),
 			'auto_seo_on_upload' => ! empty($input['auto_seo_on_upload']),
+			'ai_provider'        => $provider,
 			'mistral_api_key'    => sanitize_text_field((string) ($input['mistral_api_key'] ?? '')),
+			'openai_api_key'     => sanitize_text_field((string) ($input['openai_api_key'] ?? '')),
+			'anthropic_api_key'  => sanitize_text_field((string) ($input['anthropic_api_key'] ?? '')),
+			'gemini_api_key'     => sanitize_text_field((string) ($input['gemini_api_key'] ?? '')),
+			'ai_model'           => (static function () use ($input): string {
+				$model = sanitize_text_field((string) ($input['ai_model'] ?? ''));
+
+				return in_array($model, Vision_Ai::allowed_model_ids(), true) ? $model : '';
+			})(),
+			'ai_budget_month'    => max(0, (int) ($input['ai_budget_month'] ?? 0)),
 			'site_url'           => esc_url_raw((string) ($input['site_url'] ?? '')),
 			// Géré depuis la page Icônes — ne pas écraser ici.
 			'site_favicons'      => ! empty($current['site_favicons']),
@@ -83,6 +99,16 @@ final class Settings
 		Plugin::instance()->clear_settings_cache();
 
 		return $out;
+	}
+
+	public function ajax_reset_usage(): void
+	{
+		if (! current_user_can('manage_options')) {
+			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
+		}
+		check_ajax_referer('lumen_wp_admin', 'nonce');
+		Vision_Ai::reset_usage();
+		wp_send_json_success(['usage' => Vision_Ai::usage()]);
 	}
 
 	private function clamp_int($value, int $min, int $max): int
@@ -234,7 +260,7 @@ final class Settings
 									<span class="lumen-wp-choice__label"><?php esc_html_e('Remplacer l’original (JPEG/PNG/JPG → WebP prioritaire)', 'lumen-wp'); ?></span>
 								</label>
 							</div>
-							<p class="description"><?php esc_html_e('Sinon : l’original est conservé et les variantes sont écrites à côté (sidecars).', 'lumen-wp'); ?></p>
+							<p class="description"><?php esc_html_e('Sinon : l’original est conservé et les variantes sont écrites à côté.', 'lumen-wp'); ?></p>
 						</td>
 					</tr>
 					<tr>
@@ -262,15 +288,98 @@ final class Settings
 						</td>
 					</tr>
 					<tr>
-						<th scope="row"><?php esc_html_e('Clé API Mistral', 'lumen-wp'); ?></th>
+						<th scope="row"><?php esc_html_e('Fournisseur IA Vision', 'lumen-wp'); ?></th>
 						<td>
-							<input type="password" class="regular-text" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[mistral_api_key]" value="<?php echo esc_attr((string) $settings['mistral_api_key']); ?>" autocomplete="off" />
-							<p class="description"><?php esc_html_e('Optionnel. Active la suggestion d’alts / légendes via Mistral Vision.', 'lumen-wp'); ?></p>
+							<?php $provider = (string) ($settings['ai_provider'] ?? 'none'); ?>
+							<select name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[ai_provider]" id="lumen-wp-ai-provider">
+								<option value="none" <?php selected($provider, 'none'); ?>><?php esc_html_e('Aucun (SEO local uniquement)', 'lumen-wp'); ?></option>
+								<option value="mistral" <?php selected($provider, 'mistral'); ?>>Mistral</option>
+								<option value="openai" <?php selected($provider, 'openai'); ?>>OpenAI</option>
+								<option value="anthropic" <?php selected($provider, 'anthropic'); ?>>Anthropic</option>
+								<option value="gemini" <?php selected($provider, 'gemini'); ?>>Google Gemini</option>
+							</select>
+							<p class="description"><?php esc_html_e('Utilisé pour « Suggérer », le traitement en masse et le SEO auto à l’upload.', 'lumen-wp'); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e('Clés API', 'lumen-wp'); ?></th>
+						<td>
+							<p>
+								<label for="lumen-wp-key-mistral"><strong>Mistral</strong></label><br />
+								<input type="password" class="regular-text" id="lumen-wp-key-mistral" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[mistral_api_key]" value="<?php echo esc_attr((string) $settings['mistral_api_key']); ?>" autocomplete="off" />
+							</p>
+							<p>
+								<label for="lumen-wp-key-openai"><strong>OpenAI</strong></label><br />
+								<input type="password" class="regular-text" id="lumen-wp-key-openai" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[openai_api_key]" value="<?php echo esc_attr((string) ($settings['openai_api_key'] ?? '')); ?>" autocomplete="off" />
+							</p>
+							<p>
+								<label for="lumen-wp-key-anthropic"><strong>Anthropic</strong></label><br />
+								<input type="password" class="regular-text" id="lumen-wp-key-anthropic" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[anthropic_api_key]" value="<?php echo esc_attr((string) ($settings['anthropic_api_key'] ?? '')); ?>" autocomplete="off" />
+							</p>
+							<p>
+								<label for="lumen-wp-key-gemini"><strong>Gemini</strong></label><br />
+								<input type="password" class="regular-text" id="lumen-wp-key-gemini" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[gemini_api_key]" value="<?php echo esc_attr((string) ($settings['gemini_api_key'] ?? '')); ?>" autocomplete="off" />
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e('Modèle IA', 'lumen-wp'); ?></th>
+						<td>
+							<?php
+							$current_model = (string) ($settings['ai_model'] ?? '');
+							$catalog      = Vision_Ai::models_catalog();
+							$models_for   = ($provider !== 'none' && isset($catalog[$provider]))
+								? $catalog[$provider]
+								: ['' => __('Choisir d’abord un fournisseur', 'lumen-wp')];
+							?>
+							<select
+								name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[ai_model]"
+								id="lumen-wp-ai-model"
+								class="lumen-wp-select"
+								data-catalog="<?php echo esc_attr(wp_json_encode($catalog) ?: '{}'); ?>"
+								<?php disabled($provider === 'none'); ?>
+							>
+								<?php foreach ($models_for as $value => $label) : ?>
+									<option value="<?php echo esc_attr((string) $value); ?>" <?php selected($current_model, (string) $value); ?>>
+										<?php echo esc_html($label); ?>
+									</option>
+								<?php endforeach; ?>
+								<?php if ($current_model !== '' && ! isset($models_for[$current_model])) : ?>
+									<option value="<?php echo esc_attr($current_model); ?>" selected>
+										<?php echo esc_html($current_model); ?>
+									</option>
+								<?php endif; ?>
+							</select>
+							<p class="description"><?php esc_html_e('Liste adaptée au fournisseur sélectionné. « Défaut » utilise le modèle recommandé par Lumen.', 'lumen-wp'); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e('Budget IA / mois', 'lumen-wp'); ?></th>
+						<td>
+							<input type="number" min="0" step="1" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[ai_budget_month]" value="<?php echo esc_attr((string) (int) ($settings['ai_budget_month'] ?? 0)); ?>" />
+							<p class="description"><?php esc_html_e('0 = illimité (côté Lumen). Au-delà, fallback SEO local. Le solde réel se consulte chez le fournisseur.', 'lumen-wp'); ?></p>
 						</td>
 					</tr>
 				</table>
 				<?php submit_button(__('Enregistrer', 'lumen-wp')); ?>
 			</form>
+
+			<p class="description">
+				<?php
+				echo wp_kses(
+					sprintf(
+						/* translators: %s: dashboard link */
+						__('Le compteur d’usage IA est affiché sur le %s.', 'lumen-wp'),
+						'<a href="' . esc_url(admin_url('admin.php?page=lumen-wp')) . '">' . esc_html__('Dashboard', 'lumen-wp') . '</a>'
+					),
+					[
+						'a' => [
+							'href' => true,
+						],
+					]
+				);
+				?>
+			</p>
 		</div>
 		<?php
 	}

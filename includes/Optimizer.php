@@ -442,6 +442,9 @@ final class Optimizer
 			return false;
 		}
 
+		$current_mime = (string) get_post_mime_type($attachment_id);
+		Original_Backup::ensure($attachment_id, $original, $current_mime !== '' ? $current_mime : 'image/jpeg');
+
 		$ext_map = [
 			'image/webp' => 'webp',
 			'image/avif' => 'avif',

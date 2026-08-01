@@ -4,24 +4,22 @@ declare(strict_types=1);
 
 namespace LumenWp\Admin;
 
-use LumenWp\Hooks;
-use LumenWp\Plugin;
+use LumenWp\Bulk_Queue;
+use LumenWp\Vision_Ai;
 
 final class Bulk
 {
 	public function register(): void
 	{
 		add_action('admin_menu', [$this, 'add_menu']);
-		add_action('wp_ajax_lumen_wp_bulk_ids', [$this, 'ajax_ids']);
-		add_action('wp_ajax_lumen_wp_bulk_process', [$this, 'ajax_process']);
 	}
 
 	public function add_menu(): void
 	{
 		add_submenu_page(
 			'lumen-wp',
-			__('Bulk Lumen', 'lumen-wp'),
-			__('Bulk', 'lumen-wp'),
+			__('Traitement Lumen', 'lumen-wp'),
+			__('Traitement', 'lumen-wp'),
 			'upload_files',
 			'lumen-wp-bulk',
 			[$this, 'render_page']
@@ -34,15 +32,51 @@ final class Bulk
 			return;
 		}
 
+		$job      = Bulk_Queue::job();
+		$provider = Vision_Ai::active_provider();
+		$usage    = Vision_Ai::usage();
+		$budget   = (int) (\LumenWp\Plugin::instance()->settings()['ai_budget_month'] ?? 0);
+		$cron_off = defined('DISABLE_WP_CRON') && DISABLE_WP_CRON;
+
 		?>
 		<div class="wrap lumen-wp-wrap">
 			<?php
 			Brand::render_nav('bulk');
 			Brand::render_header(
-				__('Bulk', 'lumen-wp'),
-				__('Optimise et génère le pack SEO pour les images déjà présentes dans la médiathèque.', 'lumen-wp')
+				__('Traitement', 'lumen-wp'),
+				__('Optimise les images en arrière-plan — continue même si vous fermez l’onglet.', 'lumen-wp')
 			);
 			?>
+
+			<?php if ($cron_off) : ?>
+				<p class="lumen-wp-dash-banner lumen-wp-dash-banner--muted">
+					<?php esc_html_e('Le traitement automatique WordPress est désactivé sur ce site. Contactez votre hébergeur ou ouvrez Lumen → Outils pour relancer manuellement.', 'lumen-wp'); ?>
+				</p>
+			<?php endif; ?>
+
+			<section class="lumen-wp-panel lumen-wp-panel--compact" id="lumen-wp-bulk-health">
+				<h2 class="lumen-wp-panel__title"><?php esc_html_e('État', 'lumen-wp'); ?></h2>
+				<p class="description" id="lumen-wp-bulk-health-text">
+					<?php
+					$health = Bulk_Queue::health();
+					if (! empty($health['stale'])) {
+						esc_html_e('Le traitement semble bloqué — cliquez sur « Avancer maintenant ».', 'lumen-wp');
+					} elseif ($cron_off) {
+						esc_html_e('Traitement automatique désactivé — utilisez « Avancer maintenant » si besoin.', 'lumen-wp');
+					} else {
+						esc_html_e('Tout va bien. Le traitement avance tout seul en arrière-plan.', 'lumen-wp');
+					}
+					?>
+				</p>
+				<p class="lumen-wp-actions-row">
+					<button type="button" class="button" id="lumen-wp-bulk-force-tick">
+						<?php esc_html_e('Avancer maintenant', 'lumen-wp'); ?>
+					</button>
+					<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-tools')); ?>">
+						<?php esc_html_e('Outils', 'lumen-wp'); ?>
+					</a>
+				</p>
+			</section>
 
 			<section class="lumen-wp-panel">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Options', 'lumen-wp'); ?></h2>
@@ -54,14 +88,32 @@ final class Bulk
 								<label class="lumen-wp-choice lumen-wp-choice--wide">
 									<input type="checkbox" id="lumen-wp-force" value="1" />
 									<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
-									<span class="lumen-wp-choice__label"><?php esc_html_e('Forcer le re-traitement (y compris déjà OK)', 'lumen-wp'); ?></span>
+									<span class="lumen-wp-choice__label"><?php esc_html_e('Reprendre aussi les images déjà OK', 'lumen-wp'); ?></span>
 								</label>
 								<label class="lumen-wp-choice lumen-wp-choice--wide">
-									<input type="checkbox" id="lumen-wp-use-mistral" value="1" />
+									<input type="checkbox" id="lumen-wp-use-ai" value="1" <?php disabled(! Vision_Ai::is_configured()); ?> />
 									<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
-									<span class="lumen-wp-choice__label"><?php esc_html_e('Utiliser Mistral Vision si une clé API est configurée', 'lumen-wp'); ?></span>
+									<span class="lumen-wp-choice__label">
+										<?php
+										printf(
+											/* translators: %s: provider label */
+											esc_html__('Utiliser l’IA Vision (%s)', 'lumen-wp'),
+											esc_html(Vision_Ai::provider_label($provider))
+										);
+										?>
+									</span>
 								</label>
 							</div>
+							<p class="description" id="lumen-wp-bulk-ai-meta">
+								<?php
+								printf(
+									/* translators: 1: calls this month, 2: budget or infinity */
+									esc_html__('Usage IA ce mois : %1$s / %2$s', 'lumen-wp'),
+									esc_html(number_format_i18n((int) $usage['calls_month'])),
+									$budget > 0 ? esc_html(number_format_i18n($budget)) : '∞'
+								);
+								?>
+							</p>
 						</td>
 					</tr>
 				</table>
@@ -70,121 +122,35 @@ final class Bulk
 					<button type="button" class="button button-primary" id="lumen-wp-bulk-start">
 						<?php esc_html_e('Démarrer', 'lumen-wp'); ?>
 					</button>
+					<button type="button" class="button" id="lumen-wp-bulk-pause" disabled>
+						<?php esc_html_e('Pause', 'lumen-wp'); ?>
+					</button>
+					<button type="button" class="button" id="lumen-wp-bulk-resume" disabled>
+						<?php esc_html_e('Reprendre', 'lumen-wp'); ?>
+					</button>
 					<button type="button" class="button" id="lumen-wp-bulk-stop" disabled>
 						<?php esc_html_e('Arrêter', 'lumen-wp'); ?>
 					</button>
 				</p>
 
-				<div class="lumen-wp-progress" hidden>
+				<div class="lumen-wp-progress" id="lumen-wp-bulk-progress" <?php echo in_array($job['status'], ['running', 'paused', 'done'], true) ? '' : 'hidden'; ?>>
 					<progress id="lumen-wp-progress-bar" max="100" value="0"></progress>
-					<p id="lumen-wp-progress-label">0 / 0</p>
+					<p id="lumen-wp-progress-label">—</p>
+					<p id="lumen-wp-bulk-status-text" class="description"></p>
 				</div>
 
-				<ul id="lumen-wp-bulk-log" class="lumen-wp-log"></ul>
+				<div class="lumen-wp-log-shell" id="lumen-wp-bulk-log-shell">
+					<header class="lumen-wp-log-shell__head">
+						<span class="lumen-wp-log-shell__title"><?php esc_html_e('Activité', 'lumen-wp'); ?></span>
+						<span class="lumen-wp-log-shell__meta" id="lumen-wp-bulk-log-meta"><?php esc_html_e('30 derniers messages', 'lumen-wp'); ?></span>
+					</header>
+					<ul id="lumen-wp-bulk-log" class="lumen-wp-log" aria-live="polite"></ul>
+					<p class="lumen-wp-log-empty" id="lumen-wp-bulk-log-empty">
+						<?php esc_html_e('Les messages de traitement apparaîtront ici.', 'lumen-wp'); ?>
+					</p>
+				</div>
 			</section>
 		</div>
 		<?php
-	}
-
-	public function ajax_ids(): void
-	{
-		$this->guard();
-
-		$force = ! empty($_POST['force']); // phpcs:ignore WordPress.Security.NonceVerification
-
-		global $wpdb;
-
-		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		if ($force) {
-			$ids = $wpdb->get_col(
-				"SELECT ID FROM {$wpdb->posts}
-				WHERE post_type = 'attachment'
-				  AND post_status = 'inherit'
-				  AND post_mime_type LIKE 'image/%'
-				ORDER BY ID ASC"
-			);
-		} else {
-			$replace = ! empty(Plugin::instance()->settings()['replace_original']);
-			$status  = Plugin::META_STATUS;
-			$variants = Plugin::META_VARIANTS;
-
-			if ($replace) {
-				// JPEG/PNG encore présents = à traiter (même avec sidecars).
-				$ids = $wpdb->get_col(
-					$wpdb->prepare(
-						"SELECT p.ID
-						FROM {$wpdb->posts} p
-						LEFT JOIN {$wpdb->postmeta} s
-							ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
-						LEFT JOIN {$wpdb->postmeta} v
-							ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value != '' AND v.meta_value != 'a:0:{}'
-						WHERE p.post_type = 'attachment'
-						  AND p.post_status = 'inherit'
-						  AND p.post_mime_type LIKE 'image/%%'
-						  AND NOT (
-							s.meta_id IS NOT NULL
-							AND v.meta_id IS NOT NULL
-							AND p.post_mime_type IN ('image/webp', 'image/avif')
-						  )
-						ORDER BY p.ID ASC",
-						$status,
-						$variants
-					)
-				);
-			} else {
-				$ids = $wpdb->get_col(
-					$wpdb->prepare(
-						"SELECT p.ID
-						FROM {$wpdb->posts} p
-						LEFT JOIN {$wpdb->postmeta} s
-							ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
-						LEFT JOIN {$wpdb->postmeta} v
-							ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value != '' AND v.meta_value != 'a:0:{}'
-						WHERE p.post_type = 'attachment'
-						  AND p.post_status = 'inherit'
-						  AND p.post_mime_type LIKE 'image/%%'
-						  AND (s.meta_id IS NULL OR v.meta_id IS NULL)
-						ORDER BY p.ID ASC",
-						$status,
-						$variants
-					)
-				);
-			}
-		}
-		// phpcs:enable
-
-		$ids = array_values(array_filter(array_map('intval', is_array($ids) ? $ids : [])));
-
-		wp_send_json_success(['ids' => $ids, 'total' => count($ids)]);
-	}
-
-	public function ajax_process(): void
-	{
-		$this->guard();
-
-		$id = isset($_POST['id']) ? (int) $_POST['id'] : 0; // phpcs:ignore WordPress.Security.NonceVerification
-		$force = ! empty($_POST['force']); // phpcs:ignore WordPress.Security.NonceVerification
-		$use_mistral = ! empty($_POST['use_mistral']); // phpcs:ignore WordPress.Security.NonceVerification
-
-		if ($id <= 0) {
-			wp_send_json_error(['message' => __('ID invalide.', 'lumen-wp')], 400);
-		}
-
-		$result = (new Hooks())->process($id, $force, $use_mistral);
-
-		if (! empty($result['ok'])) {
-			wp_send_json_success($result);
-		}
-
-		wp_send_json_error($result);
-	}
-
-	private function guard(): void
-	{
-		if (! current_user_can('upload_files')) {
-			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
-		}
-
-		check_ajax_referer('lumen_wp_admin', 'nonce');
 	}
 }

@@ -1,0 +1,5 @@
+# Fichiers exclus du ZIP de distribution (git archive)
+.gitattributes  export-ignore
+.gitignore      export-ignore
+.github/        export-ignore
+bin/            export-ignore

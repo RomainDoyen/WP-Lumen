@@ -16,6 +16,7 @@ final class Plugin
 	public const META_JSONLD = '_lumen_jsonld';
 	public const META_GUTENBERG = '_lumen_gutenberg';
 	public const META_ERROR = '_lumen_error';
+	public const META_ORIGINAL_BACKUP = '_lumen_original_backup';
 
 	/** @var array<string, mixed>|null */
 	private ?array $settings_cache = null;
@@ -49,10 +50,12 @@ final class Plugin
 	public function boot(): void
 	{
 		(new Hooks())->register();
+		(new Bulk_Queue())->register();
 
 		if (is_admin()) {
 			(new Admin\Dashboard())->register();
 			(new Admin\Bulk())->register();
+			(new Admin\Tools())->register();
 			(new Admin\Icons())->register();
 			(new Admin\Settings())->register();
 			(new Admin\Media_Meta_Box())->register();
@@ -64,6 +67,10 @@ final class Plugin
 		$files = [
 			'Optimizer.php',
 			'Seo.php',
+			'Vision_Ai.php',
+			'Bulk_Queue.php',
+			'Original_Backup.php',
+			'Cleanup.php',
 			'Pack.php',
 			'Icon_Kit.php',
 			'Hooks.php',
@@ -71,6 +78,7 @@ final class Plugin
 			'Admin/Dashboard.php',
 			'Admin/Settings.php',
 			'Admin/Bulk.php',
+			'Admin/Tools.php',
 			'Admin/Icons.php',
 			'Admin/Media_Meta_Box.php',
 		];
@@ -89,16 +97,22 @@ final class Plugin
 	public static function defaults(): array
 	{
 		return [
-			'formats'           => ['webp', 'jpeg'],
-			'webp_quality'      => 82,
-			'jpeg_quality'      => 85,
-			'avif_quality'      => 65,
-			'replace_original'  => true,
-			'auto_on_upload'    => false,
-			'auto_seo_on_upload'=> true,
-			'mistral_api_key'   => '',
-			'site_url'          => '',
-			'site_favicons'     => false,
+			'formats'            => ['webp', 'jpeg'],
+			'webp_quality'       => 82,
+			'jpeg_quality'       => 85,
+			'avif_quality'       => 65,
+			'replace_original'   => true,
+			'auto_on_upload'     => false,
+			'auto_seo_on_upload' => true,
+			'ai_provider'        => 'none',
+			'mistral_api_key'    => '',
+			'openai_api_key'     => '',
+			'anthropic_api_key'  => '',
+			'gemini_api_key'     => '',
+			'ai_model'           => '',
+			'ai_budget_month'    => 0,
+			'site_url'           => '',
+			'site_favicons'      => false,
 		];
 	}
 
@@ -116,7 +130,17 @@ final class Plugin
 			$stored = [];
 		}
 
-		$this->settings_cache = array_merge(self::defaults(), $stored);
+		$merged = array_merge(self::defaults(), $stored);
+
+		// Migration : ancienne clé Mistral seule → provider mistral.
+		if (
+			($merged['ai_provider'] ?? 'none') === 'none'
+			&& trim((string) ($merged['mistral_api_key'] ?? '')) !== ''
+		) {
+			$merged['ai_provider'] = 'mistral';
+		}
+
+		$this->settings_cache = $merged;
 
 		return $this->settings_cache;
 	}

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LumenWp\Admin;
 
 use LumenWp\Hooks;
+use LumenWp\Original_Backup;
 use LumenWp\Pack;
 use LumenWp\Plugin;
 use LumenWp\Seo;
@@ -17,6 +18,7 @@ final class Media_Meta_Box
 		add_action('save_post_attachment', [$this, 'save'], 20, 1);
 		add_action('wp_ajax_lumen_wp_suggest', [$this, 'ajax_suggest']);
 		add_action('wp_ajax_lumen_wp_reprocess', [$this, 'ajax_reprocess']);
+		add_action('wp_ajax_lumen_wp_restore_original', [$this, 'ajax_restore']);
 		add_filter('attachment_fields_to_edit', [$this, 'attachment_fields'], 10, 2);
 	}
 
@@ -54,10 +56,11 @@ final class Media_Meta_Box
 		$gutenberg = (string) get_post_meta($attachment_id, Plugin::META_GUTENBERG, true);
 		$jsonld    = get_post_meta($attachment_id, Plugin::META_JSONLD, true);
 		$json_text = is_array($jsonld) ? wp_json_encode($jsonld, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '';
+		$has_bak   = Original_Backup::has($attachment_id);
 
 		wp_nonce_field('lumen_wp_save_meta', 'lumen_wp_meta_nonce');
 		?>
-		<div class="lumen-wp-metabox" data-attachment-id="<?php echo esc_attr((string) $attachment_id); ?>">
+		<div class="lumen-wp-metabox" data-attachment-id="<?php echo esc_attr((string) $attachment_id); ?>" data-has-backup="<?php echo $has_bak ? '1' : '0'; ?>">
 			<?php
 			Brand::render_header(
 				__('Pack SEO', 'lumen-wp'),
@@ -120,7 +123,15 @@ final class Media_Meta_Box
 				<button type="button" class="button" id="lumen-wp-reprocess">
 					<?php esc_html_e('Re-traiter (optimiser + pack)', 'lumen-wp'); ?>
 				</button>
+				<button type="button" class="button" id="lumen-wp-restore" <?php echo $has_bak ? '' : 'hidden'; ?>>
+					<?php esc_html_e('Restaurer l’original', 'lumen-wp'); ?>
+				</button>
 			</p>
+			<?php if ($has_bak) : ?>
+				<p class="description" id="lumen-wp-backup-hint">
+					<?php esc_html_e('Une sauvegarde de l’original est disponible.', 'lumen-wp'); ?>
+				</p>
+			<?php endif; ?>
 
 			<p>
 				<label><?php esc_html_e('Bloc Gutenberg', 'lumen-wp'); ?></label>
@@ -195,7 +206,7 @@ final class Media_Meta_Box
 			$fallback = $seo_service->build_from_filename($id);
 		}
 
-		$result = $seo_service->enrich_with_mistral($id, $fallback);
+		$result = $seo_service->enrich_with_ai($id, $fallback);
 		$seo_service->apply_to_attachment($id, $result['seo'], false);
 
 		$variants = get_post_meta($id, Plugin::META_VARIANTS, true);
@@ -243,6 +254,7 @@ final class Media_Meta_Box
 					: '',
 				'status'    => (string) get_post_meta($id, Plugin::META_STATUS, true),
 				'error'     => (string) get_post_meta($id, Plugin::META_ERROR, true),
+				'has_backup'=> Original_Backup::has($id),
 			]
 		);
 
@@ -251,6 +263,31 @@ final class Media_Meta_Box
 		}
 
 		wp_send_json_error($payload);
+	}
+
+	public function ajax_restore(): void
+	{
+		$this->guard_ajax();
+
+		$id = isset($_POST['id']) ? (int) $_POST['id'] : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		if ($id <= 0 || ! wp_attachment_is_image($id)) {
+			wp_send_json_error(['message' => __('Attachment invalide.', 'lumen-wp')], 400);
+		}
+
+		$result = Original_Backup::restore($id);
+		if (empty($result['ok'])) {
+			wp_send_json_error(['message' => $result['message']]);
+		}
+
+		wp_send_json_success(
+			[
+				'message'    => $result['message'],
+				'status'     => (string) get_post_meta($id, Plugin::META_STATUS, true),
+				'gutenberg'  => '',
+				'jsonld'     => '',
+				'has_backup' => Original_Backup::has($id),
+			]
+		);
 	}
 
 	/**
