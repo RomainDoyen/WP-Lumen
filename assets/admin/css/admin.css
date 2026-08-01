@@ -643,6 +643,7 @@ body.lumen-wp-admin #wpfooter {
 	box-shadow: none;
 	padding: 0.25rem 0.6rem;
 	line-height: 2;
+	color-scheme: dark;
 }
 
 .lumen-wp-wrap select:hover,
@@ -664,6 +665,152 @@ body.lumen-wp-admin #wpfooter {
 	color: var(--lumen-text) !important;
 	border-color: var(--lumen-border);
 	box-shadow: none;
+}
+
+/* Custom select — options alignées sur le thème sombre Lumen */
+.lumen-wp-csel {
+	position: relative;
+	display: inline-block;
+	min-width: min(100%, 22rem);
+	max-width: 100%;
+	vertical-align: middle;
+}
+
+.lumen-wp-csel.is-disabled {
+	opacity: 0.45;
+	pointer-events: none;
+}
+
+.lumen-wp-csel__native {
+	position: absolute !important;
+	width: 1px !important;
+	height: 1px !important;
+	padding: 0 !important;
+	margin: -1px !important;
+	overflow: hidden !important;
+	clip: rect(0, 0, 0, 0) !important;
+	white-space: nowrap !important;
+	border: 0 !important;
+	min-width: 0 !important;
+}
+
+.lumen-wp-csel__trigger {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	width: 100%;
+	min-height: 40px;
+	padding: 0.45rem 0.75rem;
+	box-sizing: border-box;
+	border: 1px solid var(--lumen-border);
+	border-radius: var(--lumen-radius-md);
+	background: rgba(0, 0, 0, 0.35);
+	color: var(--lumen-text);
+	font-family: var(--lumen-font);
+	font-size: 0.95rem;
+	font-weight: 500;
+	line-height: 1.3;
+	text-align: left;
+	cursor: pointer;
+	box-shadow: none;
+}
+
+.lumen-wp-csel__trigger:hover,
+.lumen-wp-csel.is-open .lumen-wp-csel__trigger {
+	border-color: var(--lumen-border-hover);
+	box-shadow: 0 0 0 1px rgba(232, 121, 249, 0.35);
+	color: var(--lumen-text);
+	background: rgba(0, 0, 0, 0.42);
+}
+
+.lumen-wp-csel__trigger:focus {
+	outline: none;
+	border-color: var(--lumen-border-hover);
+	box-shadow: 0 0 0 1px rgba(232, 121, 249, 0.35);
+}
+
+.lumen-wp-csel__value {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.lumen-wp-csel__chevron {
+	flex: 0 0 auto;
+	width: 0.65rem;
+	height: 0.65rem;
+	border-right: 2px solid var(--lumen-text-secondary);
+	border-bottom: 2px solid var(--lumen-text-secondary);
+	transform: rotate(45deg) translateY(-2px);
+	opacity: 0.85;
+	transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.lumen-wp-csel.is-open .lumen-wp-csel__chevron {
+	transform: rotate(225deg) translateY(-1px);
+	border-color: var(--lumen-primary);
+}
+
+.lumen-wp-csel__menu {
+	position: absolute;
+	z-index: 100080;
+	top: calc(100% + 0.35rem);
+	left: 0;
+	right: 0;
+	margin: 0;
+	padding: 0.35rem;
+	list-style: none;
+	max-height: 16.5rem;
+	overflow: auto;
+	border: 1px solid var(--lumen-border);
+	border-radius: var(--lumen-radius-md);
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 40%),
+		#1c1917;
+	box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+	scrollbar-color: rgba(232, 121, 249, 0.35) transparent;
+}
+
+.lumen-wp-csel__menu[hidden] {
+	display: none !important;
+}
+
+.lumen-wp-csel__option {
+	display: block;
+	width: 100%;
+	padding: 0.55rem 0.7rem;
+	border: 0;
+	border-radius: 0.45rem;
+	background: transparent;
+	color: var(--lumen-text-secondary);
+	font-family: var(--lumen-font);
+	font-size: 0.92rem;
+	font-weight: 500;
+	text-align: left;
+	cursor: pointer;
+	line-height: 1.35;
+}
+
+.lumen-wp-csel__option:hover,
+.lumen-wp-csel__option:focus {
+	background: rgba(232, 121, 249, 0.12);
+	color: var(--lumen-text);
+	outline: none;
+}
+
+.lumen-wp-csel__option.is-selected {
+	background: rgba(232, 121, 249, 0.18);
+	color: var(--lumen-primary-hover);
+	font-weight: 600;
+}
+
+.lumen-wp-csel__option.is-selected:hover,
+.lumen-wp-csel__option.is-selected:focus {
+	background: rgba(232, 121, 249, 0.24);
+	color: var(--lumen-primary-hover);
 }
 
 .lumen-wp-wrap .form-table th,
@@ -709,8 +856,8 @@ body.lumen-wp-admin #wpfooter {
 	gap: 0.45rem;
 }
 
-.lumen-wp-quality input[type='number'] {
-	width: 5.5rem;
+.lumen-wp-quality .lumen-wp-nstep {
+	width: 7.25rem;
 	max-width: 100%;
 }
 
@@ -753,6 +900,113 @@ body.lumen-wp-admin #wpfooter {
 	border-color: var(--lumen-border-hover);
 	box-shadow: 0 0 0 1px rgba(232, 121, 249, 0.35);
 	outline: none;
+}
+
+/* Number steppers — flèches custom (masque le spinner système) */
+.lumen-wp-wrap input[type='number'] {
+	-moz-appearance: textfield;
+	appearance: textfield;
+}
+
+.lumen-wp-wrap input[type='number']::-webkit-outer-spin-button,
+.lumen-wp-wrap input[type='number']::-webkit-inner-spin-button {
+	-webkit-appearance: none;
+	margin: 0;
+}
+
+.lumen-wp-nstep {
+	position: relative;
+	display: inline-flex;
+	align-items: stretch;
+	min-width: 7.25rem;
+	max-width: 100%;
+	min-height: 2.5rem;
+	border: 1px solid var(--lumen-border);
+	border-radius: var(--lumen-radius-md);
+	background: rgba(0, 0, 0, 0.35);
+	box-sizing: border-box;
+}
+
+.lumen-wp-nstep:focus-within {
+	border-color: var(--lumen-border-hover);
+	box-shadow: 0 0 0 1px rgba(232, 121, 249, 0.35);
+}
+
+.lumen-wp-nstep__input.lumen-wp-nstep__input {
+	flex: 1 1 auto;
+	min-width: 0;
+	width: auto !important;
+	max-width: none;
+	margin: 0 !important;
+	border: 0 !important;
+	border-radius: 0 !important;
+	background: transparent !important;
+	box-shadow: none !important;
+	color: var(--lumen-text) !important;
+	padding: 0.4rem 0.55rem !important;
+	line-height: 1.3;
+	font-family: var(--lumen-font);
+	font-weight: 500;
+	height: auto !important;
+}
+
+.lumen-wp-nstep__input:focus {
+	outline: none;
+	box-shadow: none !important;
+}
+
+.lumen-wp-nstep__btns {
+	display: flex;
+	flex-direction: column;
+	flex: 0 0 2rem;
+	width: 2rem;
+	min-width: 2rem;
+	border-left: 1px solid var(--lumen-border);
+	background: rgba(255, 255, 255, 0.04);
+	z-index: 1;
+}
+
+.lumen-wp-wrap .lumen-wp-nstep__btn {
+	display: flex !important;
+	align-items: center;
+	justify-content: center;
+	flex: 1 1 50%;
+	width: 100%;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	color: var(--lumen-text);
+	cursor: pointer;
+	min-height: 1.2rem;
+	line-height: 1;
+	box-shadow: none;
+	text-shadow: none;
+	font-size: 0.65rem;
+	font-weight: 700;
+}
+
+.lumen-wp-nstep__btn + .lumen-wp-nstep__btn {
+	border-top: 1px solid var(--lumen-border);
+}
+
+.lumen-wp-wrap .lumen-wp-nstep__btn:hover,
+.lumen-wp-wrap .lumen-wp-nstep__btn:focus {
+	background: rgba(232, 121, 249, 0.18);
+	color: var(--lumen-primary-hover);
+	outline: none;
+	border-color: transparent;
+	box-shadow: none;
+}
+
+.lumen-wp-wrap .lumen-wp-nstep__btn:active {
+	background: rgba(232, 121, 249, 0.28);
+}
+
+.lumen-wp-nstep.is-disabled {
+	opacity: 0.45;
+	pointer-events: none;
 }
 
 /* Choices / toggles (checkboxes & radios) */
@@ -1244,21 +1498,7 @@ body.lumen-wp-admin #wpfooter {
 	border-radius: var(--lumen-radius-md);
 }
 
-/* Menu admin : logo bien visible sur fond sombre */
-#adminmenu #toplevel_page_lumen-wp .wp-menu-image img {
-	padding: 5px 0 0 !important;
-	opacity: 1 !important;
-	width: 22px !important;
-	height: 22px !important;
-	filter: drop-shadow(0 0 6px rgba(240, 171, 252, 0.65));
-}
-
-#adminmenu #toplevel_page_lumen-wp:hover .wp-menu-image img,
-#adminmenu #toplevel_page_lumen-wp.wp-has-current-submenu .wp-menu-image img,
-#adminmenu #toplevel_page_lumen-wp.current .wp-menu-image img {
-	opacity: 1 !important;
-	filter: drop-shadow(0 0 10px rgba(240, 171, 252, 0.9));
-}
+/* Menu admin Lumen : voir aussi Hooks::print_menu_brand_css (global) */
 
 /* —— Kit d’icônes —— */
 

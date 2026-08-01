@@ -14,6 +14,7 @@ final class Settings
 		add_action('admin_menu', [$this, 'add_menu']);
 		add_action('admin_init', [$this, 'register_settings']);
 		add_action('wp_ajax_lumen_wp_ai_usage_reset', [$this, 'ajax_reset_usage']);
+		add_action('wp_ajax_lumen_wp_ai_models_refresh', [$this, 'ajax_refresh_models']);
 	}
 
 	public function add_menu(): void
@@ -85,10 +86,14 @@ final class Settings
 			'openai_api_key'     => sanitize_text_field((string) ($input['openai_api_key'] ?? '')),
 			'anthropic_api_key'  => sanitize_text_field((string) ($input['anthropic_api_key'] ?? '')),
 			'gemini_api_key'     => sanitize_text_field((string) ($input['gemini_api_key'] ?? '')),
-			'ai_model'           => (static function () use ($input): string {
+			'ai_model'           => (static function () use ($input, $provider): string {
 				$model = sanitize_text_field((string) ($input['ai_model'] ?? ''));
+				if ($model === '') {
+					return '';
+				}
+				$allowed = array_keys(Vision_Ai::models_for_select($provider));
 
-				return in_array($model, Vision_Ai::allowed_model_ids(), true) ? $model : '';
+				return in_array($model, $allowed, true) ? $model : '';
 			})(),
 			'ai_budget_month'    => max(0, (int) ($input['ai_budget_month'] ?? 0)),
 			'site_url'           => esc_url_raw((string) ($input['site_url'] ?? '')),
@@ -109,6 +114,38 @@ final class Settings
 		check_ajax_referer('lumen_wp_admin', 'nonce');
 		Vision_Ai::reset_usage();
 		wp_send_json_success(['usage' => Vision_Ai::usage()]);
+	}
+
+	public function ajax_refresh_models(): void
+	{
+		if (! current_user_can('manage_options')) {
+			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
+		}
+		check_ajax_referer('lumen_wp_admin', 'nonce');
+
+		$provider = sanitize_key((string) ($_POST['provider'] ?? '')); // phpcs:ignore WordPress.Security.NonceVerification
+		$force    = ! empty($_POST['force']); // phpcs:ignore WordPress.Security.NonceVerification
+		$api_key  = sanitize_text_field((string) ($_POST['api_key'] ?? '')); // phpcs:ignore WordPress.Security.NonceVerification
+
+		if (! in_array($provider, ['mistral', 'openai', 'anthropic', 'gemini'], true)) {
+			wp_send_json_error(['message' => __('Fournisseur invalide.', 'lumen-wp')], 400);
+		}
+
+		$result = Vision_Ai::refresh_remote_models($provider, $api_key, $force);
+		$select = Vision_Ai::models_for_select($provider);
+		$meta   = Vision_Ai::models_cache_meta($provider);
+
+		wp_send_json_success(
+			[
+				'provider'   => $provider,
+				'models'     => $select,
+				'remote'     => $result['models'],
+				'fetched_at' => $result['fetched_at'] !== '' ? $result['fetched_at'] : ($meta['fetched_at'] ?? ''),
+				'from_cache' => ! empty($result['from_cache']),
+				'message'    => $result['message'],
+				'ok'         => ! empty($result['ok']),
+			]
+		);
 	}
 
 	private function clamp_int($value, int $min, int $max): int
@@ -291,7 +328,7 @@ final class Settings
 						<th scope="row"><?php esc_html_e('Fournisseur IA Vision', 'lumen-wp'); ?></th>
 						<td>
 							<?php $provider = (string) ($settings['ai_provider'] ?? 'none'); ?>
-							<select name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[ai_provider]" id="lumen-wp-ai-provider">
+							<select name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[ai_provider]" id="lumen-wp-ai-provider" class="lumen-wp-select">
 								<option value="none" <?php selected($provider, 'none'); ?>><?php esc_html_e('Aucun (SEO local uniquement)', 'lumen-wp'); ?></option>
 								<option value="mistral" <?php selected($provider, 'mistral'); ?>>Mistral</option>
 								<option value="openai" <?php selected($provider, 'openai'); ?>>OpenAI</option>
@@ -376,9 +413,13 @@ final class Settings
 							<?php
 							$current_model = (string) ($settings['ai_model'] ?? '');
 							$catalog      = Vision_Ai::models_catalog();
-							$models_for   = ($provider !== 'none' && isset($catalog[$provider]))
-								? $catalog[$provider]
+							$models_for   = $provider !== 'none'
+								? Vision_Ai::models_for_select($provider)
 								: ['' => __('Choisir d’abord un fournisseur', 'lumen-wp')];
+							$cache_meta   = $provider !== 'none' ? Vision_Ai::models_cache_meta($provider) : null;
+							if ($current_model !== '' && ! isset($models_for[$current_model])) {
+								$current_model = '';
+							}
 							?>
 							<select
 								name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[ai_model]"
@@ -392,13 +433,26 @@ final class Settings
 										<?php echo esc_html($label); ?>
 									</option>
 								<?php endforeach; ?>
-								<?php if ($current_model !== '' && ! isset($models_for[$current_model])) : ?>
-									<option value="<?php echo esc_attr($current_model); ?>" selected>
-										<?php echo esc_html($current_model); ?>
-									</option>
-								<?php endif; ?>
 							</select>
-							<p class="description"><?php esc_html_e('Liste adaptée au fournisseur sélectionné. « Défaut » utilise le modèle recommandé par Lumen.', 'lumen-wp'); ?></p>
+							<p class="lumen-wp-actions-row" style="margin-top:0.65rem">
+								<button type="button" class="button" id="lumen-wp-ai-models-refresh">
+									<?php esc_html_e('Actualiser les modèles', 'lumen-wp'); ?>
+								</button>
+							</p>
+							<p class="description" id="lumen-wp-ai-models-meta">
+								<?php
+								esc_html_e('Catalogue Lumen + modèles Vision récupérés chez le fournisseur (pas de saisie libre).', 'lumen-wp');
+								if (is_array($cache_meta) && ! empty($cache_meta['fetched_at'])) {
+									$ts = strtotime((string) $cache_meta['fetched_at']);
+									echo ' ';
+									printf(
+										/* translators: %s: local datetime */
+										esc_html__('Dernière synchro API : %s.', 'lumen-wp'),
+										esc_html($ts ? wp_date('d/m/Y H:i', $ts) : (string) $cache_meta['fetched_at'])
+									);
+								}
+								?>
+							</p>
 						</td>
 					</tr>
 					<tr id="lumen-wp-ai-budget-row" <?php echo $provider === 'none' ? 'hidden' : ''; ?>>

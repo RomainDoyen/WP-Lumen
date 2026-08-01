@@ -5,6 +5,186 @@
     return $.post(lumenWp.ajaxUrl, Object.assign({ action: action, nonce: lumenWp.nonce }, data || {}));
   }
 
+  // —— Custom select (options au thème Lumen) ——
+  function closeAllCustomSelects(except) {
+    $('.lumen-wp-csel.is-open').each(function () {
+      if (except && this === except) return;
+      var $wrap = $(this);
+      $wrap.removeClass('is-open');
+      $wrap.find('.lumen-wp-csel__menu').prop('hidden', true);
+      $wrap.find('.lumen-wp-csel__trigger').attr('aria-expanded', 'false');
+    });
+  }
+
+  function syncCustomSelect($select) {
+    var $wrap = $select.closest('.lumen-wp-csel');
+    if (!$wrap.length) return;
+
+    var disabled = !!$select.prop('disabled');
+    $wrap.toggleClass('is-disabled', disabled);
+    $wrap.find('.lumen-wp-csel__trigger').prop('disabled', disabled);
+
+    var $menu = $wrap.find('.lumen-wp-csel__menu').empty();
+    var current = String($select.val() == null ? '' : $select.val());
+    var label = '';
+
+    $select.find('option').each(function () {
+      var value = String(this.value);
+      var text = $(this).text();
+      var selected = value === current || (!!$select.find('option:selected').length === false && this.selected);
+      if (this.selected) {
+        current = value;
+        label = text;
+      }
+      var $btn = $('<button type="button" class="lumen-wp-csel__option" role="option"/>')
+        .attr('data-value', value)
+        .attr('aria-selected', this.selected ? 'true' : 'false')
+        .toggleClass('is-selected', !!this.selected)
+        .text(text);
+      $menu.append($('<li role="none"/>').append($btn));
+    });
+
+    if (!label) {
+      var $sel = $select.find('option:selected').first();
+      label = $sel.length ? $sel.text() : '';
+    }
+    $wrap.find('.lumen-wp-csel__value').text(label || '—');
+  }
+
+  function enhanceCustomSelect(selectEl) {
+    var $select = $(selectEl);
+    if (!$select.length || $select.data('lumenCsel')) return;
+
+    $select.addClass('lumen-wp-select lumen-wp-csel__native');
+    var $wrap = $('<div class="lumen-wp-csel"/>');
+    $select.before($wrap);
+    $wrap.append($select);
+    $wrap.append(
+      $('<button type="button" class="lumen-wp-csel__trigger" aria-haspopup="listbox" aria-expanded="false"/>')
+        .append($('<span class="lumen-wp-csel__value"/>'))
+        .append($('<span class="lumen-wp-csel__chevron" aria-hidden="true"/>'))
+    );
+    $wrap.append($('<ul class="lumen-wp-csel__menu" role="listbox" hidden/>'));
+    $select.data('lumenCsel', true);
+    syncCustomSelect($select);
+  }
+
+  function enhanceAllCustomSelects(root) {
+    $(root || document)
+      .find('select.lumen-wp-select')
+      .each(function () {
+        enhanceCustomSelect(this);
+      });
+  }
+
+  $(document).on('click', '.lumen-wp-csel__trigger', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var $wrap = $(this).closest('.lumen-wp-csel');
+    if ($wrap.hasClass('is-disabled')) return;
+    var open = !$wrap.hasClass('is-open');
+    closeAllCustomSelects(open ? $wrap[0] : null);
+    $wrap.toggleClass('is-open', open);
+    $wrap.find('.lumen-wp-csel__menu').prop('hidden', !open);
+    $(this).attr('aria-expanded', open ? 'true' : 'false');
+  });
+
+  $(document).on('click', '.lumen-wp-csel__option', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var $btn = $(this);
+    var $wrap = $btn.closest('.lumen-wp-csel');
+    var $select = $wrap.find('select');
+    var value = String($btn.data('value'));
+    $select.val(value).trigger('change');
+    syncCustomSelect($select);
+    closeAllCustomSelects();
+  });
+
+  $(document).on('click', function () {
+    closeAllCustomSelects();
+  });
+
+  $(document).on('keydown', function (e) {
+    if (e.key === 'Escape') closeAllCustomSelects();
+  });
+
+  // —— Number steppers (flèches au thème Lumen) ——
+  function stepNumberInput($input, direction) {
+    var el = $input.get(0);
+    if (!el || $input.prop('disabled') || $input.prop('readonly')) return;
+
+    var step = parseFloat($input.attr('step') || '1');
+    if (!isFinite(step) || step <= 0) step = 1;
+    var minAttr = $input.attr('min');
+    var maxAttr = $input.attr('max');
+    var min = minAttr !== undefined && minAttr !== '' ? parseFloat(minAttr) : null;
+    var max = maxAttr !== undefined && maxAttr !== '' ? parseFloat(maxAttr) : null;
+    var raw = String($input.val() || '').trim();
+    var value = raw === '' ? 0 : parseFloat(raw);
+    if (!isFinite(value)) value = 0;
+
+    value = direction > 0 ? value + step : value - step;
+    // Évite les flottants bizarres (ex. 0.1 + 0.2).
+    var decimals = 0;
+    var stepStr = String(step);
+    if (stepStr.indexOf('.') !== -1) {
+      decimals = stepStr.split('.')[1].length;
+    }
+    value = parseFloat(value.toFixed(decimals));
+
+    if (min !== null && isFinite(min) && value < min) value = min;
+    if (max !== null && isFinite(max) && value > max) value = max;
+
+    $input.val(String(value)).trigger('change').trigger('input');
+  }
+
+  function enhanceNumberStepper(inputEl) {
+    var $input = $(inputEl);
+    if (!$input.length || $input.data('lumenNstep')) return;
+
+    $input.addClass('lumen-wp-nstep__input');
+    var $wrap = $('<div class="lumen-wp-nstep"/>');
+    $input.before($wrap);
+    $wrap.append($input);
+    $wrap.append(
+      $('<div class="lumen-wp-nstep__btns"/>')
+        .append(
+          $('<button type="button" class="lumen-wp-nstep__btn lumen-wp-nstep__btn--up" tabindex="-1"/>')
+            .attr('aria-label', 'Augmenter')
+            .html('&#9650;')
+        )
+        .append(
+          $('<button type="button" class="lumen-wp-nstep__btn lumen-wp-nstep__btn--down" tabindex="-1"/>')
+            .attr('aria-label', 'Diminuer')
+            .html('&#9660;')
+        )
+    );
+    $input.data('lumenNstep', true);
+    $wrap.toggleClass('is-disabled', !!$input.prop('disabled'));
+  }
+
+  function enhanceAllNumberSteppers(root) {
+    var $scope = root ? $(root) : $(document);
+    // Si on passe déjà .lumen-wp-wrap, ne pas re-chercher .lumen-wp-wrap à l’intérieur.
+    var $inputs = $scope.is('.lumen-wp-wrap')
+      ? $scope.find('input[type="number"]')
+      : $scope.find('.lumen-wp-wrap input[type="number"]');
+    $inputs.each(function () {
+      enhanceNumberStepper(this);
+    });
+  }
+
+  $(document).on('click', '.lumen-wp-nstep__btn--up', function (e) {
+    e.preventDefault();
+    stepNumberInput($(this).closest('.lumen-wp-nstep').find('input[type="number"]'), 1);
+  });
+
+  $(document).on('click', '.lumen-wp-nstep__btn--down', function (e) {
+    e.preventDefault();
+    stepNumberInput($(this).closest('.lumen-wp-nstep').find('input[type="number"]'), -1);
+  });
+
   // —— Modale feedback globale ——
   var modalEl = null;
   var lastFocus = null;
@@ -559,7 +739,36 @@
     });
   });
 
-  function refreshAiProviderUi() {
+  function getVisibleApiKey(provider) {
+    var $input = $('.lumen-wp-api-key[data-provider="' + provider + '"] .lumen-wp-api-key__input');
+    return $input.length ? String($input.val() || '').trim() : '';
+  }
+
+  function fillAiModelSelect(models, keepValue) {
+    var $model = $('#lumen-wp-ai-model');
+    if (!$model.length) return;
+    var current = typeof keepValue === 'string' ? keepValue : $model.val() || '';
+    var list = models || { '': 'Choisir d’abord un fournisseur' };
+    $model.empty();
+    Object.keys(list).forEach(function (value) {
+      var opt = $('<option/>').attr('value', value).text(list[value]);
+      if (value === current) opt.prop('selected', true);
+      $model.append(opt);
+    });
+    if (current && !Object.prototype.hasOwnProperty.call(list, current)) {
+      $model.val('');
+    }
+    enhanceCustomSelect($model[0]);
+    syncCustomSelect($model);
+  }
+
+  function setAiModelsMeta(text) {
+    var $meta = $('#lumen-wp-ai-models-meta');
+    if ($meta.length) $meta.text(text);
+  }
+
+  function refreshAiProviderUi(opts) {
+    opts = opts || {};
     var $provider = $('#lumen-wp-ai-provider');
     var $model = $('#lumen-wp-ai-model');
     if (!$provider.length) return;
@@ -590,23 +799,108 @@
       catalog = {};
     }
 
-    var current = $model.val() || '';
     var models = catalog[provider] || { '': 'Choisir d’abord un fournisseur' };
-    $model.empty();
-    Object.keys(models).forEach(function (value) {
-      var opt = $('<option/>').attr('value', value).text(models[value]);
-      if (value === current) opt.prop('selected', true);
-      $model.append(opt);
-    });
-    if (current && !Object.prototype.hasOwnProperty.call(models, current)) {
-      $model.append($('<option/>').attr('value', current).text(current).prop('selected', true));
-    }
+    fillAiModelSelect(models);
     $model.prop('disabled', provider === 'none');
+    syncCustomSelect($model);
+    syncCustomSelect($provider);
+
+    if (hideAiFields || opts.skipFetch) return;
+
+    var apiKey = getVisibleApiKey(provider);
+    if (!apiKey) {
+      setAiModelsMeta(
+        'Catalogue Lumen uniquement — renseignez la clé API puis actualisez pour charger les modèles Vision du fournisseur.'
+      );
+      return;
+    }
+
+    ajax('lumen_wp_ai_models_refresh', {
+      provider: provider,
+      api_key: apiKey,
+      force: opts.force ? 1 : 0
+    }).done(function (res) {
+      if (!res || !res.success || !res.data) return;
+      fillAiModelSelect(res.data.models || models);
+      var msg = res.data.message || '';
+      if (res.data.fetched_at) {
+        var d = new Date(res.data.fetched_at);
+        if (!isNaN(d.getTime())) {
+          msg +=
+            (msg ? ' — ' : '') +
+            'Dernière synchro API : ' +
+            d.toLocaleString();
+        }
+      }
+      if (msg) setAiModelsMeta(msg);
+      if (!res.data.ok && !opts.silentFail) {
+        // Catalogue local déjà affiché ; on signale sans bloquer.
+      }
+    });
   }
 
-  $(document).on('change', '#lumen-wp-ai-provider', refreshAiProviderUi);
+  $(document).on('change', '#lumen-wp-ai-provider', function () {
+    refreshAiProviderUi({ skipFetch: false, force: false });
+  });
+
+  $(document).on('click', '#lumen-wp-ai-models-refresh', function (e) {
+    e.preventDefault();
+    var provider = $('#lumen-wp-ai-provider').val() || 'none';
+    if (provider === 'none') return;
+
+    var $btn = $(this).prop('disabled', true);
+    var label = $btn.text();
+    var apiKey = getVisibleApiKey(provider);
+    $btn.text(lumenWp.i18n.processing || 'Traitement…');
+
+    if (!apiKey) {
+      window.lumenWpModal.error('Renseignez d’abord la clé API du fournisseur.');
+      $btn.prop('disabled', false).text(label);
+      return;
+    }
+
+    ajax('lumen_wp_ai_models_refresh', {
+      provider: provider,
+      api_key: apiKey,
+      force: 1
+    })
+      .done(function (res) {
+        if (res && res.success && res.data) {
+          fillAiModelSelect(res.data.models || {});
+          var msg = res.data.message || '';
+          if (res.data.fetched_at) {
+            var d = new Date(res.data.fetched_at);
+            if (!isNaN(d.getTime())) {
+              msg += (msg ? ' — ' : '') + 'Dernière synchro API : ' + d.toLocaleString();
+            }
+          }
+          if (msg) setAiModelsMeta(msg);
+          if (res.data.ok) {
+            window.lumenWpModal.success(msg || 'Modèles actualisés.');
+          } else {
+            window.lumenWpModal.error(msg || lumenWp.i18n.error);
+          }
+        } else {
+          window.lumenWpModal.error(
+            (res && res.data && res.data.message) || lumenWp.i18n.error
+          );
+        }
+      })
+      .fail(function (xhr) {
+        window.lumenWpModal.error(
+          (xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) ||
+            lumenWp.i18n.error
+        );
+      })
+      .always(function () {
+        $btn.prop('disabled', false).text(label);
+      });
+  });
+
   $(function () {
-    refreshAiProviderUi();
+    enhanceAllCustomSelects('.lumen-wp-wrap');
+    enhanceAllNumberSteppers('.lumen-wp-wrap');
+    refreshAiProviderUi({ skipFetch: false, force: false });
   });
 
   $(document).on('click', '.lumen-wp-api-key__toggle', function (e) {

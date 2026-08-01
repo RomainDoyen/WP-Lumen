@@ -38,6 +38,8 @@ final class Hooks
 		// Le plus tôt possible : avant le paint du contenu admin.
 		add_action('admin_head', [$this, 'print_critical_admin_css'], 0);
 		add_action('admin_print_styles', [$this, 'print_critical_admin_css'], 0);
+		// Menu sidebar Lumen — toutes les pages admin.
+		add_action('admin_head', [$this, 'print_menu_brand_css'], 20);
 		add_action('admin_footer', [$this, 'print_feedback_modal']);
 		add_filter('admin_body_class', [$this, 'admin_body_class']);
 		add_action('wp_head', [$this, 'print_site_favicons'], 2);
@@ -128,6 +130,83 @@ final class Hooks
 		}
 
 		return $classes;
+	}
+
+	/**
+	 * Teinte magenta Lumen pour l’entrée de menu WP (actif / hover / sous-menu).
+	 */
+	public function print_menu_brand_css(): void
+	{
+		?>
+		<style id="lumen-wp-menu-brand">
+			#adminmenu li#toplevel_page_lumen-wp > a.menu-top {
+				border-radius: 0;
+			}
+			#adminmenu li#toplevel_page_lumen-wp:hover > a.menu-top,
+			#adminmenu li#toplevel_page_lumen-wp.opensub > a.menu-top,
+			#adminmenu li#toplevel_page_lumen-wp > a.menu-top:focus {
+				background: linear-gradient(135deg, rgba(162, 28, 175, 0.92), rgba(232, 121, 249, 0.85)) !important;
+				color: #fafaf9 !important;
+				box-shadow: none !important;
+				border: 0 !important;
+			}
+			#adminmenu li#toplevel_page_lumen-wp.wp-has-current-submenu > a.wp-has-current-submenu,
+			#adminmenu li#toplevel_page_lumen-wp.current > a.menu-top {
+				background: linear-gradient(135deg, #a21caf 0%, #c026d3 45%, #e879f9 100%) !important;
+				color: #fafaf9 !important;
+				font-weight: 600;
+				box-shadow: none !important;
+				border: 0 !important;
+			}
+			#adminmenu li#toplevel_page_lumen-wp .wp-menu-name,
+			#adminmenu li#toplevel_page_lumen-wp:hover .wp-menu-name,
+			#adminmenu li#toplevel_page_lumen-wp.wp-has-current-submenu .wp-menu-name,
+			#adminmenu li#toplevel_page_lumen-wp.current .wp-menu-name {
+				color: #fafaf9 !important;
+			}
+			#adminmenu li#toplevel_page_lumen-wp .wp-submenu {
+				background: #1c1917 !important;
+				border: 0 !important;
+				box-shadow: none !important;
+			}
+			#adminmenu li#toplevel_page_lumen-wp .wp-submenu a {
+				color: #a8a29e !important;
+			}
+			#adminmenu li#toplevel_page_lumen-wp .wp-submenu a:hover,
+			#adminmenu li#toplevel_page_lumen-wp .wp-submenu a:focus {
+				background: rgba(232, 121, 249, 0.12) !important;
+				color: #f0abfc !important;
+			}
+			#adminmenu li#toplevel_page_lumen-wp .wp-submenu li.current a,
+			#adminmenu li#toplevel_page_lumen-wp .wp-submenu li.current a:hover {
+				background: rgba(232, 121, 249, 0.18) !important;
+				color: #fafaf9 !important;
+				font-weight: 600;
+			}
+			#adminmenu li#toplevel_page_lumen-wp .wp-submenu .wp-submenu-head {
+				color: #f0abfc !important;
+				background: #1c1917 !important;
+			}
+			/* Flèche vers le contenu (pages Lumen = fond sombre) */
+			body.lumen-wp-admin #adminmenu li#toplevel_page_lumen-wp.wp-has-current-submenu::after,
+			body.lumen-wp-admin #adminmenu li#toplevel_page_lumen-wp.current::after {
+				border-right-color: #0c0a09 !important;
+			}
+			#adminmenu #toplevel_page_lumen-wp .wp-menu-image img {
+				padding: 5px 0 0 !important;
+				opacity: 1 !important;
+				width: 22px !important;
+				height: 22px !important;
+				filter: none !important;
+			}
+			#adminmenu #toplevel_page_lumen-wp:hover .wp-menu-image img,
+			#adminmenu #toplevel_page_lumen-wp.wp-has-current-submenu .wp-menu-image img,
+			#adminmenu #toplevel_page_lumen-wp.current .wp-menu-image img {
+				opacity: 1 !important;
+				filter: none !important;
+			}
+		</style>
+		<?php
 	}
 
 	private function is_lumen_admin_page(): bool

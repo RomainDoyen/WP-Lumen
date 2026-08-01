@@ -8,6 +8,7 @@ final class Vision_Ai
 {
 	public const USAGE_OPTION = 'lumen_wp_ai_usage';
 	public const THUMB_MAX = 1024;
+	public const MODELS_CACHE_TTL = 43200; // 12 h
 
 	public const PROVIDERS = ['none', 'mistral', 'openai', 'anthropic', 'gemini'];
 
@@ -58,18 +59,373 @@ final class Vision_Ai
 	}
 
 	/**
+	 * Catalogue code + modèles distants en cache (si disponibles).
+	 *
+	 * @return array<string, string> id => label
+	 */
+	public static function models_for_select(string $provider): array
+	{
+		$catalog = self::models_catalog();
+		$base    = $catalog[$provider] ?? ['' => __('Choisir d’abord un fournisseur', 'lumen-wp')];
+		if ($provider === 'none' || ! isset($catalog[$provider])) {
+			return $base;
+		}
+
+		$merged = $base;
+		$remote = self::cached_remote_models($provider);
+		foreach ($remote as $id => $label) {
+			$id = (string) $id;
+			if ($id === '' || isset($merged[$id])) {
+				continue;
+			}
+			$merged[$id] = (string) $label;
+		}
+
+		return $merged;
+	}
+
+	/**
 	 * @return list<string>
 	 */
 	public static function allowed_model_ids(): array
 	{
 		$ids = [''];
-		foreach (self::models_catalog() as $models) {
-			foreach (array_keys($models) as $id) {
+		foreach (array_keys(self::models_catalog()) as $provider) {
+			foreach (array_keys(self::models_for_select($provider)) as $id) {
 				$ids[] = (string) $id;
 			}
 		}
 
 		return array_values(array_unique($ids));
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	public static function cached_remote_models(string $provider): array
+	{
+		$cache = get_transient(self::models_cache_key($provider));
+		if (! is_array($cache) || empty($cache['models']) || ! is_array($cache['models'])) {
+			return [];
+		}
+
+		$out = [];
+		foreach ($cache['models'] as $id => $label) {
+			$id = sanitize_text_field((string) $id);
+			if ($id === '') {
+				continue;
+			}
+			$out[$id] = sanitize_text_field((string) $label);
+		}
+
+		return $out;
+	}
+
+	/**
+	 * @return array{fetched_at: string, source: string}|null
+	 */
+	public static function models_cache_meta(string $provider): ?array
+	{
+		$cache = get_transient(self::models_cache_key($provider));
+		if (! is_array($cache) || empty($cache['fetched_at'])) {
+			return null;
+		}
+
+		return [
+			'fetched_at' => (string) $cache['fetched_at'],
+			'source'     => (string) ($cache['source'] ?? 'api'),
+		];
+	}
+
+	/**
+	 * Fetch / refresh remote vision models for a provider.
+	 *
+	 * @return array{ok: bool, models: array<string, string>, fetched_at: string, message: string, from_cache: bool}
+	 */
+	public static function refresh_remote_models(string $provider, string $api_key = '', bool $force = false): array
+	{
+		$provider = strtolower($provider);
+		if (! in_array($provider, ['mistral', 'openai', 'anthropic', 'gemini'], true)) {
+			return [
+				'ok'         => false,
+				'models'     => [],
+				'fetched_at' => '',
+				'message'    => __('Fournisseur invalide.', 'lumen-wp'),
+				'from_cache' => false,
+			];
+		}
+
+		if ($api_key === '') {
+			$api_key = self::api_key_for($provider);
+		}
+		if ($api_key === '') {
+			return [
+				'ok'         => false,
+				'models'     => self::cached_remote_models($provider),
+				'fetched_at' => (string) (self::models_cache_meta($provider)['fetched_at'] ?? ''),
+				'message'    => __('Clé API manquante pour actualiser les modèles.', 'lumen-wp'),
+				'from_cache' => true,
+			];
+		}
+
+		if (! $force) {
+			$cached = get_transient(self::models_cache_key($provider));
+			if (is_array($cached) && ! empty($cached['models']) && is_array($cached['models'])) {
+				return [
+					'ok'         => true,
+					'models'     => self::cached_remote_models($provider),
+					'fetched_at' => (string) ($cached['fetched_at'] ?? ''),
+					'message'    => __('Liste en cache.', 'lumen-wp'),
+					'from_cache' => true,
+				];
+			}
+		}
+
+		try {
+			$models = self::fetch_remote_models($provider, $api_key);
+		} catch (\Throwable $e) {
+			return [
+				'ok'         => false,
+				'models'     => self::cached_remote_models($provider),
+				'fetched_at' => (string) (self::models_cache_meta($provider)['fetched_at'] ?? ''),
+				'message'    => $e->getMessage(),
+				'from_cache' => true,
+			];
+		}
+
+		$fetched_at = gmdate('c');
+		set_transient(
+			self::models_cache_key($provider),
+			[
+				'fetched_at' => $fetched_at,
+				'source'     => 'api',
+				'models'     => $models,
+			],
+			self::MODELS_CACHE_TTL
+		);
+
+		return [
+			'ok'         => true,
+			'models'     => $models,
+			'fetched_at' => $fetched_at,
+			'message'    => __('Modèles actualisés depuis l’API.', 'lumen-wp'),
+			'from_cache' => false,
+		];
+	}
+
+	private static function models_cache_key(string $provider): string
+	{
+		return 'lumen_wp_ai_models_' . $provider;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private static function fetch_remote_models(string $provider, string $api_key): array
+	{
+		switch ($provider) {
+			case 'openai':
+				return self::fetch_openai_models($api_key);
+			case 'mistral':
+				return self::fetch_mistral_models($api_key);
+			case 'anthropic':
+				return self::fetch_anthropic_models($api_key);
+			case 'gemini':
+				return self::fetch_gemini_models($api_key);
+			default:
+				return [];
+		}
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private static function fetch_openai_models(string $api_key): array
+	{
+		$data = self::http_json_get(
+			'https://api.openai.com/v1/models',
+			[
+				'Authorization' => 'Bearer ' . $api_key,
+			]
+		);
+		$list = is_array($data['data'] ?? null) ? $data['data'] : [];
+		$out  = [];
+		foreach ($list as $row) {
+			if (! is_array($row)) {
+				continue;
+			}
+			$id = (string) ($row['id'] ?? '');
+			if (! self::is_openai_vision_model($id)) {
+				continue;
+			}
+			$out[$id] = $id;
+		}
+		ksort($out);
+
+		return $out;
+	}
+
+	private static function is_openai_vision_model(string $id): bool
+	{
+		$id = strtolower($id);
+		if ($id === '' || strpos($id, 'realtime') !== false || strpos($id, 'audio') !== false) {
+			return false;
+		}
+		if (preg_match('/(whisper|tts|embedding|dall-e|davinci|babbage|moderation|transcribe|search)/', $id)) {
+			return false;
+		}
+
+		return (bool) preg_match('/^(gpt-4o|gpt-4\.1|gpt-4\.5|chatgpt-4o|o[1-9])/', $id);
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private static function fetch_mistral_models(string $api_key): array
+	{
+		$data = self::http_json_get(
+			'https://api.mistral.ai/v1/models',
+			[
+				'Authorization' => 'Bearer ' . $api_key,
+			]
+		);
+		$list = is_array($data['data'] ?? null) ? $data['data'] : (is_array($data) && isset($data[0]) ? $data : []);
+		$out  = [];
+		foreach ($list as $row) {
+			if (! is_array($row)) {
+				continue;
+			}
+			$id = (string) ($row['id'] ?? '');
+			if ($id === '') {
+				continue;
+			}
+			$caps   = is_array($row['capabilities'] ?? null) ? $row['capabilities'] : [];
+			$vision = ! empty($caps['vision']);
+			$name   = strtolower($id . ' ' . (string) ($row['name'] ?? ''));
+			if (! $vision && ! preg_match('/(pixtral|ministral|vision)/', $name)) {
+				continue;
+			}
+			$label = trim((string) ($row['name'] ?? ''));
+			$out[$id] = $label !== '' ? $label : $id;
+		}
+		ksort($out);
+
+		return $out;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private static function fetch_anthropic_models(string $api_key): array
+	{
+		$data = self::http_json_get(
+			'https://api.anthropic.com/v1/models?limit=100',
+			[
+				'x-api-key'         => $api_key,
+				'anthropic-version' => '2023-06-01',
+			]
+		);
+		$list = is_array($data['data'] ?? null) ? $data['data'] : [];
+		$out  = [];
+		foreach ($list as $row) {
+			if (! is_array($row)) {
+				continue;
+			}
+			$id = (string) ($row['id'] ?? '');
+			if ($id === '' || stripos($id, 'claude') === false) {
+				continue;
+			}
+			// Les Claude chat récents gèrent la vision ; on exclut les variants non chat.
+			if (preg_match('/(embed|computer-use-only)/i', $id)) {
+				continue;
+			}
+			$label = trim((string) ($row['display_name'] ?? $row['name'] ?? ''));
+			$out[$id] = $label !== '' ? $label : $id;
+		}
+		ksort($out);
+
+		return $out;
+	}
+
+	/**
+	 * @return array<string, string>
+	 */
+	private static function fetch_gemini_models(string $api_key): array
+	{
+		$url  = 'https://generativelanguage.googleapis.com/v1beta/models?key=' . rawurlencode($api_key) . '&pageSize=100';
+		$data = self::http_json_get($url, []);
+		$list = is_array($data['models'] ?? null) ? $data['models'] : [];
+		$out  = [];
+		foreach ($list as $row) {
+			if (! is_array($row)) {
+				continue;
+			}
+			$name = (string) ($row['name'] ?? '');
+			$id   = preg_replace('#^models/#', '', $name) ?: '';
+			if ($id === '') {
+				continue;
+			}
+			$methods = is_array($row['supportedGenerationMethods'] ?? null)
+				? $row['supportedGenerationMethods']
+				: [];
+			if (! in_array('generateContent', $methods, true)) {
+				continue;
+			}
+			$blob = strtolower($id . ' ' . (string) ($row['displayName'] ?? '') . ' ' . (string) ($row['description'] ?? ''));
+			if (preg_match('/(embed|aqa|imagen|tts|robotics|learnlm)/', $blob)) {
+				continue;
+			}
+			// Vision / multimodal Gemini.
+			if (! preg_match('/(gemini|flash|pro)/', $blob)) {
+				continue;
+			}
+			$label = trim((string) ($row['displayName'] ?? ''));
+			$out[$id] = $label !== '' ? $label : $id;
+		}
+		ksort($out);
+
+		return $out;
+	}
+
+	/**
+	 * @param array<string, string> $headers
+	 * @return array<string, mixed>
+	 */
+	private static function http_json_get(string $url, array $headers): array
+	{
+		$args = [
+			'timeout' => 20,
+			'headers' => array_merge(
+				[
+					'Accept' => 'application/json',
+				],
+				$headers
+			),
+		];
+		$response = wp_remote_get($url, $args);
+		if (is_wp_error($response)) {
+			throw new \RuntimeException($response->get_error_message());
+		}
+		$code = (int) wp_remote_retrieve_response_code($response);
+		$body = (string) wp_remote_retrieve_body($response);
+		$data = json_decode($body, true);
+		if ($code === 401 || $code === 403) {
+			throw new \RuntimeException(__('Clé API refusée par le fournisseur.', 'lumen-wp'));
+		}
+		if ($code === 429) {
+			throw new \RuntimeException(__('Rate limit fournisseur — réessayez plus tard.', 'lumen-wp'));
+		}
+		if ($code < 200 || $code >= 300 || ! is_array($data)) {
+			throw new \RuntimeException(
+				sprintf(
+					/* translators: %d: HTTP status */
+					__('Impossible de lister les modèles (HTTP %d).', 'lumen-wp'),
+					$code
+				)
+			);
+		}
+
+		return $data;
 	}
 
 	/**
@@ -194,7 +550,8 @@ final class Vision_Ai
 	{
 		$settings = Plugin::instance()->settings();
 		$custom   = trim((string) ($settings['ai_model'] ?? ''));
-		if ($custom !== '') {
+		$allowed  = array_keys(self::models_for_select($provider));
+		if ($custom !== '' && in_array($custom, $allowed, true)) {
 			return $custom;
 		}
 
