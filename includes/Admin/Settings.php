@@ -370,7 +370,7 @@ final class Settings
 							<?php endforeach; ?>
 						</td>
 					</tr>
-					<tr>
+					<tr id="lumen-wp-ai-model-row" <?php echo $provider === 'none' ? 'hidden' : ''; ?>>
 						<th scope="row"><?php esc_html_e('Modèle IA', 'lumen-wp'); ?></th>
 						<td>
 							<?php
@@ -401,7 +401,7 @@ final class Settings
 							<p class="description"><?php esc_html_e('Liste adaptée au fournisseur sélectionné. « Défaut » utilise le modèle recommandé par Lumen.', 'lumen-wp'); ?></p>
 						</td>
 					</tr>
-					<tr>
+					<tr id="lumen-wp-ai-budget-row" <?php echo $provider === 'none' ? 'hidden' : ''; ?>>
 						<th scope="row"><?php esc_html_e('Budget IA / mois', 'lumen-wp'); ?></th>
 						<td>
 							<input type="number" min="0" step="1" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[ai_budget_month]" value="<?php echo esc_attr((string) (int) ($settings['ai_budget_month'] ?? 0)); ?>" />

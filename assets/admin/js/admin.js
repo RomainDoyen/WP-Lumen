@@ -565,8 +565,11 @@
     if (!$provider.length) return;
 
     var provider = $provider.val() || 'none';
+    var hideAiFields = provider === 'none';
 
-    $('#lumen-wp-api-key-row').prop('hidden', provider === 'none');
+    $('#lumen-wp-api-key-row').prop('hidden', hideAiFields);
+    $('#lumen-wp-ai-model-row').prop('hidden', hideAiFields);
+    $('#lumen-wp-ai-budget-row').prop('hidden', hideAiFields);
     $('.lumen-wp-api-key').each(function () {
       var match = $(this).data('provider') === provider;
       $(this).prop('hidden', !match);
