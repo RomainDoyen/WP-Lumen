@@ -1,11 +1,21 @@
 
+<p align="center">
+  <img src="assets/admin/icons/lumen-mark.svg" alt="Lumen" width="96" height="96" />
+</p>
 
-# Lumen
+<h1 align="center">Lumen</h1>
 
-**Plugin WordPress** — optimise les images (WebP / AVIF / JPEG), enrichit les médias  
-(images, SVG, PDF, vidéos) et génère un pack SEO (alts, JSON-LD, Gutenberg).
+<p align="center">
+  <strong>Plugin WordPress</strong> — optimise les images (WebP / AVIF / JPEG), enrichit les médias<br />
+  (images, SVG, PDF, vidéos) et génère un pack SEO prêt à coller (alts, JSON-LD, Gutenberg).
+</p>
 
-
+<p align="center">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.3.35-e879f9?style=flat-square" />
+  <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
+  <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
+  <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
+</p>
 
 ---
 
@@ -278,5 +288,8 @@ UNLICENSED — usage privé / projet Lumen.
 
 ---
 
-  
-Lumen — médias, SEO et optimisation pour WordPress
+<p align="center">
+  <img src="assets/admin/icons/lumen-mark.svg" alt="" width="28" height="28" />
+  <br />
+  <sub>Lumen — médias, SEO et optimisation pour WordPress</sub>
+</p>
