@@ -162,7 +162,7 @@ final class Original_Backup
 
 		return [
 			'ok'      => true,
-			'message' => __('Original restauré. Vous pouvez re-traiter l’image.', 'lumen-wp'),
+			'message' => __('Original restauré. Vous pouvez re-traiter le média.', 'lumen-wp'),
 		];
 	}
 

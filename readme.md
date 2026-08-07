@@ -1,37 +1,31 @@
-<p align="center">
-  <img src="assets/admin/icons/lumen-mark.svg" alt="Lumen" width="96" height="96" />
-</p>
 
-<h1 align="center">Lumen</h1>
 
-<p align="center">
-  <strong>Plugin WordPress</strong> — optimise la médiathèque (WebP / AVIF / JPEG)<br />
-  et génère un pack SEO prêt à coller (alts, JSON-LD, Gutenberg).
-</p>
+# Lumen
 
-<p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.3.14-e879f9?style=flat-square" />
-  <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
-  <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
-  <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
-</p>
+**Plugin WordPress** — optimise les images (WebP / AVIF / JPEG), enrichit les médias  
+(images, SVG, PDF, vidéos) et génère un pack SEO (alts, JSON-LD, Gutenberg).
+
+
 
 ---
 
 ## Fonctionnalités
 
-| Domaine | Détail |
-| --- | --- |
-| **Optimisation** | Conversion WebP / AVIF (si supporté) / JPEG, tailles natives WP |
-| **Original** | Remplacement prioritaire WebP → AVIF → JPEG, ou sidecars |
-| **SEO** | Alts SEO / WCAG / court, titre, légende, description |
-| **Pack** | JSON-LD `ImageObject` + snippet Gutenberg `<picture>` |
-| **Traitement** | File d’attente en arrière-plan (pause / reprise, continue sans onglet) |
-| **Restauration** | Sauvegarde de l’original avant remplacement + bouton fiche média |
-| **Outils** | Nettoyage des variantes, état du traitement, avancer manuellement |
-| **Icônes** | Kit PNG 16→512, ZIP, favicons injectés dans le `<head>` |
-| **IA** | Vision multi-fournisseur : Mistral, OpenAI, Anthropic, Gemini + compteur local |
-| **Admin** | Dashboard, navigation, modales succès/échec, UI responsive |
+
+| Domaine          | Détail                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| **Optimisation** | Conversion WebP / AVIF (si supporté) / JPEG, tailles natives WP                       |
+| **Original**     | Remplacement prioritaire WebP → AVIF → JPEG, ou sidecars                              |
+| **SEO**          | Alts SEO / WCAG / court, titre, légende, description (images, SVG, PDF, vidéos)       |
+| **Pack**         | JSON-LD `ImageObject` + snippet Gutenberg `<picture>` (images raster)                 |
+| **Traitement**   | File d’attente en arrière-plan (filtres Images / PDF / SVG / Vidéos, pause / reprise) |
+| **Restauration** | Sauvegarde de l’original avant remplacement + bouton fiche média                      |
+| **Outils**       | Nettoyage des variantes, état du traitement, avancer manuellement                     |
+| **Icônes**       | Kit PNG 16→512, ZIP, favicons injectés dans le `<head>`                               |
+| **IA**           | Vision multi-fournisseur : Mistral, OpenAI, Anthropic, Gemini + compteur local        |
+| **Apparence**    | Thème admin clair ou sombre                                                           |
+| **Admin**        | Dashboard, navigation, modales succès/échec, UI responsive                            |
+
 
 ### Tailles générées
 
@@ -63,7 +57,7 @@
 2. WordPress → **Extensions → Ajouter → Téléverser**
 3. Activer **Lumen**
 4. Configurer **Lumen → Réglages**
-5. (Optionnel) lancer **Lumen → Traitement** pour les images déjà présentes
+5. (Optionnel) lancer **Lumen → Traitement** pour les médias déjà présents
 
 ### Depuis les sources
 
@@ -88,10 +82,10 @@ Le ZIP / le dossier doit s’appeler `lumen-wp` et contenir `lumen.php` à la ra
 
 ## Utilisation rapide
 
-1. **Réglages** — formats, qualités (%), remplacement original, auto-upload, clé Mistral
-2. **Traitement** — traiter la médiathèque (reprise des déjà OK / IA en option)
+1. **Réglages** — formats, qualités (%), thème clair/sombre, auto-upload, clés IA
+2. **Traitement** — médiathèque (Images / PDF / SVG / Vidéos, reprise, IA en option)
 3. **Icônes** — déposer un logo → kit PNG + favicons site
-4. **Médias** — fiche image → pack SEO, copier Gutenberg / JSON-LD, re-traiter / restaurer
+4. **Médias** — fiche média → SEO, copier Gutenberg / JSON-LD, re-traiter / restaurer
 5. **Outils** — nettoyage des variantes, état du traitement, avancer manuellement
 
 ---
@@ -99,14 +93,17 @@ Le ZIP / le dossier doit s’appeler `lumen-wp` et contenir `lumen.php` à la ra
 ## Checklist manuelle
 
 - [ ] Upload d’un JPEG → variantes + meta SEO + statut `ok`
-- [ ] Traitement ~20 images → progression, erreurs isolées
+- [ ] SVG → SEO seul (pas d’optimisation)
+- [ ] PDF / vidéo → SEO (+ IA si configurée)
+- [ ] Traitement ~20 médias → progression, erreurs isolées (liens fiches)
 - [ ] AVIF coché sans support serveur → notice, WebP/JPEG OK
 - [ ] Mode « garder original » vs « remplacer »
 - [ ] Remplacer original → sauvegarde + restauration fiche média
 - [ ] Outils → nettoyage variantes (aperçu + lancement)
 - [ ] Traitement / Outils → « Avancer maintenant » si bloqué
 - [ ] Copier Gutenberg / JSON-LD depuis la fiche média
-- [ ] Clé Mistral invalide ou rate limit → règles locales conservées
+- [ ] Clé IA invalide ou rate limit → règles locales conservées
+- [ ] Thème clair / sombre → contraste OK (boutons, steppers, activité)
 - [ ] Kit d’icônes → ZIP + favicons dans le `<head>`
 
 ---
@@ -119,11 +116,14 @@ lumen-wp/
 ├── assets/admin/             # CSS / JS / icônes
 ├── includes/
 │   ├── Plugin.php
+│   ├── Media_Types.php
 │   ├── Optimizer.php
 │   ├── Original_Backup.php
+│   ├── Bulk_Queue.php
 │   ├── Cleanup.php
 │   ├── Seo.php
 │   ├── Pack.php
+│   ├── Vision_Ai.php
 │   ├── Icon_Kit.php
 │   ├── Hooks.php
 │   └── Admin/                # Dashboard, Bulk, Tools, Icons, Settings, …
@@ -133,6 +133,68 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.3.35
+
+- Thème clair : barre de progression + journal d’activité
+
+### 1.3.34
+
+- En-tête admin : « Lumen » + numéro de version
+
+### 1.3.33
+
+- Thème clair : contraste du bilan « OK » (Outils)
+
+### 1.3.32
+
+- Thème clair par défaut
+
+### 1.3.31
+
+- Thème clair : correction bordure des steppers qualité
+
+### 1.3.30
+
+- Thème clair : steppers qualité + pastilles formats (PNG/JPEG/SVG)
+
+### 1.3.29
+
+- Thème clair : cases à cocher lisibles + bouton désactivé contrasté
+
+### 1.3.28
+
+- Thème clair : contraste renforcé (boutons, pastilles, champs, pagination)
+
+### 1.3.27
+
+- Modale : « Ouvrir les réglages » uniquement si l’IA n’est pas configurée
+
+### 1.3.26
+
+- Thème admin clair / sombre (réglage Lumen → Apparence)
+
+### 1.3.25
+
+- SEO local : légende et description remplies depuis le nom de fichier (ex. SVG sans IA)
+
+### 1.3.24
+
+- Erreurs bulk : liste complète avec titre + lien vers la fiche média (Traitement, historique, Dashboard)
+
+### 1.3.23
+
+- Traitement : popup d’info si on coche l’IA Vision sans configuration
+
+### 1.3.22
+
+- Vocabulaire admin unifié autour des « médias » (plus seulement les images)
+
+### 1.3.21
+
+- SVG : SEO seul (pas d’optimisation)
+- PDF / vidéos : SEO + IA Vision (aperçu WP, Imagick PDF, ffmpeg vidéo)
+- Bulk : cases Images / PDF / SVG / Vidéos
 
 ### 1.3.14
 
@@ -216,8 +278,5 @@ UNLICENSED — usage privé / projet Lumen.
 
 ---
 
-<p align="center">
-  <img src="assets/admin/icons/lumen-mark.svg" alt="" width="28" height="28" />
-  <br />
-  <sub>Studio image local pour WordPress</sub>
-</p>
+  
+Lumen — médias, SEO et optimisation pour WordPress

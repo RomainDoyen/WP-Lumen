@@ -130,18 +130,18 @@ final class Tools
 			<section class="lumen-wp-panel">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Nettoyage', 'lumen-wp'); ?></h2>
 				<p class="description">
-					<?php esc_html_e('Supprime les fichiers générés par Lumen (variantes, sauvegardes). L’image principale WordPress n’est jamais effacée.', 'lumen-wp'); ?>
+					<?php esc_html_e('Supprime les fichiers générés par Lumen (variantes, sauvegardes). Le fichier principal WordPress n’est jamais effacé.', 'lumen-wp'); ?>
 				</p>
 
 				<div
 					class="lumen-wp-tools-preview"
 					id="lumen-wp-cleanup-preview"
-					data-label-images="<?php echo esc_attr__('Images', 'lumen-wp'); ?>"
+					data-label-images="<?php echo esc_attr__('Médias', 'lumen-wp'); ?>"
 					data-label-variants="<?php echo esc_attr__('Variantes', 'lumen-wp'); ?>"
 					data-label-backups="<?php echo esc_attr__('Sauvegardes', 'lumen-wp'); ?>"
 				>
 					<article class="lumen-wp-stat">
-						<span class="lumen-wp-stat__label"><?php esc_html_e('Images', 'lumen-wp'); ?></span>
+						<span class="lumen-wp-stat__label"><?php esc_html_e('Médias', 'lumen-wp'); ?></span>
 						<strong class="lumen-wp-stat__value" data-preview="attachments"><?php echo esc_html((string) (int) $preview['attachments']); ?></strong>
 					</article>
 					<article class="lumen-wp-stat">
@@ -170,7 +170,7 @@ final class Tools
 					<label class="lumen-wp-choice lumen-wp-choice--wide">
 						<input type="checkbox" id="lumen-wp-cleanup-status" value="1" />
 						<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
-						<span class="lumen-wp-choice__label"><?php esc_html_e('Remettre les images « à traiter »', 'lumen-wp'); ?></span>
+						<span class="lumen-wp-choice__label"><?php esc_html_e('Remettre les médias « à traiter »', 'lumen-wp'); ?></span>
 					</label>
 				</div>
 
@@ -188,7 +188,7 @@ final class Tools
 			<section class="lumen-wp-panel">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Restaurer un original', 'lumen-wp'); ?></h2>
 				<p class="description">
-					<?php esc_html_e('Quand Lumen remplace une image, une copie de l’original est gardée. Pour la récupérer : ouvrez la fiche média → « Restaurer l’original ».', 'lumen-wp'); ?>
+					<?php esc_html_e('Quand Lumen remplace un fichier image, une copie de l’original est gardée. Pour la récupérer : ouvrez la fiche média → « Restaurer l’original ».', 'lumen-wp'); ?>
 				</p>
 			</section>
 		</div>

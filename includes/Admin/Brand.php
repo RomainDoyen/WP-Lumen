@@ -103,10 +103,14 @@ final class Brand
 					<span class="lumen-wp-modal__icon-error">
 						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" width="28" height="28"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
 					</span>
+					<span class="lumen-wp-modal__icon-info">
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" width="28" height="28"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 3a9 9 0 100 18 9 9 0 000-18z"/></svg>
+					</span>
 				</div>
 				<h2 id="lumen-wp-modal-title" class="lumen-wp-modal__title"></h2>
 				<p id="lumen-wp-modal-message" class="lumen-wp-modal__message"></p>
 				<div class="lumen-wp-modal__actions">
+					<a id="lumen-wp-modal-action" class="button" hidden href="#"></a>
 					<button type="button" class="button button-primary" data-lumen-modal-close>
 						<?php esc_html_e('OK', 'lumen-wp'); ?>
 					</button>
@@ -117,12 +121,16 @@ final class Brand
 	}
 
 	/**
-	 * Branded page / panel header matching Electron desktop shell.
+	 * Branded page / panel header 
 	 */
 	public static function render_header(string $title, string $subtitle = '', string $eyebrow = ''): void
 	{
 		if ($eyebrow === '') {
-			$eyebrow = __('Studio image local', 'lumen-wp');
+			$eyebrow = sprintf(
+				/* translators: %s: plugin version number */
+				__('Lumen %s', 'lumen-wp'),
+				LUMEN_WP_VERSION
+			);
 		}
 		?>
 		<header class="lumen-wp-brand">

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LumenWp\Admin;
 
 use LumenWp\Bulk_Queue;
+use LumenWp\Media_Types;
 use LumenWp\Vision_Ai;
 
 final class Bulk
@@ -45,7 +46,7 @@ final class Bulk
 			Brand::render_nav('bulk');
 			Brand::render_header(
 				__('Traitement', 'lumen-wp'),
-				__('Optimise les images en arrière-plan — continue même si vous fermez l’onglet.', 'lumen-wp')
+				__('Traite les médias en arrière-plan (optimisation, SEO, IA) — continue même si vous fermez l’onglet.', 'lumen-wp')
 			);
 			?>
 
@@ -83,15 +84,36 @@ final class Bulk
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Options', 'lumen-wp'); ?></h2>
 				<table class="form-table" role="presentation">
 					<tr>
+						<th scope="row"><?php esc_html_e('Types de médias', 'lumen-wp'); ?></th>
+						<td>
+							<div class="lumen-wp-choices lumen-wp-choices--stack" id="lumen-wp-bulk-types">
+								<?php foreach (Media_Types::all_types() as $type) : ?>
+									<label class="lumen-wp-choice lumen-wp-choice--wide">
+										<input type="checkbox" class="lumen-wp-bulk-type" value="<?php echo esc_attr($type); ?>" checked />
+										<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
+										<span class="lumen-wp-choice__label"><?php echo esc_html(Media_Types::label($type)); ?></span>
+									</label>
+								<?php endforeach; ?>
+							</div>
+							<p class="description">
+								<?php esc_html_e('Type Images : optimisation + SEO. SVG : SEO seul. PDF / vidéos : SEO + IA (si activée).', 'lumen-wp'); ?>
+							</p>
+						</td>
+					</tr>
+					<tr>
 						<th scope="row"><?php esc_html_e('Traitement', 'lumen-wp'); ?></th>
 						<td>
 							<div class="lumen-wp-choices lumen-wp-choices--stack">
 								<label class="lumen-wp-choice lumen-wp-choice--wide">
 									<input type="checkbox" id="lumen-wp-force" value="1" />
 									<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
-									<span class="lumen-wp-choice__label"><?php esc_html_e('Reprendre aussi les images déjà OK', 'lumen-wp'); ?></span>
+									<span class="lumen-wp-choice__label"><?php esc_html_e('Reprendre aussi les médias déjà OK', 'lumen-wp'); ?></span>
 								</label>
-								<label class="lumen-wp-choice lumen-wp-choice--wide">
+								<label
+									class="lumen-wp-choice lumen-wp-choice--wide<?php echo Vision_Ai::is_configured() ? '' : ' is-ai-locked'; ?>"
+									id="lumen-wp-use-ai-label"
+									<?php echo Vision_Ai::is_configured() ? '' : ' data-ai-locked="1"'; ?>
+								>
 									<input type="checkbox" id="lumen-wp-use-ai" value="1" <?php disabled(! Vision_Ai::is_configured()); ?> />
 									<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
 									<span class="lumen-wp-choice__label">
@@ -109,7 +131,7 @@ final class Bulk
 								<?php
 								printf(
 									/* translators: 1: calls this month, 2: budget or infinity */
-									esc_html__('Usage IA ce mois : %1$s / %2$s', 'lumen-wp'),
+									esc_html__('Usage IA ce mois : %1$s / %2$s — type Images, PDF et vidéos (pas les SVG).', 'lumen-wp'),
 									esc_html(number_format_i18n((int) $usage['calls_month'])),
 									$budget > 0 ? esc_html(number_format_i18n($budget)) : '∞'
 								);
@@ -149,6 +171,14 @@ final class Bulk
 					<p class="lumen-wp-log-empty" id="lumen-wp-bulk-log-empty">
 						<?php esc_html_e('Les messages de traitement apparaîtront ici.', 'lumen-wp'); ?>
 					</p>
+				</div>
+
+				<div class="lumen-wp-log-shell lumen-wp-errors-shell" id="lumen-wp-bulk-errors-shell" hidden>
+					<header class="lumen-wp-log-shell__head">
+						<span class="lumen-wp-log-shell__title"><?php esc_html_e('Erreurs', 'lumen-wp'); ?></span>
+						<span class="lumen-wp-log-shell__meta" id="lumen-wp-bulk-errors-meta">0</span>
+					</header>
+					<ul id="lumen-wp-bulk-errors" class="lumen-wp-error-list" aria-live="polite"></ul>
 				</div>
 			</section>
 
@@ -190,6 +220,10 @@ final class Bulk
 			: __('Arrêté', 'lumen-wp');
 
 		$opts = [];
+		$types = Media_Types::normalize_types($entry['types'] ?? []);
+		if ($types !== []) {
+			$opts[] = implode(', ', array_map([Media_Types::class, 'label'], $types));
+		}
 		if (! empty($entry['force'])) {
 			$opts[] = __('Déjà OK repris', 'lumen-wp');
 		}
@@ -227,7 +261,7 @@ final class Bulk
 				<?php
 				printf(
 					/* translators: 1: processed, 2: total estimate, 3: ok, 4: errors */
-					esc_html__('%1$d / %2$d traitées — %3$d OK · %4$d erreur(s)', 'lumen-wp'),
+					esc_html__('%1$d / %2$d traités — %3$d OK · %4$d erreur(s)', 'lumen-wp'),
 					$proc,
 					$tot,
 					$ok,
@@ -236,10 +270,24 @@ final class Bulk
 				?>
 			</p>
 			<p class="lumen-wp-history__opts"><?php echo esc_html(implode(' · ', $opts)); ?></p>
-			<?php if ($errors !== []) : ?>
-				<ul class="lumen-wp-history__errors">
-					<?php foreach ($errors as $err_line) : ?>
-						<li><?php echo esc_html((string) $err_line); ?></li>
+			<?php
+			$errors = Bulk_Queue::normalize_errors($errors);
+			if ($errors !== []) :
+				?>
+				<ul class="lumen-wp-error-list lumen-wp-error-list--compact">
+					<?php foreach ($errors as $err_row) : ?>
+						<li class="lumen-wp-error-list__item">
+							<?php if ($err_row['edit_url'] !== '') : ?>
+								<a class="lumen-wp-error-list__title" href="<?php echo esc_url($err_row['edit_url']); ?>">
+									<?php echo esc_html($err_row['title']); ?>
+								</a>
+							<?php else : ?>
+								<span class="lumen-wp-error-list__title"><?php echo esc_html($err_row['title']); ?></span>
+							<?php endif; ?>
+							<?php if ($err_row['message'] !== '') : ?>
+								<span class="lumen-wp-error-list__msg"><?php echo esc_html($err_row['message']); ?></span>
+							<?php endif; ?>
+						</li>
 					<?php endforeach; ?>
 				</ul>
 			<?php endif; ?>

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace LumenWp\Admin;
 
 use LumenWp\Hooks;
+use LumenWp\Media_Types;
 use LumenWp\Original_Backup;
 use LumenWp\Pack;
 use LumenWp\Plugin;
@@ -39,13 +40,16 @@ final class Media_Meta_Box
 	 */
 	public function render($post): void
 	{
-		if (! $post instanceof \WP_Post || ! wp_attachment_is_image($post)) {
-			echo '<p>' . esc_html__('Réservé aux images.', 'lumen-wp') . '</p>';
+		if (! $post instanceof \WP_Post || ! Media_Types::is_supported((int) $post->ID)) {
+			echo '<p>' . esc_html__('Réservé aux médias supportés (Images, SVG, PDF, vidéos).', 'lumen-wp') . '</p>';
 
 			return;
 		}
 
 		$attachment_id = (int) $post->ID;
+		$kind          = Media_Types::kind($attachment_id);
+		$is_image      = $kind === Media_Types::KIND_IMAGE;
+		$can_ai        = Media_Types::supports_ai($kind);
 		$seo           = get_post_meta($attachment_id, Plugin::META_SEO, true);
 		if (! is_array($seo)) {
 			$seo = (new Seo())->build_from_filename($attachment_id);
@@ -56,18 +60,23 @@ final class Media_Meta_Box
 		$gutenberg = (string) get_post_meta($attachment_id, Plugin::META_GUTENBERG, true);
 		$jsonld    = get_post_meta($attachment_id, Plugin::META_JSONLD, true);
 		$json_text = is_array($jsonld) ? wp_json_encode($jsonld, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '';
-		$has_bak   = Original_Backup::has($attachment_id);
+		$has_bak   = $is_image && Original_Backup::has($attachment_id);
 
 		wp_nonce_field('lumen_wp_save_meta', 'lumen_wp_meta_nonce');
 		?>
-		<div class="lumen-wp-metabox" data-attachment-id="<?php echo esc_attr((string) $attachment_id); ?>" data-has-backup="<?php echo $has_bak ? '1' : '0'; ?>">
+		<div class="lumen-wp-metabox lumen-wp-theme-<?php echo esc_attr(Plugin::ui_theme()); ?>" data-attachment-id="<?php echo esc_attr((string) $attachment_id); ?>" data-has-backup="<?php echo $has_bak ? '1' : '0'; ?>" data-kind="<?php echo esc_attr($kind); ?>">
 			<?php
 			Brand::render_header(
-				__('Pack SEO', 'lumen-wp'),
-				__('Alts, JSON-LD et bloc Gutenberg prêts à coller.', 'lumen-wp')
+				__('SEO média', 'lumen-wp'),
+				$is_image
+					? __('Alts, JSON-LD et bloc Gutenberg prêts à coller.', 'lumen-wp')
+					: __('Titre, alts, légende et description pour ce média.', 'lumen-wp')
 			);
 			?>
 			<p>
+				<strong><?php esc_html_e('Type :', 'lumen-wp'); ?></strong>
+				<?php echo esc_html(Media_Types::label($kind)); ?>
+				·
 				<strong><?php esc_html_e('Statut :', 'lumen-wp'); ?></strong>
 				<span class="lumen-wp-status lumen-wp-status--<?php echo esc_attr($status !== '' ? $status : 'none'); ?>">
 					<?php echo esc_html($status !== '' ? $status : '—'); ?>
@@ -117,15 +126,25 @@ final class Media_Meta_Box
 			</p>
 
 			<p class="lumen-wp-actions">
-				<button type="button" class="button" id="lumen-wp-suggest">
-					<?php esc_html_e('Suggérer (IA)', 'lumen-wp'); ?>
-				</button>
+				<?php if ($can_ai) : ?>
+					<button type="button" class="button" id="lumen-wp-suggest">
+						<?php esc_html_e('Suggérer (IA)', 'lumen-wp'); ?>
+					</button>
+				<?php endif; ?>
 				<button type="button" class="button" id="lumen-wp-reprocess">
-					<?php esc_html_e('Re-traiter (optimiser + pack)', 'lumen-wp'); ?>
+					<?php
+					echo esc_html(
+						$is_image
+							? __('Re-traiter (optimiser + pack)', 'lumen-wp')
+							: __('Re-traiter (SEO)', 'lumen-wp')
+					);
+					?>
 				</button>
-				<button type="button" class="button" id="lumen-wp-restore" <?php echo $has_bak ? '' : 'hidden'; ?>>
-					<?php esc_html_e('Restaurer l’original', 'lumen-wp'); ?>
-				</button>
+				<?php if ($is_image) : ?>
+					<button type="button" class="button" id="lumen-wp-restore" <?php echo $has_bak ? '' : 'hidden'; ?>>
+						<?php esc_html_e('Restaurer l’original', 'lumen-wp'); ?>
+					</button>
+				<?php endif; ?>
 			</p>
 			<?php if ($has_bak) : ?>
 				<p class="description" id="lumen-wp-backup-hint">
@@ -133,6 +152,7 @@ final class Media_Meta_Box
 				</p>
 			<?php endif; ?>
 
+			<?php if ($is_image) : ?>
 			<p>
 				<label><?php esc_html_e('Bloc Gutenberg', 'lumen-wp'); ?></label>
 				<textarea id="lumen-wp-gutenberg" class="widefat code" rows="10" readonly><?php echo esc_textarea($gutenberg); ?></textarea>
@@ -147,6 +167,7 @@ final class Media_Meta_Box
 					<?php esc_html_e('Copier JSON-LD', 'lumen-wp'); ?>
 				</button>
 			</p>
+			<?php endif; ?>
 		</div>
 		<?php
 	}
@@ -196,8 +217,8 @@ final class Media_Meta_Box
 		$this->guard_ajax();
 
 		$id = isset($_POST['id']) ? (int) $_POST['id'] : 0; // phpcs:ignore WordPress.Security.NonceVerification
-		if ($id <= 0 || ! wp_attachment_is_image($id)) {
-			wp_send_json_error(['message' => __('Attachment invalide.', 'lumen-wp')], 400);
+		if ($id <= 0 || ! Media_Types::is_supported($id) || ! Media_Types::supports_ai(Media_Types::kind($id))) {
+			wp_send_json_error(['message' => __('Attachment invalide pour l’IA.', 'lumen-wp')], 400);
 		}
 
 		$seo_service = new Seo();
@@ -270,7 +291,7 @@ final class Media_Meta_Box
 		$this->guard_ajax();
 
 		$id = isset($_POST['id']) ? (int) $_POST['id'] : 0; // phpcs:ignore WordPress.Security.NonceVerification
-		if ($id <= 0 || ! wp_attachment_is_image($id)) {
+		if ($id <= 0 || Media_Types::kind($id) !== Media_Types::KIND_IMAGE) {
 			wp_send_json_error(['message' => __('Attachment invalide.', 'lumen-wp')], 400);
 		}
 
@@ -299,7 +320,7 @@ final class Media_Meta_Box
 	 */
 	public function attachment_fields(array $form_fields, $post): array
 	{
-		if (! $post instanceof \WP_Post || ! wp_attachment_is_image($post)) {
+		if (! $post instanceof \WP_Post || ! Media_Types::is_supported((int) $post->ID)) {
 			return $form_fields;
 		}
 

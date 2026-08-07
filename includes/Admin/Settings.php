@@ -99,6 +99,11 @@ final class Settings
 			'site_url'           => esc_url_raw((string) ($input['site_url'] ?? '')),
 			// Géré depuis la page Icônes — ne pas écraser ici.
 			'site_favicons'      => ! empty($current['site_favicons']),
+			'ui_theme'           => (static function () use ($input): string {
+				$theme = strtolower(sanitize_key((string) ($input['ui_theme'] ?? 'light')));
+
+				return $theme === 'dark' ? 'dark' : 'light';
+			})(),
 		];
 
 		Plugin::instance()->clear_settings_cache();
@@ -169,7 +174,7 @@ final class Settings
 			Brand::render_nav('settings');
 			Brand::render_header(
 				__('Réglages', 'lumen-wp'),
-				__('Optimisation WebP / AVIF et pack SEO pour la médiathèque.', 'lumen-wp')
+				__('Optimisation, SEO et IA pour les médias de la bibliothèque.', 'lumen-wp')
 			);
 			?>
 
@@ -207,6 +212,17 @@ final class Settings
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Configuration', 'lumen-wp'); ?></h2>
 				<?php settings_fields('lumen_wp_settings_group'); ?>
 				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><?php esc_html_e('Thème admin', 'lumen-wp'); ?></th>
+						<td>
+							<?php $ui_theme = Plugin::ui_theme(); ?>
+							<select name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[ui_theme]" id="lumen-wp-ui-theme" class="lumen-wp-select">
+								<option value="light" <?php selected($ui_theme, 'light'); ?>><?php esc_html_e('Clair', 'lumen-wp'); ?></option>
+								<option value="dark" <?php selected($ui_theme, 'dark'); ?>><?php esc_html_e('Sombre', 'lumen-wp'); ?></option>
+							</select>
+							<p class="description"><?php esc_html_e('Apparence des pages Lumen (Dashboard, Traitement, Réglages…).', 'lumen-wp'); ?></p>
+						</td>
+					</tr>
 					<tr>
 						<th scope="row"><?php esc_html_e('Formats de sortie', 'lumen-wp'); ?></th>
 						<td>
@@ -307,7 +323,7 @@ final class Settings
 								<label class="lumen-wp-choice lumen-wp-choice--wide">
 									<input type="checkbox" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[auto_on_upload]" value="1" <?php checked(! empty($settings['auto_on_upload'])); ?> />
 									<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
-									<span class="lumen-wp-choice__label"><?php esc_html_e('Optimiser automatiquement les nouvelles images', 'lumen-wp'); ?></span>
+									<span class="lumen-wp-choice__label"><?php esc_html_e('Traiter automatiquement les nouveaux médias', 'lumen-wp'); ?></span>
 								</label>
 								<label class="lumen-wp-choice lumen-wp-choice--wide">
 									<input type="checkbox" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[auto_seo_on_upload]" value="1" <?php checked(! empty($settings['auto_seo_on_upload'])); ?> />

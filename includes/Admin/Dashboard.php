@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace LumenWp\Admin;
 
+use LumenWp\Bulk_Queue;
 use LumenWp\Icon_Kit;
+use LumenWp\Media_Types;
 use LumenWp\Plugin;
 use LumenWp\Vision_Ai;
 
@@ -44,6 +46,7 @@ final class Dashboard
 		}
 
 		$stats    = $this->collect_stats();
+		$failed   = $stats['error'] > 0 ? $this->failed_attachments(50) : [];
 		$caps     = Plugin::capabilities();
 		$settings = Plugin::instance()->settings();
 		$icons    = Icon_Kit::stored();
@@ -67,25 +70,33 @@ final class Dashboard
 			Brand::render_nav('dashboard');
 			Brand::render_header(
 				__('Dashboard', 'lumen-wp'),
-				__('Vue d’ensemble de l’optimisation, du SEO et des icônes.', 'lumen-wp')
+				__('Vue d’ensemble des médias, du SEO et des icônes.', 'lumen-wp')
 			);
 			?>
 
 			<section class="lumen-wp-dash-stats">
 				<article class="lumen-wp-stat">
-					<span class="lumen-wp-stat__label"><?php esc_html_e('Images OK', 'lumen-wp'); ?></span>
+					<span class="lumen-wp-stat__label"><?php esc_html_e('Médias OK', 'lumen-wp'); ?></span>
 					<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $stats['ok']); ?></strong>
 				</article>
 				<article class="lumen-wp-stat">
 					<span class="lumen-wp-stat__label"><?php esc_html_e('À traiter', 'lumen-wp'); ?></span>
 					<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $stats['pending']); ?></strong>
 				</article>
+				<?php if ((int) $stats['error'] > 0) : ?>
+					<a class="lumen-wp-stat lumen-wp-stat--link" href="#lumen-wp-failed-media">
+						<span class="lumen-wp-stat__label"><?php esc_html_e('Erreurs', 'lumen-wp'); ?></span>
+						<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $stats['error']); ?></strong>
+						<span class="lumen-wp-stat__hint"><?php esc_html_e('Voir la liste', 'lumen-wp'); ?></span>
+					</a>
+				<?php else : ?>
+					<article class="lumen-wp-stat">
+						<span class="lumen-wp-stat__label"><?php esc_html_e('Erreurs', 'lumen-wp'); ?></span>
+						<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $stats['error']); ?></strong>
+					</article>
+				<?php endif; ?>
 				<article class="lumen-wp-stat">
-					<span class="lumen-wp-stat__label"><?php esc_html_e('Erreurs', 'lumen-wp'); ?></span>
-					<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $stats['error']); ?></strong>
-				</article>
-				<article class="lumen-wp-stat">
-					<span class="lumen-wp-stat__label"><?php esc_html_e('Médias image', 'lumen-wp'); ?></span>
+					<span class="lumen-wp-stat__label"><?php esc_html_e('Médias supportés', 'lumen-wp'); ?></span>
 					<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $stats['total']); ?></strong>
 				</article>
 				<article class="lumen-wp-stat">
@@ -113,7 +124,7 @@ final class Dashboard
 						<?php
 						printf(
 							/* translators: %d: pending count */
-							esc_html(_n('%d image à traiter', '%d images à traiter', $stats['pending'], 'lumen-wp')),
+							esc_html(_n('%d média à traiter', '%d médias à traiter', $stats['pending'], 'lumen-wp')),
 							(int) $stats['pending']
 						);
 						?>
@@ -154,19 +165,46 @@ final class Dashboard
 				<a class="lumen-wp-dash-card" href="<?php echo esc_url(admin_url('upload.php')); ?>">
 					<span class="lumen-wp-dash-card__eyebrow"><?php esc_html_e('WordPress', 'lumen-wp'); ?></span>
 					<h2 class="lumen-wp-dash-card__title"><?php esc_html_e('Médias', 'lumen-wp'); ?></h2>
-					<p class="lumen-wp-dash-card__text"><?php esc_html_e('Ouvrir la médiathèque pour le pack SEO par image.', 'lumen-wp'); ?></p>
+					<p class="lumen-wp-dash-card__text"><?php esc_html_e('Ouvrir la médiathèque pour le SEO par média.', 'lumen-wp'); ?></p>
 				</a>
 			</section>
 
+			<?php if ($failed !== []) : ?>
+				<section class="lumen-wp-panel lumen-wp-failed-panel" id="lumen-wp-failed-media">
+					<h2 class="lumen-wp-panel__title"><?php esc_html_e('Médias en erreur', 'lumen-wp'); ?></h2>
+					<p class="description">
+						<?php
+						printf(
+							/* translators: %d: error count */
+							esc_html(_n('%d média à corriger — cliquez pour ouvrir la fiche.', '%d médias à corriger — cliquez pour ouvrir la fiche.', count($failed), 'lumen-wp')),
+							count($failed)
+						);
+						?>
+					</p>
+					<ul class="lumen-wp-error-list">
+						<?php foreach ($failed as $row) : ?>
+							<li class="lumen-wp-error-list__item">
+								<a class="lumen-wp-error-list__title" href="<?php echo esc_url($row['edit_url']); ?>">
+									<?php echo esc_html($row['title']); ?>
+								</a>
+								<?php if ($row['message'] !== '') : ?>
+									<span class="lumen-wp-error-list__msg"><?php echo esc_html($row['message']); ?></span>
+								<?php endif; ?>
+							</li>
+						<?php endforeach; ?>
+					</ul>
+				</section>
+			<?php endif; ?>
+
 			<section class="lumen-wp-panel lumen-wp-panel--recent">
 				<header class="lumen-wp-recent-head">
-					<h2 class="lumen-wp-panel__title"><?php esc_html_e('Dernières images traitées', 'lumen-wp'); ?></h2>
+					<h2 class="lumen-wp-panel__title"><?php esc_html_e('Derniers médias traités', 'lumen-wp'); ?></h2>
 					<?php if ($recent['total'] > 0) : ?>
 						<p class="lumen-wp-recent-meta">
 							<?php
 							printf(
 								/* translators: 1: current page, 2: total pages, 3: formatted total items */
-								esc_html__('Page %1$s / %2$s · %3$s image(s)', 'lumen-wp'),
+								esc_html__('Page %1$s / %2$s · %3$s média(s)', 'lumen-wp'),
 								esc_html(number_format_i18n((int) $recent['page'])),
 								esc_html(number_format_i18n((int) $recent['pages'])),
 								esc_html(number_format_i18n((int) $recent['total']))
@@ -178,7 +216,7 @@ final class Dashboard
 
 				<div class="lumen-wp-recent-body">
 					<?php if ($recent['items'] === []) : ?>
-						<p class="lumen-wp-recent-empty"><?php esc_html_e('Aucune image traitée pour le moment.', 'lumen-wp'); ?></p>
+						<p class="lumen-wp-recent-empty"><?php esc_html_e('Aucun média traité pour le moment.', 'lumen-wp'); ?></p>
 					<?php else : ?>
 						<ul class="lumen-wp-dash-recent">
 							<?php foreach ($recent['items'] as $row) : ?>
@@ -192,7 +230,7 @@ final class Dashboard
 						</ul>
 
 						<?php if ($recent['pages'] > 1) : ?>
-							<nav class="lumen-wp-recent-pager" aria-label="<?php esc_attr_e('Pagination des images traitées', 'lumen-wp'); ?>">
+							<nav class="lumen-wp-recent-pager" aria-label="<?php esc_attr_e('Pagination des médias traités', 'lumen-wp'); ?>">
 								<?php
 								$base  = admin_url('admin.php?page=lumen-wp');
 								$curr  = (int) $recent['page'];
@@ -360,6 +398,65 @@ final class Dashboard
 	 *   per_page: int
 	 * }
 	 */
+	/**
+	 * Médias avec statut Lumen « error », pour la liste dashboard.
+	 *
+	 * @return list<array{id: int, title: string, message: string, edit_url: string}>
+	 */
+	private function failed_attachments(int $limit = 50): array
+	{
+		global $wpdb;
+
+		$limit    = max(1, min(100, $limit));
+		$status   = Plugin::META_STATUS;
+		$error    = Plugin::META_ERROR;
+		$mime_sql = Media_Types::mime_where_sql(Media_Types::all_types(), 'p');
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT p.ID, p.post_title, e.meta_value AS error_message
+				FROM {$wpdb->posts} p
+				INNER JOIN {$wpdb->postmeta} s
+					ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'error'
+				LEFT JOIN {$wpdb->postmeta} e
+					ON e.post_id = p.ID AND e.meta_key = %s
+				WHERE p.post_type = 'attachment'
+				  AND p.post_status = 'inherit'
+				  AND {$mime_sql}
+				ORDER BY p.post_modified DESC
+				LIMIT %d",
+				$status,
+				$error,
+				$limit
+			),
+			ARRAY_A
+		);
+		// phpcs:enable
+
+		$out = [];
+		if (! is_array($rows)) {
+			return $out;
+		}
+
+		foreach ($rows as $row) {
+			$id    = (int) ($row['ID'] ?? 0);
+			$title = trim((string) ($row['post_title'] ?? ''));
+			if ($title === '' && $id > 0) {
+				$file  = get_attached_file($id);
+				$title = is_string($file) && $file !== '' ? basename($file) : '#' . $id;
+			}
+			$out[] = [
+				'id'       => $id,
+				'title'    => $title !== '' ? $title : '#' . $id,
+				'message'  => (string) ($row['error_message'] ?? ''),
+				'edit_url' => Bulk_Queue::edit_url_for($id),
+			];
+		}
+
+		return $out;
+	}
+
 	private function recent_processed(int $per_page = 5, int $page = 1): array
 	{
 		global $wpdb;
@@ -370,10 +467,29 @@ final class Dashboard
 		$replace  = ! empty(Plugin::instance()->settings()['replace_original']);
 		$status   = Plugin::META_STATUS;
 		$variants = Plugin::META_VARIANTS;
+		$img_mime = Media_Types::mime_where_sql([Media_Types::KIND_IMAGE], 'p');
+		$doc_mime = Media_Types::mime_where_sql(
+			[Media_Types::KIND_SVG, Media_Types::KIND_PDF, Media_Types::KIND_VIDEO],
+			'p'
+		);
 
-		$mime_sql = $replace
-			? "AND p.post_mime_type IN ('image/webp', 'image/avif')"
-			: 'AND p.post_mime_type LIKE \'image/%\'';
+		if ($replace) {
+			$img_ok = "(
+				{$img_mime}
+				AND v.meta_id IS NOT NULL
+				AND p.post_mime_type IN ('image/webp', 'image/avif')
+			)";
+		} else {
+			$img_ok = "(
+				{$img_mime}
+				AND v.meta_id IS NOT NULL
+			)";
+		}
+
+		$done_sql = "(
+			{$img_ok}
+			OR ({$doc_mime})
+		)";
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$total = (int) $wpdb->get_var(
@@ -382,11 +498,11 @@ final class Dashboard
 				FROM {$wpdb->posts} p
 				INNER JOIN {$wpdb->postmeta} s
 					ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
-				INNER JOIN {$wpdb->postmeta} v
+				LEFT JOIN {$wpdb->postmeta} v
 					ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value != '' AND v.meta_value != 'a:0:{}'
 				WHERE p.post_type = 'attachment'
 				  AND p.post_status = 'inherit'
-				  {$mime_sql}",
+				  AND {$done_sql}",
 				$status,
 				$variants
 			)
@@ -404,11 +520,11 @@ final class Dashboard
 				FROM {$wpdb->posts} p
 				INNER JOIN {$wpdb->postmeta} s
 					ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
-				INNER JOIN {$wpdb->postmeta} v
+				LEFT JOIN {$wpdb->postmeta} v
 					ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value != '' AND v.meta_value != 'a:0:{}'
 				WHERE p.post_type = 'attachment'
 				  AND p.post_status = 'inherit'
-				  {$mime_sql}
+				  AND {$done_sql}
 				ORDER BY p.post_date DESC
 				LIMIT %d OFFSET %d",
 				$status,
@@ -454,49 +570,55 @@ final class Dashboard
 		$status_key       = Plugin::META_STATUS;
 		$variants_key     = Plugin::META_VARIANTS;
 		$replace_original = ! empty(Plugin::instance()->settings()['replace_original']);
+		$mime_sql         = Media_Types::mime_where_sql(Media_Types::all_types(), 'p');
+		$img_mime         = Media_Types::mime_where_sql([Media_Types::KIND_IMAGE], 'p');
+		$doc_mime         = Media_Types::mime_where_sql(
+			[Media_Types::KIND_SVG, Media_Types::KIND_PDF, Media_Types::KIND_VIDEO],
+			'p'
+		);
 
-		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$total = (int) $wpdb->get_var(
-			"SELECT COUNT(ID)
-			FROM {$wpdb->posts}
-			WHERE post_type = 'attachment'
-			  AND post_status = 'inherit'
-			  AND post_mime_type LIKE 'image/%'"
+			"SELECT COUNT(p.ID)
+			FROM {$wpdb->posts} p
+			WHERE p.post_type = 'attachment'
+			  AND p.post_status = 'inherit'
+			  AND {$mime_sql}"
 		);
 
 		if ($replace_original) {
-			$ok = (int) $wpdb->get_var(
-				$wpdb->prepare(
-					"SELECT COUNT(DISTINCT p.ID)
-					FROM {$wpdb->posts} p
-					INNER JOIN {$wpdb->postmeta} s
-						ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
-					INNER JOIN {$wpdb->postmeta} v
-						ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value != '' AND v.meta_value != 'a:0:{}'
-					WHERE p.post_type = 'attachment'
-					  AND p.post_status = 'inherit'
-					  AND p.post_mime_type IN ('image/webp', 'image/avif')",
-					$status_key,
-					$variants_key
-				)
-			);
+			$img_ok = "(
+				{$img_mime}
+				AND s.meta_id IS NOT NULL
+				AND v.meta_id IS NOT NULL
+				AND p.post_mime_type IN ('image/webp', 'image/avif')
+			)";
 		} else {
-			$ok = (int) $wpdb->get_var(
-				$wpdb->prepare(
-					"SELECT COUNT(DISTINCT p.ID)
-					FROM {$wpdb->posts} p
-					INNER JOIN {$wpdb->postmeta} s
-						ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
-					INNER JOIN {$wpdb->postmeta} v
-						ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value != '' AND v.meta_value != 'a:0:{}'
-					WHERE p.post_type = 'attachment'
-					  AND p.post_status = 'inherit'
-					  AND p.post_mime_type LIKE 'image/%%'",
-					$status_key,
-					$variants_key
-				)
-			);
+			$img_ok = "(
+				{$img_mime}
+				AND s.meta_id IS NOT NULL
+				AND v.meta_id IS NOT NULL
+			)";
 		}
+
+		$ok = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(DISTINCT p.ID)
+				FROM {$wpdb->posts} p
+				LEFT JOIN {$wpdb->postmeta} s
+					ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
+				LEFT JOIN {$wpdb->postmeta} v
+					ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value != '' AND v.meta_value != 'a:0:{}'
+				WHERE p.post_type = 'attachment'
+				  AND p.post_status = 'inherit'
+				  AND (
+					{$img_ok}
+					OR ({$doc_mime} AND s.meta_id IS NOT NULL)
+				  )",
+				$status_key,
+				$variants_key
+			)
+		);
 
 		$error = (int) $wpdb->get_var(
 			$wpdb->prepare(
@@ -506,7 +628,7 @@ final class Dashboard
 					ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'error'
 				WHERE p.post_type = 'attachment'
 				  AND p.post_status = 'inherit'
-				  AND p.post_mime_type LIKE 'image/%%'",
+				  AND {$mime_sql}",
 				$status_key
 			)
 		);

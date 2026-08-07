@@ -30,12 +30,20 @@
 
 body.lumen-wp-admin #wpcontent {
 	padding-left: 0;
-	background: #0c0a09;
+	background: var(--lumen-page-bg, #0c0a09);
 }
 
 body.lumen-wp-admin #wpbody,
 body.lumen-wp-admin #wpbody-content {
-	background: #0c0a09;
+	background: var(--lumen-page-bg, #0c0a09);
+}
+
+body.lumen-wp-admin {
+	--lumen-page-bg: #0c0a09;
+}
+
+body.lumen-wp-theme-light {
+	--lumen-page-bg: #f5f5f4;
 }
 
 body.lumen-wp-admin #wpbody-content {
@@ -1779,14 +1787,26 @@ html.lumen-wp-modal-open {
 	box-shadow: 0 0 0 1px rgba(251, 113, 133, 0.28);
 }
 
+.lumen-wp-modal.is-info .lumen-wp-modal__icon {
+	color: var(--lumen-primary);
+	background: rgba(232, 121, 249, 0.12);
+	box-shadow: 0 0 0 1px rgba(232, 121, 249, 0.28);
+}
+
 .lumen-wp-modal__icon-success,
-.lumen-wp-modal__icon-error {
+.lumen-wp-modal__icon-error,
+.lumen-wp-modal__icon-info {
 	display: none;
 }
 
 .lumen-wp-modal.is-success .lumen-wp-modal__icon-success,
-.lumen-wp-modal.is-error .lumen-wp-modal__icon-error {
+.lumen-wp-modal.is-error .lumen-wp-modal__icon-error,
+.lumen-wp-modal.is-info .lumen-wp-modal__icon-info {
 	display: block;
+}
+
+.lumen-wp-choice.is-ai-locked {
+	cursor: pointer;
 }
 
 .lumen-wp-modal__title {
@@ -1808,7 +1828,28 @@ html.lumen-wp-modal-open {
 
 .lumen-wp-modal__actions {
 	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
 	justify-content: center;
+}
+
+/* Le CSS WP .button écrase parfois [hidden] — forcer le masquage. */
+#lumen-wp-modal-action[hidden],
+#lumen-wp-modal-action:not(.is-visible) {
+	display: none !important;
+}
+
+#lumen-wp-modal-action.is-visible {
+	display: inline-flex !important;
+	min-width: 6.5rem;
+	border-radius: 0.55rem !important;
+	align-items: center;
+	justify-content: center;
+}
+
+.lumen-wp-modal__actions .button:not(.button-primary):not(#lumen-wp-modal-action) {
+	min-width: 6.5rem;
+	border-radius: 0.55rem !important;
 }
 
 .lumen-wp-modal__actions .button-primary {
@@ -2251,17 +2292,80 @@ html.lumen-wp-modal-open {
 	color: var(--lumen-text-secondary);
 }
 
-.lumen-wp-history__errors {
-	margin: 0.55rem 0 0;
-	padding: 0.45rem 0 0 1rem;
-	border-top: 1px solid rgba(255, 255, 255, 0.06);
-	color: #fca5a5;
-	font-size: 0.8rem;
-	line-height: 1.4;
+.lumen-wp-errors-shell {
+	margin-top: 1rem;
+	border-color: rgba(251, 113, 133, 0.35);
 }
 
-.lumen-wp-history__errors li + li {
-	margin-top: 0.2rem;
+.lumen-wp-error-list {
+	list-style: none;
+	margin: 0;
+	padding: 0.35rem 0;
+	max-height: 280px;
+	overflow: auto;
+}
+
+.lumen-wp-error-list__item {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+	padding: 0.55rem 1rem;
+	border-bottom: 1px solid rgba(250, 250, 249, 0.04);
+}
+
+.lumen-wp-error-list__item:last-child {
+	border-bottom: 0;
+}
+
+.lumen-wp-error-list__title {
+	font-weight: 600;
+	color: #fda4af;
+	text-decoration: none;
+}
+
+a.lumen-wp-error-list__title:hover,
+a.lumen-wp-error-list__title:focus {
+	color: #fecdd3;
+	text-decoration: underline;
+}
+
+.lumen-wp-error-list__msg {
+	font-size: 0.82rem;
+	line-height: 1.4;
+	color: var(--lumen-text-muted);
+	word-break: break-word;
+}
+
+.lumen-wp-error-list--compact {
+	margin: 0.55rem 0 0;
+	padding: 0.45rem 0 0;
+	border-top: 1px solid rgba(255, 255, 255, 0.06);
+	max-height: 220px;
+}
+
+.lumen-wp-error-list--compact .lumen-wp-error-list__item {
+	padding: 0.4rem 0;
+}
+
+.lumen-wp-stat--link {
+	display: block;
+	text-decoration: none;
+	color: inherit;
+	transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.lumen-wp-stat--link:hover,
+.lumen-wp-stat--link:focus {
+	border-color: rgba(251, 113, 133, 0.45);
+	background: rgba(251, 113, 133, 0.06);
+}
+
+.lumen-wp-failed-panel {
+	margin-top: 1rem;
+}
+
+.lumen-wp-failed-panel .lumen-wp-error-list {
+	max-height: 320px;
 }
 
 /* Tools — cron health + cleanup */
@@ -2336,4 +2440,508 @@ html.lumen-wp-modal-open {
 	.lumen-wp-dash-card:hover {
 		transform: none;
 	}
+}
+
+/* —— Thème clair (réglage Lumen) —— */
+
+body.lumen-wp-theme-light .lumen-wp-wrap,
+body.lumen-wp-theme-light .lumen-wp-metabox,
+body.lumen-wp-theme-light #lumen-wp-meta.postbox,
+.lumen-wp-metabox.lumen-wp-theme-light,
+body.lumen-wp-theme-light #lumen-wp-modal {
+	--lumen-primary: #a21caf;
+	--lumen-primary-hover: #86198f;
+	--lumen-primary-glow: rgba(162, 28, 175, 0.22);
+	--lumen-bg: #f5f5f4;
+	--lumen-surface: #ffffff;
+	--lumen-surface-soft: #ffffff;
+	--lumen-text: #1c1917;
+	--lumen-text-secondary: #44403c;
+	--lumen-text-muted: #57534e;
+	--lumen-border: rgba(28, 25, 23, 0.18);
+	--lumen-border-hover: rgba(162, 28, 175, 0.55);
+	--lumen-success: #047857;
+	--lumen-warning: #b45309;
+	--lumen-error: #be123c;
+	--lumen-mesh:
+		radial-gradient(ellipse 90% 70% at 0% 0%, rgba(192, 38, 211, 0.09), transparent 55%),
+		radial-gradient(ellipse 70% 60% at 100% 30%, rgba(232, 121, 249, 0.07), transparent 50%),
+		radial-gradient(ellipse 50% 40% at 40% 100%, rgba(251, 113, 133, 0.05), transparent 45%);
+}
+
+body.lumen-wp-theme-light .lumen-wp-nav {
+	background: #ffffff;
+	border-color: rgba(28, 25, 23, 0.14);
+	box-shadow: 0 1px 2px rgba(28, 25, 23, 0.06);
+}
+
+body.lumen-wp-theme-light .lumen-wp-nav__link.is-active,
+body.lumen-wp-theme-light .lumen-wp-nav__link[aria-current='page'] {
+	background: rgba(162, 28, 175, 0.12);
+	color: #86198f !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-panel,
+body.lumen-wp-theme-light .lumen-wp-dash-card,
+body.lumen-wp-theme-light .lumen-wp-stat,
+body.lumen-wp-theme-light .lumen-wp-log-shell,
+body.lumen-wp-theme-light .lumen-wp-history__item,
+body.lumen-wp-theme-light .lumen-wp-dropzone,
+body.lumen-wp-theme-light .lumen-wp-modal__dialog {
+	background: #ffffff;
+	border-color: rgba(28, 25, 23, 0.14);
+	box-shadow: 0 1px 2px rgba(28, 25, 23, 0.05), 0 8px 22px rgba(28, 25, 23, 0.05);
+}
+
+body.lumen-wp-theme-light .lumen-wp-log-shell {
+	background: #ffffff;
+	border: 1px solid rgba(28, 25, 23, 0.14);
+	box-shadow: 0 1px 2px rgba(28, 25, 23, 0.05), 0 8px 22px rgba(28, 25, 23, 0.05);
+}
+
+/* Barre de progression */
+body.lumen-wp-theme-light .lumen-wp-progress progress {
+	background: #e7e5e4 !important;
+	border: 1px solid rgba(28, 25, 23, 0.12);
+	box-shadow: inset 0 1px 2px rgba(28, 25, 23, 0.06);
+}
+
+body.lumen-wp-theme-light .lumen-wp-progress progress::-webkit-progress-bar {
+	background: #e7e5e4;
+	border-radius: 999px;
+}
+
+body.lumen-wp-theme-light .lumen-wp-progress progress::-webkit-progress-value {
+	background: linear-gradient(90deg, #86198f, #c026d3);
+	border-radius: 999px;
+}
+
+body.lumen-wp-theme-light .lumen-wp-progress progress::-moz-progress-bar {
+	background: linear-gradient(90deg, #86198f, #c026d3);
+	border-radius: 999px;
+}
+
+body.lumen-wp-theme-light #lumen-wp-progress-label {
+	color: #44403c !important;
+}
+
+/* Journal d’activité */
+body.lumen-wp-theme-light .lumen-wp-log-shell__head {
+	background: #fafaf9 !important;
+	border: 0 !important;
+	border-bottom: 1px solid rgba(28, 25, 23, 0.12) !important;
+	box-shadow: none !important;
+	color: #1c1917 !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log-shell__title {
+	color: #1c1917 !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log-shell__meta {
+	color: #57534e !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log {
+	scrollbar-color: rgba(162, 28, 175, 0.35) #f5f5f4;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log__row {
+	border-bottom-color: rgba(28, 25, 23, 0.08);
+	color: #44403c;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log__row:hover {
+	background: #fafaf9;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log__badge {
+	border-color: rgba(28, 25, 23, 0.16);
+	background: #f5f5f4;
+	color: #57534e;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log__id {
+	color: #86198f !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log__msg {
+	color: #44403c !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log-empty {
+	color: #57534e;
+}
+
+body.lumen-wp-theme-light .lumen-wp-wrap .description,
+body.lumen-wp-theme-light .lumen-wp-wrap .form-table .description,
+body.lumen-wp-theme-light .lumen-wp-brand__subtitle,
+body.lumen-wp-theme-light .lumen-wp-brand__eyebrow {
+	color: #57534e !important;
+}
+
+/* Boutons secondaires — bordure et texte lisibles */
+body.lumen-wp-theme-light .lumen-wp-wrap .button,
+body.lumen-wp-theme-light .lumen-wp-metabox .button,
+body.lumen-wp-theme-light .lumen-wp-wrap a.button,
+body.lumen-wp-theme-light .lumen-wp-metabox a.button,
+body.lumen-wp-theme-light .lumen-wp-modal__actions .button:not(.button-primary) {
+	background: #ffffff !important;
+	border: 1px solid rgba(28, 25, 23, 0.28) !important;
+	color: #1c1917 !important;
+	box-shadow: none !important;
+	text-shadow: none !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-wrap .button:hover,
+body.lumen-wp-theme-light .lumen-wp-metabox .button:hover,
+body.lumen-wp-theme-light .lumen-wp-wrap .button:focus,
+body.lumen-wp-theme-light .lumen-wp-metabox .button:focus,
+body.lumen-wp-theme-light .lumen-wp-wrap a.button:hover,
+body.lumen-wp-theme-light .lumen-wp-metabox a.button:hover {
+	background: #fafaf9 !important;
+	border-color: rgba(162, 28, 175, 0.55) !important;
+	color: #1c1917 !important;
+}
+
+/* Boutons primaires — fond magenta opaque + texte blanc (évite blanc sur blanc) */
+body.lumen-wp-theme-light .lumen-wp-wrap .button-primary,
+body.lumen-wp-theme-light .lumen-wp-metabox .button-primary,
+body.lumen-wp-theme-light .lumen-wp-wrap .button-primary:hover,
+body.lumen-wp-theme-light .lumen-wp-wrap .button-primary:focus,
+body.lumen-wp-theme-light .lumen-wp-metabox .button-primary:hover,
+body.lumen-wp-theme-light .lumen-wp-metabox .button-primary:focus,
+body.lumen-wp-theme-light .lumen-wp-modal__actions .button-primary,
+body.lumen-wp-theme-light .lumen-wp-modal__actions .button-primary:hover,
+body.lumen-wp-theme-light .lumen-wp-modal__actions .button-primary:focus,
+body.lumen-wp-theme-light #lumen-wp-modal-action.is-visible {
+	background: linear-gradient(135deg, #86198f 0%, #a21caf 45%, #c026d3 100%) !important;
+	border-color: #86198f !important;
+	color: #ffffff !important;
+	box-shadow: 0 4px 16px rgba(162, 28, 175, 0.28) !important;
+	text-shadow: none !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-wrap .button:disabled,
+body.lumen-wp-theme-light .lumen-wp-metabox .button:disabled,
+body.lumen-wp-theme-light .lumen-wp-wrap .button-primary:disabled,
+body.lumen-wp-theme-light .lumen-wp-metabox .button-primary:disabled,
+body.lumen-wp-theme-light .lumen-wp-wrap .button[disabled],
+body.lumen-wp-theme-light .lumen-wp-metabox .button[disabled] {
+	opacity: 1 !important;
+	color: #57534e !important;
+	background: #e7e5e4 !important;
+	border-color: #a8a29e !important;
+	box-shadow: none !important;
+	cursor: not-allowed;
+}
+
+/* Champs / selects (pas les cases Lumen ni le wrapper qualité / tête du log) */
+body.lumen-wp-theme-light .lumen-wp-csel__trigger,
+body.lumen-wp-theme-light .lumen-wp-wrap input[type='text'],
+body.lumen-wp-theme-light .lumen-wp-wrap input[type='url'],
+body.lumen-wp-theme-light .lumen-wp-wrap input[type='password'],
+body.lumen-wp-theme-light .lumen-wp-wrap input[type='number']:not(.lumen-wp-nstep__input),
+body.lumen-wp-theme-light .lumen-wp-wrap textarea,
+body.lumen-wp-theme-light .lumen-wp-wrap select,
+body.lumen-wp-theme-light .lumen-wp-metabox input,
+body.lumen-wp-theme-light .lumen-wp-metabox textarea {
+	background: #ffffff !important;
+	color: #1c1917 !important;
+	border: 1px solid rgba(28, 25, 23, 0.22) !important;
+	box-shadow: none !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-quality {
+	background: transparent !important;
+	border: 0 !important;
+	box-shadow: none !important;
+	gap: 0.5rem;
+}
+
+body.lumen-wp-theme-light .lumen-wp-csel__trigger {
+	background: #ffffff !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-csel__value,
+body.lumen-wp-theme-light .lumen-wp-csel__chevron {
+	color: #1c1917;
+	border-color: #57534e;
+}
+
+body.lumen-wp-theme-light .lumen-wp-csel__menu {
+	background: #ffffff !important;
+	border: 1px solid rgba(28, 25, 23, 0.18) !important;
+	box-shadow: 0 12px 32px rgba(28, 25, 23, 0.14);
+}
+
+body.lumen-wp-theme-light .lumen-wp-csel__option {
+	color: #44403c;
+}
+
+body.lumen-wp-theme-light .lumen-wp-csel__option:hover,
+body.lumen-wp-theme-light .lumen-wp-csel__option.is-selected {
+	background: rgba(162, 28, 175, 0.1);
+	color: #86198f;
+}
+
+/* Cases à cocher Lumen — contraste clair */
+body.lumen-wp-theme-light .lumen-wp-choice {
+	background: #ffffff;
+	border: 1px solid rgba(28, 25, 23, 0.28);
+	box-shadow: none;
+}
+
+body.lumen-wp-theme-light .lumen-wp-choice:hover {
+	background: #fafaf9;
+	border-color: rgba(162, 28, 175, 0.45);
+	box-shadow: none;
+}
+
+body.lumen-wp-theme-light .lumen-wp-choice:has(input:checked) {
+	background: rgba(162, 28, 175, 0.08);
+	border-color: rgba(162, 28, 175, 0.45);
+	box-shadow: none;
+}
+
+body.lumen-wp-theme-light .lumen-wp-choice__ui {
+	background: #f5f5f4 !important;
+	border: 2px solid #78716c !important;
+	box-shadow: none !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-choice input:checked + .lumen-wp-choice__ui {
+	background: linear-gradient(135deg, #86198f, #c026d3) !important;
+	border-color: #86198f !important;
+	box-shadow: none !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-choice input[type='checkbox'] + .lumen-wp-choice__ui::after {
+	border-color: #ffffff;
+}
+
+body.lumen-wp-theme-light .lumen-wp-choice input[type='radio'] + .lumen-wp-choice__ui::after {
+	background: #ffffff;
+}
+
+body.lumen-wp-theme-light .lumen-wp-choice__label {
+	color: #1c1917;
+}
+
+body.lumen-wp-theme-light .lumen-wp-quality__unit {
+	background: rgba(162, 28, 175, 0.14);
+	color: #86198f;
+	border: 1px solid rgba(162, 28, 175, 0.35);
+	font-weight: 700;
+}
+
+/* Steppers qualité — une seule bordure arrondie, pas de cadre autour du groupe */
+body.lumen-wp-theme-light .lumen-wp-nstep {
+	background: #ffffff !important;
+	border: 1px solid rgba(28, 25, 23, 0.28) !important;
+	border-radius: 0.55rem !important;
+	box-shadow: none !important;
+	overflow: hidden;
+}
+
+body.lumen-wp-theme-light .lumen-wp-nstep:focus-within {
+	border-color: rgba(162, 28, 175, 0.55) !important;
+	box-shadow: 0 0 0 2px rgba(162, 28, 175, 0.12) !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-nstep__input.lumen-wp-nstep__input {
+	background: transparent !important;
+	color: #1c1917 !important;
+	border: 0 !important;
+	box-shadow: none !important;
+	border-radius: 0 !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-nstep__btns {
+	background: #f5f5f4 !important;
+	border-left: 1px solid rgba(28, 25, 23, 0.18) !important;
+	border-radius: 0 !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-nstep__btn + .lumen-wp-nstep__btn {
+	border-top: 1px solid rgba(28, 25, 23, 0.14) !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-wrap .lumen-wp-nstep__btn {
+	background: transparent !important;
+	color: #44403c !important;
+	border: 0 !important;
+	border-radius: 0 !important;
+	box-shadow: none !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-wrap .lumen-wp-nstep__btn:hover,
+body.lumen-wp-theme-light .lumen-wp-wrap .lumen-wp-nstep__btn:focus {
+	background: rgba(162, 28, 175, 0.12) !important;
+	color: #86198f !important;
+	border: 0 !important;
+	box-shadow: none !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-quality__unit {
+	border-radius: 0.55rem;
+	min-height: 2.5rem;
+	height: 2.5rem;
+}
+
+/* Pastilles état serveur / capacités */
+body.lumen-wp-theme-light .lumen-wp-dash-caps span {
+	color: #57534e;
+	border-color: rgba(28, 25, 23, 0.2);
+	background: #f5f5f4;
+}
+
+body.lumen-wp-theme-light .lumen-wp-dash-caps span.is-ok {
+	color: #065f46;
+	border-color: rgba(4, 120, 87, 0.45);
+	background: rgba(16, 185, 129, 0.14);
+}
+
+body.lumen-wp-theme-light .lumen-wp-dash-caps span.is-no {
+	color: #78716c;
+	opacity: 1;
+	background: #fafaf9;
+}
+
+body.lumen-wp-theme-light .lumen-wp-cap-ok,
+body.lumen-wp-theme-light .lumen-wp-status--ok,
+body.lumen-wp-theme-light .lumen-wp-tools-health li strong.is-ok {
+	color: #047857 !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-tools-health li strong.is-warn {
+	color: #b45309 !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-cap-no {
+	color: #78716c !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-cap-warn,
+body.lumen-wp-theme-light .lumen-wp-status--error {
+	color: #be123c !important;
+}
+
+/* Pagination */
+body.lumen-wp-theme-light .lumen-wp-recent-page {
+	background: #ffffff;
+	border-color: rgba(28, 25, 23, 0.22);
+	color: #44403c !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-recent-page:hover {
+	border-color: rgba(162, 28, 175, 0.5);
+	color: #1c1917 !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-recent-page.is-active {
+	background: rgba(162, 28, 175, 0.14);
+	border-color: rgba(162, 28, 175, 0.55);
+	color: #86198f !important;
+	box-shadow: none;
+}
+
+body.lumen-wp-theme-light .lumen-wp-recent-pager .button.lumen-wp-pager-btn {
+	background: #ffffff !important;
+	border-color: rgba(28, 25, 23, 0.22) !important;
+	color: #1c1917 !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log__row.is-ok .lumen-wp-log__badge {
+	color: #065f46 !important;
+	border-color: rgba(4, 120, 87, 0.4) !important;
+	background: rgba(16, 185, 129, 0.14) !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log__row.is-ok .lumen-wp-log__msg {
+	color: #44403c !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log__row.is-error .lumen-wp-log__badge {
+	color: #9f1239 !important;
+	border-color: rgba(190, 18, 60, 0.4) !important;
+	background: rgba(244, 63, 94, 0.12) !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log__row.is-error .lumen-wp-log__msg,
+body.lumen-wp-theme-light .lumen-wp-error-list__title {
+	color: #be123c !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-log__row.is-info .lumen-wp-log__badge {
+	color: #86198f !important;
+	border-color: rgba(162, 28, 175, 0.4) !important;
+	background: rgba(162, 28, 175, 0.1) !important;
+}
+
+body.lumen-wp-theme-light a.lumen-wp-error-list__title:hover,
+body.lumen-wp-theme-light a.lumen-wp-error-list__title:focus {
+	color: #9f1239;
+}
+
+body.lumen-wp-theme-light .lumen-wp-error-list__msg {
+	color: #57534e;
+}
+
+body.lumen-wp-theme-light .lumen-wp-errors-shell {
+	border-color: rgba(190, 18, 60, 0.35);
+}
+
+body.lumen-wp-theme-light .lumen-wp-modal__backdrop {
+	background: rgba(28, 25, 23, 0.4);
+}
+
+body.lumen-wp-theme-light .lumen-wp-modal__dialog {
+	background: #ffffff;
+	box-shadow: 0 24px 60px rgba(28, 25, 23, 0.18);
+}
+
+body.lumen-wp-theme-light .lumen-wp-history__badge,
+body.lumen-wp-theme-light .lumen-wp-history__item.is-done .lumen-wp-history__badge {
+	color: #047857;
+}
+
+body.lumen-wp-theme-light .lumen-wp-dash-banner,
+body.lumen-wp-theme-light .lumen-wp-icons-status {
+	background: #ffffff;
+	border: 1px solid rgba(28, 25, 23, 0.16);
+	color: #44403c;
+}
+
+body.lumen-wp-theme-light .lumen-wp-dropzone {
+	border-color: rgba(28, 25, 23, 0.18);
+}
+
+body.lumen-wp-theme-light .lumen-wp-dropzone__formats span,
+body.lumen-wp-theme-light .lumen-wp-icons-formats span {
+	background: rgba(162, 28, 175, 0.12) !important;
+	color: #86198f !important;
+	border: 1px solid rgba(162, 28, 175, 0.4) !important;
+	box-shadow: none !important;
+}
+
+body.lumen-wp-theme-light #lumen-wp-meta.postbox {
+	background: var(--lumen-surface);
+	border-color: var(--lumen-border);
+	color: var(--lumen-text);
+}
+
+body.lumen-wp-theme-light #lumen-wp-meta.postbox .postbox-header,
+body.lumen-wp-theme-light #lumen-wp-meta.postbox .hndle {
+	background: #fafaf9;
+	color: var(--lumen-text);
+	border-color: var(--lumen-border);
+}
+
+.lumen-wp-metabox.lumen-wp-theme-light {
+	background: var(--lumen-bg);
+	background-image: var(--lumen-mesh);
+	color: var(--lumen-text);
+	border-radius: var(--lumen-radius-lg);
+	padding: 1rem;
 }

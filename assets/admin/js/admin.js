@@ -201,15 +201,43 @@
     if (!el) return;
     el.hidden = true;
     el.setAttribute('aria-hidden', 'true');
-    el.classList.remove('is-success', 'is-error', 'is-open');
+    el.classList.remove('is-success', 'is-error', 'is-info', 'is-open');
     document.documentElement.classList.remove('lumen-wp-modal-open');
+    var action = el.querySelector('#lumen-wp-modal-action');
+    if (action) {
+      hideModalAction(action);
+    }
     if (lastFocus && typeof lastFocus.focus === 'function') {
       lastFocus.focus();
     }
     lastFocus = null;
   }
 
-  function openModal(type, title, message) {
+  function hideModalAction(action) {
+    if (!action) return;
+    action.hidden = true;
+    action.classList.remove('is-visible');
+    action.setAttribute('aria-hidden', 'true');
+    action.setAttribute('tabindex', '-1');
+    action.removeAttribute('href');
+    action.textContent = '';
+  }
+
+  function showModalAction(action, url, label) {
+    if (!action || !url) {
+      hideModalAction(action);
+      return;
+    }
+    action.hidden = false;
+    action.classList.add('is-visible');
+    action.setAttribute('aria-hidden', 'false');
+    action.removeAttribute('tabindex');
+    action.setAttribute('href', url);
+    action.textContent = label || '';
+  }
+
+  function openModal(type, title, message, opts) {
+    opts = opts || {};
     var el = ensureModal();
     if (!el) {
       window.alert(message || title || '');
@@ -217,20 +245,33 @@
     }
 
     lastFocus = document.activeElement;
-    var kind = type === 'error' ? 'error' : 'success';
+    var kind = type === 'error' ? 'error' : type === 'info' ? 'info' : 'success';
     var i18n = lumenWp.i18n || {};
+    var defaultTitle =
+      kind === 'error' ? i18n.errorTitle : kind === 'info' ? i18n.infoTitle : i18n.successTitle;
 
-    el.classList.remove('is-success', 'is-error');
-    el.classList.add(kind === 'error' ? 'is-error' : 'is-success', 'is-open');
-    el.querySelector('#lumen-wp-modal-title').textContent =
-      title || (kind === 'error' ? i18n.errorTitle : i18n.successTitle) || '';
+    el.classList.remove('is-success', 'is-error', 'is-info');
+    el.classList.add('is-' + kind, 'is-open');
+    el.querySelector('#lumen-wp-modal-title').textContent = title || defaultTitle || '';
     el.querySelector('#lumen-wp-modal-message').textContent = message || '';
+
+    var action = el.querySelector('#lumen-wp-modal-action');
+    if (action) {
+      // Lien « Ouvrir les réglages » uniquement pour la modale IA non configurée.
+      if (opts.actionUrl) {
+        showModalAction(action, opts.actionUrl, opts.actionLabel || i18n.openSettings || '');
+      } else {
+        hideModalAction(action);
+      }
+    }
 
     el.hidden = false;
     el.setAttribute('aria-hidden', 'false');
     document.documentElement.classList.add('lumen-wp-modal-open');
 
-    var btn = el.querySelector('[data-lumen-modal-close].button, .lumen-wp-modal__actions .button');
+    var btn = el.querySelector(
+      '#lumen-wp-modal-action.is-visible, [data-lumen-modal-close].button-primary, .lumen-wp-modal__actions .button-primary'
+    );
     if (btn) {
       setTimeout(function () {
         btn.focus();
@@ -241,13 +282,21 @@
   window.lumenWpModal = {
     show: function (opts) {
       opts = opts || {};
-      openModal(opts.type || 'success', opts.title || '', opts.message || '');
+      openModal(opts.type || 'success', opts.title || '', opts.message || '', opts);
     },
     success: function (message, title) {
       openModal('success', title || (lumenWp.i18n && lumenWp.i18n.successTitle), message);
     },
     error: function (message, title) {
       openModal('error', title || (lumenWp.i18n && lumenWp.i18n.errorTitle), message);
+    },
+    info: function (message, title, opts) {
+      openModal(
+        'info',
+        title || (lumenWp.i18n && lumenWp.i18n.infoTitle),
+        message,
+        opts || {}
+      );
     },
     close: closeModal
   };
@@ -478,6 +527,43 @@
     });
   }
 
+  function appendErrorListItem($ul, err) {
+    var title = (err && err.title) || (err && err.id ? '#' + err.id : 'Média');
+    var message = (err && err.message) || '';
+    var url = (err && err.edit_url) || '';
+    var $li = $('<li class="lumen-wp-error-list__item"/>');
+    if (url) {
+      $li.append(
+        $('<a class="lumen-wp-error-list__title" target="_blank" rel="noopener noreferrer"/>')
+          .attr('href', url)
+          .text(title)
+      );
+    } else {
+      $li.append($('<span class="lumen-wp-error-list__title"/>').text(title));
+    }
+    if (message) {
+      $li.append($('<span class="lumen-wp-error-list__msg"/>').text(message));
+    }
+    $ul.append($li);
+  }
+
+  function renderBulkErrors(errors) {
+    var $shell = $('#lumen-wp-bulk-errors-shell');
+    var $ul = $('#lumen-wp-bulk-errors');
+    var $meta = $('#lumen-wp-bulk-errors-meta');
+    if (!$shell.length || !$ul.length) return;
+
+    var rows = errors || [];
+    $ul.empty();
+    if ($meta.length) {
+      $meta.text(rows.length ? rows.length + ' erreur(s)' : '0');
+    }
+    $shell.prop('hidden', rows.length === 0);
+    rows.forEach(function (err) {
+      appendErrorListItem($ul, err);
+    });
+  }
+
   function formatHistoryWhen(startedAt, endedAt) {
     if (!startedAt) return '—';
     var start = new Date(startedAt);
@@ -513,6 +599,16 @@
       var ended = entry.ended === 'done' ? 'done' : 'stopped';
       var badge = ended === 'done' ? 'Terminé' : 'Arrêté';
       var opts = [];
+      if (entry.types && entry.types.length) {
+        var typeLabels = { image: 'Images', pdf: 'PDF', svg: 'SVG', video: 'Vidéos' };
+        opts.push(
+          entry.types
+            .map(function (t) {
+              return typeLabels[t] || t;
+            })
+            .join(', ')
+        );
+      }
       if (entry.force) opts.push('Déjà OK repris');
       if (entry.use_ai) {
         opts.push(entry.ai_label ? 'IA (' + entry.ai_label + ')' : 'IA');
@@ -537,7 +633,7 @@
           (entry.processed || 0) +
             ' / ' +
             (entry.total_estimate || 0) +
-            ' traitées — ' +
+            ' traités — ' +
             (entry.ok || 0) +
             ' OK · ' +
             (entry.err || 0) +
@@ -548,9 +644,13 @@
 
       var errors = entry.errors || [];
       if (errors.length) {
-        var $err = $('<ul class="lumen-wp-history__errors"/>');
-        errors.forEach(function (line) {
-          $err.append($('<li/>').text(line));
+        var $err = $('<ul class="lumen-wp-error-list lumen-wp-error-list--compact"/>');
+        errors.forEach(function (err) {
+          if (typeof err === 'string') {
+            appendErrorListItem($err, { title: err, message: '', edit_url: '' });
+          } else {
+            appendErrorListItem($err, err);
+          }
         });
         $li.append($err);
       }
@@ -572,6 +672,7 @@
     );
     $('#lumen-wp-bulk-status-text').text(job.last_message || status);
     renderBulkLog(job.log || []);
+    renderBulkErrors(job.errors || []);
 
     $('#lumen-wp-bulk-start').prop('disabled', status === 'running' || status === 'paused');
     $('#lumen-wp-bulk-pause').prop('disabled', status !== 'running');
@@ -665,11 +766,31 @@
     }
   });
 
+  $(document).on('click', '#lumen-wp-use-ai-label[data-ai-locked="1"]', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    var i18n = lumenWp.i18n || {};
+    window.lumenWpModal.info(i18n.aiNeededMessage || '', i18n.aiNeededTitle || '', {
+      actionUrl: lumenWp.settingsUrl || '',
+      actionLabel: i18n.openSettings || ''
+    });
+  });
+
   $(document).on('click', '#lumen-wp-bulk-start', function (e) {
     e.preventDefault();
+    var types = $('.lumen-wp-bulk-type:checked')
+      .map(function () {
+        return $(this).val();
+      })
+      .get();
+    if (!types.length) {
+      window.alert('Sélectionnez au moins un type de média.');
+      return;
+    }
     ajax('lumen_wp_bulk_start', {
       force: $('#lumen-wp-force').is(':checked') ? 1 : 0,
-      use_ai: $('#lumen-wp-use-ai').is(':checked') ? 1 : 0
+      use_ai: $('#lumen-wp-use-ai').is(':checked') ? 1 : 0,
+      types: types
     })
       .done(function (res) {
         if (!res || !res.success) {
@@ -701,7 +822,7 @@
           return;
         }
         applyBulkJob(res.data.job, res.data);
-        window.lumenWpModal.success(lumenWp.i18n.tickForced || 'Une image a été traitée.');
+        window.lumenWpModal.success(lumenWp.i18n.tickForced || 'Un média a été traité.');
       })
       .fail(function (xhr) {
         window.lumenWpModal.error(
@@ -895,6 +1016,28 @@
       .always(function () {
         $btn.prop('disabled', false).text(label);
       });
+  });
+
+  function applyUiThemePreview(theme) {
+    var next = theme === 'light' ? 'light' : 'dark';
+    var $body = $(document.body);
+    $body.removeClass('lumen-wp-theme-dark lumen-wp-theme-light').addClass('lumen-wp-theme-' + next);
+    $('.lumen-wp-metabox')
+      .removeClass('lumen-wp-theme-dark lumen-wp-theme-light')
+      .addClass('lumen-wp-theme-' + next);
+    var bg = next === 'light' ? '#f5f5f4' : '#0c0a09';
+    var $crit = $('#lumen-wp-critical');
+    if ($crit.length) {
+      $crit.text(
+        $crit
+          .text()
+          .replace(/background:\s*#[0-9a-fA-F]{3,8}\s*!important/g, 'background: ' + bg + ' !important')
+      );
+    }
+  }
+
+  $(document).on('change', '#lumen-wp-ui-theme', function () {
+    applyUiThemePreview($(this).val());
   });
 
   $(function () {
@@ -1144,7 +1287,7 @@
       return;
     }
 
-    var li = $root.data('label-images') || 'Images';
+    var li = $root.data('label-images') || 'Médias';
     var lv = $root.data('label-variants') || 'Variantes';
     var lb = $root.data('label-backups') || 'Sauvegardes';
     $root.html(
@@ -1239,7 +1382,7 @@
           return;
         }
         applyToolsHealth(res.data.health);
-        window.lumenWpModal.success(lumenWp.i18n.tickForced || 'Une image a été traitée.');
+        window.lumenWpModal.success(lumenWp.i18n.tickForced || 'Un média a été traité.');
       })
       .fail(function (xhr) {
         window.lumenWpModal.error(

@@ -67,6 +67,7 @@ final class Plugin
 		$files = [
 			'Optimizer.php',
 			'Seo.php',
+			'Media_Types.php',
 			'Vision_Ai.php',
 			'Bulk_Queue.php',
 			'Original_Backup.php',
@@ -113,7 +114,16 @@ final class Plugin
 			'ai_budget_month'    => 0,
 			'site_url'           => '',
 			'site_favicons'      => false,
+			'ui_theme'           => 'light',
 		];
+	}
+
+	/** @return 'dark'|'light' */
+	public static function ui_theme(): string
+	{
+		$theme = strtolower((string) (self::instance()->settings()['ui_theme'] ?? 'light'));
+
+		return $theme === 'dark' ? 'dark' : 'light';
 	}
 
 	/**
@@ -197,13 +207,23 @@ final class Plugin
 
 	/**
 	 * Traitement considéré terminé pour stats / skip / bulk.
-	 * En mode remplacement : le fichier principal doit être WebP ou AVIF.
+	 * Images raster : variantes (+ WebP/AVIF si remplacement).
+	 * SVG / PDF / vidéo : statut OK suffit (SEO only).
 	 */
 	public static function attachment_is_done(int $attachment_id): bool
 	{
+		$kind = Media_Types::kind($attachment_id);
+		if ($kind === Media_Types::KIND_OTHER) {
+			return false;
+		}
+
 		$status = (string) get_post_meta($attachment_id, self::META_STATUS, true);
 		if ($status !== 'ok') {
 			return false;
+		}
+
+		if ($kind !== Media_Types::KIND_IMAGE) {
+			return true;
 		}
 
 		$variants = get_post_meta($attachment_id, self::META_VARIANTS, true);

@@ -32,8 +32,13 @@ final class Seo
 			'alt_text_seo'    => $human,
 			'alt_text_wcag'   => $human,
 			'alt_text_short'  => $human,
-			'caption'         => '',
-			'description'     => '',
+			// Légende / description : dérivées du nom (utile surtout sans IA : SVG, etc.).
+			'caption'         => $human,
+			'description'     => sprintf(
+				/* translators: %s: humanized media title from filename */
+				__('Média « %s ».', 'lumen-wp'),
+				$human
+			),
 			'metadata_source' => 'filename',
 		];
 

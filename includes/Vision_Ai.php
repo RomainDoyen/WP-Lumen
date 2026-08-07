@@ -469,10 +469,19 @@ final class Vision_Ai
 		}
 
 		try {
+			$kind  = Media_Types::kind($attachment_id);
+			if (! Media_Types::supports_ai($kind)) {
+				return [
+					'seo'          => $fallback,
+					'rate_limited' => false,
+					'error'        => __('L’IA Vision n’est pas disponible pour ce type de média.', 'lumen-wp'),
+				];
+			}
+
 			$thumb = $this->build_thumb($attachment_id);
-			$slug  = (string) ($fallback['slug'] ?? 'image');
+			$slug  = (string) ($fallback['slug'] ?? 'media');
 			$model = self::model_for($provider);
-			$raw   = $this->dispatch($provider, $api_key, $model, $thumb, $slug);
+			$raw   = $this->dispatch($provider, $api_key, $model, $thumb, $slug, $kind);
 			$parsed = $this->parse_metadata($raw);
 			$merged = $seo->merge_seo_fields($fallback, $parsed);
 			$merged['metadata_source'] = $provider;
@@ -647,68 +656,285 @@ final class Vision_Ai
 	 */
 	private function build_thumb(int $attachment_id): array
 	{
+		$kind = Media_Types::kind($attachment_id);
+
+		if ($kind === Media_Types::KIND_PDF || $kind === Media_Types::KIND_VIDEO) {
+			$preview = $this->resolve_document_preview($attachment_id, $kind);
+			if ($preview === null) {
+				throw new \RuntimeException(
+					$kind === Media_Types::KIND_PDF
+						? __('Impossible de générer un aperçu PDF pour l’IA (Imagick requis).', 'lumen-wp')
+						: __('Impossible d’obtenir une vignette vidéo pour l’IA.', 'lumen-wp')
+				);
+			}
+
+			return $this->thumb_from_image_file($preview['path'], $preview['mime'], ! empty($preview['temp']));
+		}
+
 		$file = get_attached_file($attachment_id);
 		if (! is_string($file) || ! is_readable($file)) {
 			throw new \RuntimeException(__('Impossible de lire l’image', 'lumen-wp'));
 		}
 
 		$mime = (string) get_post_mime_type($attachment_id) ?: 'image/jpeg';
+
+		return $this->thumb_from_image_file($file, $mime, false);
+	}
+
+	/**
+	 * @return array{path: string, mime: string, temp?: bool}|null
+	 */
+	private function resolve_document_preview(int $attachment_id, string $kind): ?array
+	{
+		$wp_preview = $this->wp_attachment_preview_file($attachment_id);
+		if ($wp_preview !== null) {
+			return $wp_preview;
+		}
+
+		$file = get_attached_file($attachment_id);
+		if (! is_string($file) || ! is_readable($file)) {
+			return null;
+		}
+
+		if ($kind === Media_Types::KIND_PDF) {
+			return $this->imagick_pdf_preview($file);
+		}
+
+		if ($kind === Media_Types::KIND_VIDEO) {
+			return $this->ffmpeg_video_frame($file);
+		}
+
+		return null;
+	}
+
+	/**
+	 * Aperçu WordPress (PDF/vidéo avec tailles générées).
+	 *
+	 * @return array{path: string, mime: string, temp?: bool}|null
+	 */
+	private function wp_attachment_preview_file(int $attachment_id): ?array
+	{
+		$meta = wp_get_attachment_metadata($attachment_id);
+		if (! is_array($meta) || empty($meta['sizes']) || ! is_array($meta['sizes'])) {
+			return null;
+		}
+
+		$file = get_attached_file($attachment_id);
+		if (! is_string($file) || $file === '') {
+			return null;
+		}
+
+		$base_dir = dirname($file);
+		$prefer   = ['large', 'medium_large', 'medium', 'thumbnail'];
+		$candidates = [];
+		foreach ($prefer as $size) {
+			if (! empty($meta['sizes'][$size]['file'])) {
+				$candidates[] = (string) $meta['sizes'][$size]['file'];
+			}
+		}
+		foreach ($meta['sizes'] as $size_meta) {
+			if (! empty($size_meta['file'])) {
+				$candidates[] = (string) $size_meta['file'];
+			}
+		}
+
+		foreach ($candidates as $rel) {
+			$path = $base_dir . '/' . ltrim(str_replace('\\', '/', $rel), '/');
+			if (! is_readable($path)) {
+				continue;
+			}
+			$mime = wp_check_filetype($path);
+			$mime_type = (string) ($mime['type'] ?? '');
+			if ($mime_type === '' || strpos($mime_type, 'image/') !== 0 || $mime_type === 'image/svg+xml') {
+				continue;
+			}
+
+			return ['path' => $path, 'mime' => $mime_type];
+		}
+
+		return null;
+	}
+
+	/**
+	 * @return array{path: string, mime: string, temp: bool}|null
+	 */
+	private function imagick_pdf_preview(string $pdf_path): ?array
+	{
+		if (! class_exists('\Imagick')) {
+			return null;
+		}
+
+		try {
+			$imagick = new \Imagick();
+			$imagick->setResolution(144, 144);
+			$imagick->readImage($pdf_path . '[0]');
+			$imagick->setIteratorIndex(0);
+			$imagick->setImageBackgroundColor('white');
+			if (defined('\Imagick::ALPHACHANNEL_REMOVE')) {
+				$imagick->setImageAlphaChannel(\Imagick::ALPHACHANNEL_REMOVE);
+			}
+			$imagick->setImageFormat('jpeg');
+			$imagick->setImageCompressionQuality(85);
+
+			$tmp = tempnam(\get_temp_dir(), 'lumen-pdf');
+			if ($tmp === false) {
+				$imagick->clear();
+				$imagick->destroy();
+
+				return null;
+			}
+			$out = $tmp . '.jpg';
+			@unlink($tmp);
+			$imagick->writeImage($out);
+			$imagick->clear();
+			$imagick->destroy();
+
+			if (! is_readable($out)) {
+				return null;
+			}
+
+			return ['path' => $out, 'mime' => 'image/jpeg', 'temp' => true];
+		} catch (\Throwable $e) {
+			return null;
+		}
+	}
+
+	/**
+	 * @return array{path: string, mime: string, temp: bool}|null
+	 */
+	private function ffmpeg_video_frame(string $video_path): ?array
+	{
+		$ffmpeg = $this->find_binary(['ffmpeg']);
+		if ($ffmpeg === null) {
+			return null;
+		}
+
+		$tmp = tempnam(\get_temp_dir(), 'lumen-vid');
+		if ($tmp === false) {
+			return null;
+		}
+		$out = $tmp . '.jpg';
+		@unlink($tmp);
+
+		$cmd = sprintf(
+			'%s -y -ss 00:00:01 -i %s -frames:v 1 -q:v 3 %s 2>/dev/null',
+			escapeshellarg($ffmpeg),
+			escapeshellarg($video_path),
+			escapeshellarg($out)
+		);
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_exec
+		exec($cmd, $output, $code);
+
+		if ($code !== 0 || ! is_readable($out) || filesize($out) < 32) {
+			@unlink($out);
+			// Retry at t=0.
+			$cmd0 = sprintf(
+				'%s -y -ss 00:00:00 -i %s -frames:v 1 -q:v 3 %s 2>/dev/null',
+				escapeshellarg($ffmpeg),
+				escapeshellarg($video_path),
+				escapeshellarg($out)
+			);
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_exec
+			exec($cmd0, $output, $code);
+			if ($code !== 0 || ! is_readable($out) || filesize($out) < 32) {
+				@unlink($out);
+
+				return null;
+			}
+		}
+
+		return ['path' => $out, 'mime' => 'image/jpeg', 'temp' => true];
+	}
+
+	/**
+	 * @param list<string> $names
+	 */
+	private function find_binary(array $names): ?string
+	{
+		foreach ($names as $name) {
+			$path = trim((string) shell_exec('command -v ' . escapeshellarg($name) . ' 2>/dev/null'));
+			if ($path !== '' && is_executable($path)) {
+				return $path;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * @return array{data_url: string, mime: string, base64: string}
+	 */
+	private function thumb_from_image_file(string $file, string $mime, bool $cleanup): array
+	{
 		$editor = \wp_get_image_editor($file);
 
-		if (is_wp_error($editor)) {
-			$bytes = file_get_contents($file);
+		try {
+			if (is_wp_error($editor)) {
+				$bytes = file_get_contents($file);
+				if ($bytes === false) {
+					throw new \RuntimeException(__('Impossible de lire l’image', 'lumen-wp'));
+				}
+
+				return [
+					'data_url' => 'data:' . $mime . ';base64,' . base64_encode($bytes),
+					'mime'     => $mime,
+					'base64'   => base64_encode($bytes),
+				];
+			}
+
+			$size = $editor->get_size();
+			$w    = (int) ($size['width'] ?? 0);
+			$h    = (int) ($size['height'] ?? 0);
+			$max  = max($w, $h);
+			if ($max > self::THUMB_MAX) {
+				$editor->resize(self::THUMB_MAX, self::THUMB_MAX, false);
+			}
+
+			$tmp = tempnam(\get_temp_dir(), 'lumen-vision');
+			if ($tmp === false) {
+				throw new \RuntimeException(__('Impossible de préparer la miniature IA', 'lumen-wp'));
+			}
+			$saved = $editor->save($tmp, 'image/jpeg');
+			if (is_wp_error($saved) || empty($saved['path'])) {
+				@unlink($tmp);
+				throw new \RuntimeException(__('Impossible de préparer la miniature IA', 'lumen-wp'));
+			}
+
+			$bytes = file_get_contents($saved['path']);
+			@unlink($saved['path']);
+			if ($tmp !== $saved['path']) {
+				@unlink($tmp);
+			}
+
 			if ($bytes === false) {
 				throw new \RuntimeException(__('Impossible de lire l’image', 'lumen-wp'));
 			}
 
+			$b64 = base64_encode($bytes);
+
 			return [
-				'data_url' => 'data:' . $mime . ';base64,' . base64_encode($bytes),
-				'mime'     => $mime,
-				'base64'   => base64_encode($bytes),
+				'data_url' => 'data:image/jpeg;base64,' . $b64,
+				'mime'     => 'image/jpeg',
+				'base64'   => $b64,
 			];
+		} finally {
+			if ($cleanup) {
+				@unlink($file);
+			}
 		}
-
-		$size = $editor->get_size();
-		$w    = (int) ($size['width'] ?? 0);
-		$h    = (int) ($size['height'] ?? 0);
-		$max  = max($w, $h);
-		if ($max > self::THUMB_MAX) {
-			$editor->resize(self::THUMB_MAX, self::THUMB_MAX, false);
-		}
-
-		$tmp = tempnam(\get_temp_dir(), 'lumen-vision');
-		if ($tmp === false) {
-			throw new \RuntimeException(__('Impossible de préparer la miniature IA', 'lumen-wp'));
-		}
-		$saved = $editor->save($tmp, 'image/jpeg');
-		if (is_wp_error($saved) || empty($saved['path'])) {
-			@unlink($tmp);
-			throw new \RuntimeException(__('Impossible de préparer la miniature IA', 'lumen-wp'));
-		}
-
-		$bytes = file_get_contents($saved['path']);
-		@unlink($saved['path']);
-		if ($tmp !== $saved['path']) {
-			@unlink($tmp);
-		}
-
-		if ($bytes === false) {
-			throw new \RuntimeException(__('Impossible de lire l’image', 'lumen-wp'));
-		}
-
-		$b64 = base64_encode($bytes);
-
-		return [
-			'data_url' => 'data:image/jpeg;base64,' . $b64,
-			'mime'     => 'image/jpeg',
-			'base64'   => $b64,
-		];
 	}
 
-	private function system_prompt(string $slug_hint): string
+	private function system_prompt(string $slug_hint, string $kind = Media_Types::KIND_IMAGE): string
 	{
+		$subject = 'l\'image fournie';
+		if ($kind === Media_Types::KIND_PDF) {
+			$subject = 'l\'aperçu / première page du document PDF fourni';
+		} elseif ($kind === Media_Types::KIND_VIDEO) {
+			$subject = 'la vignette / image extraite de la vidéo fournie';
+		}
+
 		return 'Tu es expert SEO, accessibilité web (WCAG 2.2) et rédaction WordPress en français.
-Analyse l\'image fournie et réponds UNIQUEMENT avec un objet JSON valide (sans markdown), avec exactement ces clés :
+Analyse ' . $subject . ' et réponds UNIQUEMENT avec un objet JSON valide (sans markdown), avec exactement ces clés :
 - "title" : titre média court
 - "alt_text_seo" : alt orienté mots-clés naturels (max 125 caractères)
 - "alt_text_wcag" : description accessible de ce que voit un utilisateur non voyant (max 150 caractères)
@@ -722,25 +948,25 @@ Contexte slug fichier : "' . $slug_hint . '".';
 	/**
 	 * @param array{data_url: string, mime: string, base64: string} $thumb
 	 */
-	private function dispatch(string $provider, string $api_key, string $model, array $thumb, string $slug): string
+	private function dispatch(string $provider, string $api_key, string $model, array $thumb, string $slug, string $kind = Media_Types::KIND_IMAGE): string
 	{
 		switch ($provider) {
 			case 'openai':
-				return $this->call_openai($api_key, $model, $thumb, $slug);
+				return $this->call_openai($api_key, $model, $thumb, $slug, $kind);
 			case 'anthropic':
-				return $this->call_anthropic($api_key, $model, $thumb, $slug);
+				return $this->call_anthropic($api_key, $model, $thumb, $slug, $kind);
 			case 'gemini':
-				return $this->call_gemini($api_key, $model, $thumb, $slug);
+				return $this->call_gemini($api_key, $model, $thumb, $slug, $kind);
 			case 'mistral':
 			default:
-				return $this->call_mistral($api_key, $model, $thumb, $slug);
+				return $this->call_mistral($api_key, $model, $thumb, $slug, $kind);
 		}
 	}
 
 	/**
 	 * @param array{data_url: string, mime: string, base64: string} $thumb
 	 */
-	private function call_mistral(string $api_key, string $model, array $thumb, string $slug): string
+	private function call_mistral(string $api_key, string $model, array $thumb, string $slug, string $kind = Media_Types::KIND_IMAGE): string
 	{
 		$body = [
 			'model'           => $model,
@@ -748,7 +974,7 @@ Contexte slug fichier : "' . $slug_hint . '".';
 			'max_tokens'      => 700,
 			'response_format' => ['type' => 'json_object'],
 			'messages'        => [
-				['role' => 'system', 'content' => $this->system_prompt($slug)],
+				['role' => 'system', 'content' => $this->system_prompt($slug, $kind)],
 				[
 					'role'    => 'user',
 					'content' => [
@@ -780,7 +1006,7 @@ Contexte slug fichier : "' . $slug_hint . '".';
 	/**
 	 * @param array{data_url: string, mime: string, base64: string} $thumb
 	 */
-	private function call_openai(string $api_key, string $model, array $thumb, string $slug): string
+	private function call_openai(string $api_key, string $model, array $thumb, string $slug, string $kind = Media_Types::KIND_IMAGE): string
 	{
 		$body = [
 			'model'           => $model,
@@ -788,7 +1014,7 @@ Contexte slug fichier : "' . $slug_hint . '".';
 			'max_tokens'      => 700,
 			'response_format' => ['type' => 'json_object'],
 			'messages'        => [
-				['role' => 'system', 'content' => $this->system_prompt($slug)],
+				['role' => 'system', 'content' => $this->system_prompt($slug, $kind)],
 				[
 					'role'    => 'user',
 					'content' => [
@@ -820,12 +1046,12 @@ Contexte slug fichier : "' . $slug_hint . '".';
 	/**
 	 * @param array{data_url: string, mime: string, base64: string} $thumb
 	 */
-	private function call_anthropic(string $api_key, string $model, array $thumb, string $slug): string
+	private function call_anthropic(string $api_key, string $model, array $thumb, string $slug, string $kind = Media_Types::KIND_IMAGE): string
 	{
 		$body = [
 			'model'      => $model,
 			'max_tokens' => 700,
-			'system'     => $this->system_prompt($slug),
+			'system'     => $this->system_prompt($slug, $kind),
 			'messages'   => [
 				[
 					'role'    => 'user',
@@ -877,12 +1103,12 @@ Contexte slug fichier : "' . $slug_hint . '".';
 	/**
 	 * @param array{data_url: string, mime: string, base64: string} $thumb
 	 */
-	private function call_gemini(string $api_key, string $model, array $thumb, string $slug): string
+	private function call_gemini(string $api_key, string $model, array $thumb, string $slug, string $kind = Media_Types::KIND_IMAGE): string
 	{
 		$url  = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($api_key);
 		$body = [
 			'system_instruction' => [
-				'parts' => [['text' => $this->system_prompt($slug)]],
+				'parts' => [['text' => $this->system_prompt($slug, $kind)]],
 			],
 			'contents' => [
 				[

@@ -9,6 +9,7 @@ final class Bulk_Queue
 	public const OPTION = 'lumen_wp_bulk_job';
 	public const HISTORY_OPTION = 'lumen_wp_bulk_history';
 	public const HISTORY_MAX = 10;
+	public const ERRORS_MAX = 200;
 	public const CRON_HOOK = 'lumen_wp_bulk_tick';
 	public const LOCK = 'lumen_wp_bulk_lock';
 
@@ -32,6 +33,7 @@ final class Bulk_Queue
 			'status'         => 'idle',
 			'force'          => false,
 			'use_ai'         => false,
+			'types'          => Media_Types::all_types(),
 			'ai_provider'    => 'none',
 			'ai_label'       => '',
 			'cursor'         => 0,
@@ -47,7 +49,85 @@ final class Bulk_Queue
 			'user_name'      => '',
 			'archived'       => false,
 			'log'            => [],
+			'errors'         => [],
 		];
+	}
+
+	/**
+	 * @param mixed $errors
+	 * @return list<array{id: int, title: string, message: string, edit_url: string}>
+	 */
+	public static function normalize_errors($errors): array
+	{
+		if (! is_array($errors)) {
+			return [];
+		}
+
+		$out = [];
+		foreach ($errors as $row) {
+			if (is_string($row)) {
+				$text = trim($row);
+				if ($text === '') {
+					continue;
+				}
+				$id = 0;
+				$msg = $text;
+				if (preg_match('/^#(\d+)\s*[—\-–]\s*(.*)$/u', $text, $m)) {
+					$id  = (int) $m[1];
+					$msg = trim((string) $m[2]);
+				}
+				$out[] = self::make_error_entry($id, $msg !== '' ? $msg : $text);
+				continue;
+			}
+
+			if (! is_array($row)) {
+				continue;
+			}
+
+			$id = (int) ($row['id'] ?? 0);
+			$out[] = [
+				'id'       => $id,
+				'title'    => (string) ($row['title'] ?? ($id > 0 ? '#' . $id : __('Média', 'lumen-wp'))),
+				'message'  => (string) ($row['message'] ?? ''),
+				'edit_url' => (string) ($row['edit_url'] ?? ($id > 0 ? self::edit_url_for($id) : '')),
+			];
+		}
+
+		return $out;
+	}
+
+	/**
+	 * @return array{id: int, title: string, message: string, edit_url: string}
+	 */
+	public static function make_error_entry(int $attachment_id, string $message): array
+	{
+		$title = '';
+		if ($attachment_id > 0) {
+			$title = (string) get_the_title($attachment_id);
+			if ($title === '') {
+				$file = get_attached_file($attachment_id);
+				$title = is_string($file) && $file !== '' ? basename($file) : '#' . $attachment_id;
+			}
+		}
+		if ($title === '') {
+			$title = __('Média', 'lumen-wp');
+		}
+
+		return [
+			'id'       => $attachment_id,
+			'title'    => $title,
+			'message'  => $message,
+			'edit_url' => $attachment_id > 0 ? self::edit_url_for($attachment_id) : '',
+		];
+	}
+
+	public static function edit_url_for(int $attachment_id): string
+	{
+		$link = get_edit_post_link($attachment_id, 'raw');
+
+		return is_string($link) && $link !== ''
+			? $link
+			: admin_url('post.php?post=' . $attachment_id . '&action=edit');
 	}
 
 	/**
@@ -65,7 +145,8 @@ final class Bulk_Queue
 		$out = [];
 		foreach ($stored as $row) {
 			if (is_array($row) && ! empty($row['started_at'])) {
-				$out[] = $row;
+				$row['errors'] = self::normalize_errors($row['errors'] ?? []);
+				$out[]         = $row;
 			}
 		}
 
@@ -132,6 +213,8 @@ final class Bulk_Queue
 		if (! is_array($job['log'] ?? null)) {
 			$job['log'] = [];
 		}
+		$job['types']  = Media_Types::normalize_types($job['types'] ?? Media_Types::all_types());
+		$job['errors'] = self::normalize_errors($job['errors'] ?? []);
 
 		return $job;
 	}
@@ -151,6 +234,15 @@ final class Bulk_Queue
 
 		$force  = ! empty($_POST['force']); // phpcs:ignore WordPress.Security.NonceVerification
 		$use_ai = ! empty($_POST['use_ai']) || ! empty($_POST['use_mistral']); // phpcs:ignore WordPress.Security.NonceVerification
+		// phpcs:ignore WordPress.Security.NonceVerification
+		$raw_types = isset($_POST['types']) ? wp_unslash($_POST['types']) : Media_Types::all_types();
+		if (is_string($raw_types)) {
+			$raw_types = array_filter(array_map('trim', explode(',', $raw_types)));
+		}
+		$types = Media_Types::normalize_types($raw_types);
+		if ($types === []) {
+			wp_send_json_error(['message' => __('Sélectionnez au moins un type de média.', 'lumen-wp')], 400);
+		}
 
 		$current = self::job();
 		if (($current['status'] ?? '') === 'running') {
@@ -163,11 +255,12 @@ final class Bulk_Queue
 		}
 
 		$user  = wp_get_current_user();
-		$total = $this->count_pending($force);
+		$total = $this->count_pending($force, $types);
 		$job   = self::defaults();
 		$job['status']         = 'running';
 		$job['force']          = $force;
 		$job['use_ai']         = $use_ai;
+		$job['types']          = $types;
 		$job['ai_provider']    = $use_ai ? Vision_Ai::active_provider() : 'none';
 		$job['ai_label']       = $use_ai ? Vision_Ai::provider_label(Vision_Ai::active_provider()) : '';
 		$job['cursor']         = 0;
@@ -177,7 +270,7 @@ final class Bulk_Queue
 		$job['user_name']      = (string) ($user->display_name !== '' ? $user->display_name : $user->user_login);
 		$job['last_message']   = sprintf(
 			/* translators: %d: estimated total */
-			__('Démarré — %d image(s) estimée(s).', 'lumen-wp'),
+			__('Démarré — %d média(s) estimé(s).', 'lumen-wp'),
 			$total
 		);
 		$job['log'] = [$this->log_line($job['last_message'], true)];
@@ -309,7 +402,8 @@ final class Bulk_Queue
 
 			$force  = ! empty($job['force']);
 			$use_ai = ! empty($job['use_ai']);
-			$next   = $this->next_id((int) $job['cursor'], $force);
+			$types  = Media_Types::normalize_types($job['types'] ?? Media_Types::all_types());
+			$next   = $this->next_id((int) $job['cursor'], $force, $types);
 
 			if ($next <= 0) {
 				$job['status'] = 'done';
@@ -331,7 +425,11 @@ final class Bulk_Queue
 			$result = (new Hooks())->process($next, $force, $use_ai);
 			$ok     = ! empty($result['ok']);
 			$msg    = (string) ($result['message'] ?? ($result['status'] ?? ''));
-			$line   = '#' . $next . ' — ' . ($msg !== '' ? $msg : ($ok ? 'ok' : 'error'));
+			if ($msg === '') {
+				$msg = $ok ? 'ok' : 'error';
+			}
+			$entry  = self::make_error_entry($next, $msg);
+			$line   = '#' . $next . ' — ' . $entry['title'] . ' — ' . $msg;
 
 			$job['cursor']    = $next;
 			$job['processed'] = (int) $job['processed'] + 1;
@@ -339,6 +437,9 @@ final class Bulk_Queue
 				$job['ok'] = (int) $job['ok'] + 1;
 			} else {
 				$job['err'] = (int) $job['err'] + 1;
+				$errors     = self::normalize_errors($job['errors'] ?? []);
+				array_unshift($errors, $entry);
+				$job['errors'] = array_slice($errors, 0, self::ERRORS_MAX);
 			}
 			$job['last_message'] = $line;
 			$job['log']          = $this->push_log($job['log'] ?? [], $line, $ok);
@@ -373,45 +474,56 @@ final class Bulk_Queue
 		check_ajax_referer('lumen_wp_admin', 'nonce');
 	}
 
-	private function count_pending(bool $force): int
+	/**
+	 * @param list<string> $types
+	 */
+	private function count_pending(bool $force, array $types): int
 	{
 		global $wpdb;
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
-		$sql = $this->pending_sql($force, false);
+		$sql = $this->pending_sql($force, false, 0, $types);
 		$total = (int) $wpdb->get_var($sql['sql']);
 		// phpcs:enable
 
 		return max(0, $total);
 	}
 
-	private function next_id(int $cursor, bool $force): int
+	/**
+	 * @param list<string> $types
+	 */
+	private function next_id(int $cursor, bool $force, array $types): int
 	{
 		global $wpdb;
-		$built = $this->pending_sql($force, true, $cursor);
+		$built = $this->pending_sql($force, true, $cursor, $types);
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
-		$id = $wpdb->get_var($wpdb->prepare($built['sql'], ...$built['args']));
+		$id = $built['args'] === []
+			? $wpdb->get_var($built['sql'])
+			: $wpdb->get_var($wpdb->prepare($built['sql'], ...$built['args']));
 		// phpcs:enable
 
 		return (int) $id;
 	}
 
 	/**
+	 * @param list<string> $types
 	 * @return array{sql: string, args: list<mixed>}
 	 */
-	private function pending_sql(bool $force, bool $next_only, int $cursor = 0): array
+	private function pending_sql(bool $force, bool $next_only, int $cursor = 0, array $types = []): array
 	{
 		global $wpdb;
 
+		$types    = Media_Types::normalize_types($types === [] ? Media_Types::all_types() : $types);
+		$mime_sql = Media_Types::mime_where_sql($types, 'p');
 		$status   = Plugin::META_STATUS;
 		$variants = Plugin::META_VARIANTS;
 		$args     = [];
 
 		if ($force) {
-			$sql = "SELECT " . ($next_only ? 'p.ID' : 'COUNT(p.ID)') . "
+			$sql = 'SELECT ' . ($next_only ? 'p.ID' : 'COUNT(p.ID)') . "
 				FROM {$wpdb->posts} p
 				WHERE p.post_type = 'attachment'
 				  AND p.post_status = 'inherit'
-				  AND p.post_mime_type LIKE 'image/%'";
+				  AND {$mime_sql}";
 			if ($next_only) {
 				$sql .= ' AND p.ID > %d ORDER BY p.ID ASC LIMIT 1';
 				$args[] = $cursor;
@@ -421,38 +533,52 @@ final class Bulk_Queue
 		}
 
 		$replace = ! empty(Plugin::instance()->settings()['replace_original']);
+		$pending_parts = [];
 
-		if ($replace) {
-			$sql = "SELECT " . ($next_only ? 'p.ID' : 'COUNT(DISTINCT p.ID)') . "
-				FROM {$wpdb->posts} p
-				LEFT JOIN {$wpdb->postmeta} s
-					ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
-				LEFT JOIN {$wpdb->postmeta} v
-					ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value != '' AND v.meta_value != 'a:0:{}'
-				WHERE p.post_type = 'attachment'
-				  AND p.post_status = 'inherit'
-				  AND p.post_mime_type LIKE 'image/%%'
-				  AND NOT (
-					s.meta_id IS NOT NULL
-					AND v.meta_id IS NOT NULL
-					AND p.post_mime_type IN ('image/webp', 'image/avif')
-				  )";
-			$args[] = $status;
-			$args[] = $variants;
-		} else {
-			$sql = "SELECT " . ($next_only ? 'p.ID' : 'COUNT(DISTINCT p.ID)') . "
-				FROM {$wpdb->posts} p
-				LEFT JOIN {$wpdb->postmeta} s
-					ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
-				LEFT JOIN {$wpdb->postmeta} v
-					ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value != '' AND v.meta_value != 'a:0:{}'
-				WHERE p.post_type = 'attachment'
-				  AND p.post_status = 'inherit'
-				  AND p.post_mime_type LIKE 'image/%%'
-				  AND (s.meta_id IS NULL OR v.meta_id IS NULL)";
-			$args[] = $status;
-			$args[] = $variants;
+		if (in_array(Media_Types::KIND_IMAGE, $types, true)) {
+			$img_mime = Media_Types::mime_where_sql([Media_Types::KIND_IMAGE], 'p');
+			if ($replace) {
+				$pending_parts[] = "(
+					{$img_mime}
+					AND NOT (
+						s.meta_id IS NOT NULL
+						AND v.meta_id IS NOT NULL
+						AND p.post_mime_type IN ('image/webp', 'image/avif')
+					)
+				)";
+			} else {
+				$pending_parts[] = "(
+					{$img_mime}
+					AND (s.meta_id IS NULL OR v.meta_id IS NULL)
+				)";
+			}
 		}
+
+		foreach ([Media_Types::KIND_SVG, Media_Types::KIND_PDF, Media_Types::KIND_VIDEO] as $doc_kind) {
+			if (! in_array($doc_kind, $types, true)) {
+				continue;
+			}
+			$doc_mime = Media_Types::mime_where_sql([$doc_kind], 'p');
+			$pending_parts[] = "({$doc_mime} AND s.meta_id IS NULL)";
+		}
+
+		if ($pending_parts === []) {
+			return ['sql' => 'SELECT ' . ($next_only ? '0' : '0') . ' WHERE 0=1', 'args' => []];
+		}
+
+		$pending_sql = implode(' OR ', $pending_parts);
+
+		$sql = 'SELECT ' . ($next_only ? 'p.ID' : 'COUNT(DISTINCT p.ID)') . "
+			FROM {$wpdb->posts} p
+			LEFT JOIN {$wpdb->postmeta} s
+				ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
+			LEFT JOIN {$wpdb->postmeta} v
+				ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value != '' AND v.meta_value != 'a:0:{}'
+			WHERE p.post_type = 'attachment'
+			  AND p.post_status = 'inherit'
+			  AND ({$pending_sql})";
+		$args[] = $status;
+		$args[] = $variants;
 
 		if ($next_only) {
 			$sql .= ' AND p.ID > %d ORDER BY p.ID ASC LIMIT 1';
@@ -461,8 +587,7 @@ final class Bulk_Queue
 
 		// For COUNT, prepare with args.
 		if (! $next_only && $args !== []) {
-			global $wpdb;
-			$sql = $wpdb->prepare($sql, ...$args) ?: $sql;
+			$sql  = $wpdb->prepare($sql, ...$args) ?: $sql;
 			$args = [];
 		}
 
@@ -483,19 +608,26 @@ final class Bulk_Queue
 			return;
 		}
 
-		$errors = [];
-		$log    = is_array($job['log'] ?? null) ? $job['log'] : [];
-		foreach ($log as $row) {
-			if (! is_array($row) || ($row['ok'] ?? true) !== false) {
-				continue;
-			}
-			$text = trim((string) ($row['t'] ?? ''));
-			if ($text === '') {
-				continue;
-			}
-			$errors[] = $text;
-			if (count($errors) >= 5) {
-				break;
+		$errors = self::normalize_errors($job['errors'] ?? []);
+		// Fallback legacy : extraire depuis le log si aucune erreur structurée.
+		if ($errors === []) {
+			$log = is_array($job['log'] ?? null) ? $job['log'] : [];
+			foreach ($log as $row) {
+				if (! is_array($row) || ($row['ok'] ?? true) !== false) {
+					continue;
+				}
+				$text = trim((string) ($row['t'] ?? ''));
+				if ($text === '') {
+					continue;
+				}
+				$parsed = self::normalize_errors([$text]);
+				if ($parsed === []) {
+					continue;
+				}
+				$errors[] = $parsed[0];
+				if (count($errors) >= self::ERRORS_MAX) {
+					break;
+				}
 			}
 		}
 
@@ -510,6 +642,7 @@ final class Bulk_Queue
 			'total_estimate' => (int) ($job['total_estimate'] ?? 0),
 			'force'          => ! empty($job['force']),
 			'use_ai'         => ! empty($job['use_ai']),
+			'types'          => Media_Types::normalize_types($job['types'] ?? Media_Types::all_types()),
 			'ai_provider'    => (string) ($job['ai_provider'] ?? 'none'),
 			'ai_label'       => (string) ($job['ai_label'] ?? ''),
 			'user_id'        => (int) ($job['user_id'] ?? 0),

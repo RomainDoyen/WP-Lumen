@@ -97,18 +97,19 @@ final class Hooks
 			return;
 		}
 		$printed = true;
+		$bg      = Plugin::ui_theme() === 'light' ? '#f5f5f4' : '#0c0a09';
 		?>
 		<style id="lumen-wp-critical">
 			html.wp-toolbar,
 			body.wp-admin {
-				background: #0c0a09 !important;
+				background: <?php echo esc_html($bg); ?> !important;
 			}
 			#wpwrap,
 			#wpcontent,
 			#wpbody,
 			#wpbody-content,
 			.wrap {
-				background: #0c0a09 !important;
+				background: <?php echo esc_html($bg); ?> !important;
 			}
 			#wpcontent {
 				padding-left: 0 !important;
@@ -126,7 +127,7 @@ final class Hooks
 	public function admin_body_class(string $classes): string
 	{
 		if ($this->is_lumen_admin_page()) {
-			$classes .= ' lumen-wp-admin';
+			$classes .= ' lumen-wp-admin lumen-wp-theme-' . Plugin::ui_theme();
 		}
 
 		return $classes;
@@ -187,10 +188,14 @@ final class Hooks
 				color: #f0abfc !important;
 				background: #1c1917 !important;
 			}
-			/* Flèche vers le contenu (pages Lumen = fond sombre) */
+			/* Flèche vers le contenu (pages Lumen) */
 			body.lumen-wp-admin #adminmenu li#toplevel_page_lumen-wp.wp-has-current-submenu::after,
 			body.lumen-wp-admin #adminmenu li#toplevel_page_lumen-wp.current::after {
 				border-right-color: #0c0a09 !important;
+			}
+			body.lumen-wp-theme-light #adminmenu li#toplevel_page_lumen-wp.wp-has-current-submenu::after,
+			body.lumen-wp-theme-light #adminmenu li#toplevel_page_lumen-wp.current::after {
+				border-right-color: #f5f5f4 !important;
 			}
 			#adminmenu #toplevel_page_lumen-wp .wp-menu-image img {
 				padding: 5px 0 0 !important;
@@ -237,16 +242,31 @@ final class Hooks
 			return $metadata;
 		}
 
+		$kind = Media_Types::kind($attachment_id);
+		if ($kind === Media_Types::KIND_OTHER) {
+			return $metadata;
+		}
+
 		$settings = Plugin::instance()->settings();
-		if (empty($settings['auto_on_upload'])) {
+		$auto_opt = ! empty($settings['auto_on_upload']);
+		$auto_seo = ! empty($settings['auto_seo_on_upload']);
+
+		if ($kind === Media_Types::KIND_IMAGE) {
+			if (! $auto_opt) {
+				return $metadata;
+			}
+			$use_ai = $auto_seo && Vision_Ai::is_configured();
+			$this->process($attachment_id, false, $use_ai);
+
 			return $metadata;
 		}
 
-		if (! wp_attachment_is_image($attachment_id)) {
+		// SVG / PDF / vidéo : SEO (et IA pour PDF/vidéo si auto_seo).
+		if (! $auto_opt && ! $auto_seo) {
 			return $metadata;
 		}
 
-		$use_ai = ! empty($settings['auto_seo_on_upload']) && Vision_Ai::is_configured();
+		$use_ai = $auto_seo && Vision_Ai::is_configured() && Media_Types::supports_ai($kind);
 		$this->process($attachment_id, false, $use_ai);
 
 		return $metadata;
@@ -267,6 +287,15 @@ final class Hooks
 			];
 		}
 
+		$kind = Media_Types::kind($attachment_id);
+		if ($kind === Media_Types::KIND_OTHER) {
+			return [
+				'ok'     => false,
+				'status' => 'error',
+				'message'=> __('Type de média non pris en charge.', 'lumen-wp'),
+			];
+		}
+
 		if (! $force && Plugin::attachment_is_done($attachment_id)) {
 			return [
 				'ok'     => true,
@@ -275,30 +304,31 @@ final class Hooks
 			];
 		}
 
-		if (! wp_attachment_is_image($attachment_id)) {
-			return [
-				'ok'     => false,
-				'status' => 'error',
-				'message'=> __('Ce média n’est pas une image.', 'lumen-wp'),
-			];
-		}
-
 		self::$processing[$attachment_id] = true;
 		update_post_meta($attachment_id, Plugin::META_STATUS, 'processing');
 		delete_post_meta($attachment_id, Plugin::META_ERROR);
 
 		try {
-			$optimizer = new Optimizer();
-			$result    = $optimizer->process_attachment($attachment_id);
-			$variants  = $result['variants'];
+			$variants = [];
+			if (Media_Types::supports_optimize($kind)) {
+				$optimizer = new Optimizer();
+				$result    = $optimizer->process_attachment($attachment_id);
+				$variants  = $result['variants'];
+			} else {
+				delete_post_meta($attachment_id, Plugin::META_VARIANTS);
+				delete_post_meta($attachment_id, Plugin::META_GUTENBERG);
+				delete_post_meta($attachment_id, Plugin::META_JSONLD);
+			}
 
-			$seo_service = new Seo();
-			$settings    = Plugin::instance()->settings();
-			$seo         = $seo_service->build_from_filename($attachment_id);
+			$seo_service  = new Seo();
+			$settings     = Plugin::instance()->settings();
+			$seo          = $seo_service->build_from_filename($attachment_id);
 			$rate_limited = false;
 
-			// $use_mistral = demande explicite d’IA (bulk, suggest, upload si auto_seo + clé).
-			$want_ai = $use_mistral && Vision_Ai::is_configured();
+			// IA : images + PDF + vidéo (pas SVG). $use_mistral = demande explicite.
+			$want_ai = $use_mistral
+				&& Vision_Ai::is_configured()
+				&& Media_Types::supports_ai($kind);
 
 			if ($want_ai) {
 				$ai           = $seo_service->enrich_with_ai($attachment_id, $seo);
@@ -306,14 +336,15 @@ final class Hooks
 				$rate_limited = ! empty($ai['rate_limited']);
 			}
 
-			if (! empty($settings['auto_seo_on_upload']) || $use_mistral || $force) {
+			if (! empty($settings['auto_seo_on_upload']) || $use_mistral || $force || $kind !== Media_Types::KIND_IMAGE) {
 				$seo_service->apply_to_attachment($attachment_id, $seo, false);
 			} else {
 				update_post_meta($attachment_id, Plugin::META_SEO, $seo);
 			}
 
-			$pack = new Pack();
-			$pack->build_and_store($attachment_id, $variants, $seo);
+			if (Media_Types::supports_optimize($kind)) {
+				(new Pack())->build_and_store($attachment_id, $variants, $seo);
+			}
 
 			update_post_meta($attachment_id, Plugin::META_STATUS, 'ok');
 
@@ -321,6 +352,7 @@ final class Hooks
 				'ok'           => true,
 				'status'       => 'ok',
 				'rate_limited' => $rate_limited,
+				'kind'         => $kind,
 			];
 		} catch (\Throwable $e) {
 			update_post_meta($attachment_id, Plugin::META_STATUS, 'error');
@@ -355,7 +387,7 @@ final class Hooks
 		$caps = Plugin::capabilities();
 		if (! $caps['imagick'] && ! $caps['gd']) {
 			echo '<div class="notice notice-error"><p>'
-				. esc_html__('Lumen : Imagick ou GD est requis pour optimiser les images.', 'lumen-wp')
+				. esc_html__('Lumen : Imagick ou GD est requis pour optimiser les médias image.', 'lumen-wp')
 				. '</p></div>';
 		}
 
@@ -410,32 +442,37 @@ final class Hooks
 			'lumen-wp-admin',
 			'lumenWp',
 			[
-				'ajaxUrl' => admin_url('admin-ajax.php'),
-				'nonce'   => wp_create_nonce('lumen_wp_admin'),
-				'flash'   => $settings_saved
+				'ajaxUrl'     => admin_url('admin-ajax.php'),
+				'nonce'       => wp_create_nonce('lumen_wp_admin'),
+				'settingsUrl' => admin_url('admin.php?page=lumen-wp-settings'),
+				'flash'       => $settings_saved
 					? [
 						'type'    => 'success',
 						'title'   => __('Réglages enregistrés', 'lumen-wp'),
 						'message' => __('La configuration Lumen a été mise à jour.', 'lumen-wp'),
 					]
 					: null,
-				'i18n'    => [
-					'copied'        => __('Copié dans le presse-papiers.', 'lumen-wp'),
-					'copyFail'      => __('Impossible de copier.', 'lumen-wp'),
-					'processing'    => __('Traitement…', 'lumen-wp'),
-					'done'          => __('Terminé.', 'lumen-wp'),
-					'error'         => __('Une erreur est survenue.', 'lumen-wp'),
-					'successTitle'  => __('Succès', 'lumen-wp'),
-					'errorTitle'    => __('Échec', 'lumen-wp'),
-					'close'         => __('Fermer', 'lumen-wp'),
+				'i18n'        => [
+					'copied'         => __('Copié dans le presse-papiers.', 'lumen-wp'),
+					'copyFail'       => __('Impossible de copier.', 'lumen-wp'),
+					'processing'     => __('Traitement…', 'lumen-wp'),
+					'done'           => __('Terminé.', 'lumen-wp'),
+					'error'          => __('Une erreur est survenue.', 'lumen-wp'),
+					'successTitle'   => __('Succès', 'lumen-wp'),
+					'errorTitle'     => __('Échec', 'lumen-wp'),
+					'infoTitle'      => __('Information', 'lumen-wp'),
+					'close'          => __('Fermer', 'lumen-wp'),
+					'openSettings'   => __('Ouvrir les réglages', 'lumen-wp'),
+					'aiNeededTitle'  => __('IA non configurée', 'lumen-wp'),
+					'aiNeededMessage'=> __('Choisissez un fournisseur IA Vision et renseignez une clé API dans Lumen → Réglages pour activer cette option.', 'lumen-wp'),
 					'bulkDone'       => __('Traitement terminé.', 'lumen-wp'),
-					'bulkEmpty'      => __('Aucune image à traiter.', 'lumen-wp'),
+					'bulkEmpty'      => __('Aucun média à traiter.', 'lumen-wp'),
 					'iconsDone'      => __('Kit généré.', 'lumen-wp'),
 					'iconsDoneSite'  => __('Kit généré — favicons appliqués au site.', 'lumen-wp'),
 					'suggestDone'    => __('Métadonnées suggérées.', 'lumen-wp'),
 					'restoreConfirm' => __('Restaurer l’original ? Les variantes Lumen seront supprimées.', 'lumen-wp'),
 					'restored'       => __('Original restauré.', 'lumen-wp'),
-					'tickForced'     => __('Une image a été traitée.', 'lumen-wp'),
+					'tickForced'     => __('Un média a été traité.', 'lumen-wp'),
 					'cronOk'         => __('Tout va bien. Le traitement avance tout seul en arrière-plan.', 'lumen-wp'),
 					'cronDisabled'   => __('Traitement automatique désactivé — utilisez « Avancer maintenant » si besoin.', 'lumen-wp'),
 					'cronStale'      => __('Le traitement semble bloqué — cliquez sur « Avancer maintenant ».', 'lumen-wp'),

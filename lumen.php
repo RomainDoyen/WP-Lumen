@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       Lumen
  * Plugin URI:        https://github.com/RomainDoyen/WP-Lumen
- * Description:       Optimise les images de la médiathèque (WebP/AVIF/JPEG) et génère un pack SEO (alts, JSON-LD, Gutenberg). Multi-IA Vision + traitement en arrière-plan.
- * Version:           1.3.20
+ * Description:       Optimise et enrichit les médias de la bibliothèque (WebP/AVIF/JPEG, SEO, SVG / PDF / vidéos). Multi-IA Vision + traitement en arrière-plan.
+ * Version:           1.3.35
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Lumen
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-define('LUMEN_WP_VERSION', '1.3.20');
+define('LUMEN_WP_VERSION', '1.3.35');
 define('LUMEN_WP_FILE', __FILE__);
 define('LUMEN_WP_PATH', plugin_dir_path(__FILE__));
 define('LUMEN_WP_URL', plugin_dir_url(__FILE__));
