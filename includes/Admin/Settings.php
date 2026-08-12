@@ -78,8 +78,9 @@ final class Settings
 			'webp_quality'       => $this->clamp_int($input['webp_quality'] ?? $defaults['webp_quality'], 1, 100),
 			'jpeg_quality'       => $this->clamp_int($input['jpeg_quality'] ?? $defaults['jpeg_quality'], 1, 100),
 			'avif_quality'       => $this->clamp_int($input['avif_quality'] ?? $defaults['avif_quality'], 1, 100),
-			'replace_original'   => ! empty($input['replace_original']),
-			'auto_on_upload'     => ! empty($input['auto_on_upload']),
+			'replace_original'     => ! empty($input['replace_original']),
+			'rewrite_content_urls' => ! empty($input['rewrite_content_urls']),
+			'auto_on_upload'       => ! empty($input['auto_on_upload']),
 			'auto_seo_on_upload' => ! empty($input['auto_seo_on_upload']),
 			'ai_provider'        => $provider,
 			'mistral_api_key'    => sanitize_text_field((string) ($input['mistral_api_key'] ?? '')),
@@ -314,6 +315,14 @@ final class Settings
 								</label>
 							</div>
 							<p class="description"><?php esc_html_e('Sinon : l’original est conservé et les variantes sont écrites à côté.', 'lumen-wp'); ?></p>
+							<div class="lumen-wp-choices lumen-wp-choices--stack">
+								<label class="lumen-wp-choice lumen-wp-choice--wide">
+									<input type="checkbox" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[rewrite_content_urls]" value="1" <?php checked(! empty($settings['rewrite_content_urls'])); ?> />
+									<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
+									<span class="lumen-wp-choice__label"><?php esc_html_e('Mettre à jour les URLs dans le contenu (pages, Elementor…)', 'lumen-wp'); ?></span>
+								</label>
+							</div>
+							<p class="description"><?php esc_html_e('Après un remplacement (ex. .jpg → .webp), réécrit les liens en dur dans le contenu et les données Elementor, et à la restauration. Pensez à vider le cache éventuel.', 'lumen-wp'); ?></p>
 						</td>
 					</tr>
 					<tr>

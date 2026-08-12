@@ -51,6 +51,7 @@ final class Plugin
 	{
 		(new Hooks())->register();
 		(new Bulk_Queue())->register();
+		(new Reports())->register();
 
 		if (is_admin()) {
 			(new Admin\Dashboard())->register();
@@ -71,6 +72,9 @@ final class Plugin
 			'Vision_Ai.php',
 			'Bulk_Queue.php',
 			'Original_Backup.php',
+			'Content_Url_Rewriter.php',
+			'Exporters.php',
+			'Reports.php',
 			'Cleanup.php',
 			'Pack.php',
 			'Icon_Kit.php',
@@ -103,6 +107,7 @@ final class Plugin
 			'jpeg_quality'       => 85,
 			'avif_quality'       => 65,
 			'replace_original'   => true,
+			'rewrite_content_urls' => true,
 			'auto_on_upload'     => false,
 			'auto_seo_on_upload' => true,
 			'ai_provider'        => 'none',

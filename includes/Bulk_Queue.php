@@ -8,7 +8,7 @@ final class Bulk_Queue
 {
 	public const OPTION = 'lumen_wp_bulk_job';
 	public const HISTORY_OPTION = 'lumen_wp_bulk_history';
-	public const HISTORY_MAX = 10;
+	public const HISTORY_MAX = 50;
 	public const ERRORS_MAX = 200;
 	public const CRON_HOOK = 'lumen_wp_bulk_tick';
 	public const LOCK = 'lumen_wp_bulk_lock';

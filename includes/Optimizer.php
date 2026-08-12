@@ -533,6 +533,9 @@ final class Optimizer
 
 		clean_post_cache($attachment_id);
 
+		// Rewrite hardcoded URLs in content / Elementor (jpg → webp, etc.).
+		Content_Url_Rewriter::after_attachment_path_change($attachment_id, $original, $new_path);
+
 		return true;
 	}
 

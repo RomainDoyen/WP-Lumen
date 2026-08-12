@@ -122,8 +122,10 @@ final class Original_Backup
 
 		Cleanup::delete_sidecars($attachment_id);
 
-		if (is_string($current) && $current !== '' && file_exists($current) && wp_normalize_path($current) !== wp_normalize_path($target)) {
-			@unlink($current);
+		$previous = is_string($current) ? $current : '';
+
+		if ($previous !== '' && file_exists($previous) && wp_normalize_path($previous) !== wp_normalize_path($target)) {
+			@unlink($previous);
 		}
 
 		if (! @copy($backup, $target)) {
@@ -159,6 +161,10 @@ final class Original_Backup
 		update_post_meta($attachment_id, Plugin::META_STATUS, 'restored');
 
 		clean_post_cache($attachment_id);
+
+		if ($previous !== '' && wp_normalize_path($previous) !== wp_normalize_path($target)) {
+			Content_Url_Rewriter::after_attachment_path_change($attachment_id, $previous, $target);
+		}
 
 		return [
 			'ok'      => true,

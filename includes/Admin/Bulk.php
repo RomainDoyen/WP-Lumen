@@ -185,7 +185,13 @@ final class Bulk
 			<section class="lumen-wp-panel" id="lumen-wp-bulk-history-panel">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Historique', 'lumen-wp'); ?></h2>
 				<p class="description">
-					<?php esc_html_e('10 derniers traitements', 'lumen-wp'); ?>
+					<?php
+					printf(
+						/* translators: %d: max history entries */
+						esc_html__('%d derniers traitements', 'lumen-wp'),
+						(int) Bulk_Queue::HISTORY_MAX
+					);
+					?>
 				</p>
 				<ul class="lumen-wp-history" id="lumen-wp-bulk-history" aria-live="polite">
 					<?php if ($history === []) : ?>

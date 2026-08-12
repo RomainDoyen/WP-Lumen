@@ -2422,6 +2422,40 @@ a.lumen-wp-error-list__title:focus {
 	}
 }
 
+.lumen-wp-reports {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 1.15rem;
+	margin-top: 0.85rem;
+}
+
+.lumen-wp-reports__block {
+	padding: 0.9rem 1rem;
+	border: 1px solid var(--lumen-border);
+	border-radius: var(--lumen-radius-lg);
+	background: rgba(255, 255, 255, 0.03);
+}
+
+.lumen-wp-reports__label {
+	margin: 0 0 0.65rem;
+	font-size: 0.92rem;
+	font-weight: 650;
+	color: var(--lumen-text);
+}
+
+.lumen-wp-reports__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin: 0;
+}
+
+@media screen and (max-width: 782px) {
+	.lumen-wp-reports {
+		grid-template-columns: 1fr;
+	}
+}
+
 .lumen-wp-panel--compact .lumen-wp-panel__title {
 	margin-bottom: 0.35rem;
 }
@@ -2497,6 +2531,11 @@ body.lumen-wp-theme-light .lumen-wp-log-shell {
 	background: #ffffff;
 	border: 1px solid rgba(28, 25, 23, 0.14);
 	box-shadow: 0 1px 2px rgba(28, 25, 23, 0.05), 0 8px 22px rgba(28, 25, 23, 0.05);
+}
+
+body.lumen-wp-theme-light .lumen-wp-reports__block {
+	background: #fafaf9;
+	border-color: rgba(28, 25, 23, 0.14);
 }
 
 /* Barre de progression */

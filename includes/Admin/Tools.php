@@ -6,6 +6,7 @@ namespace LumenWp\Admin;
 
 use LumenWp\Bulk_Queue;
 use LumenWp\Cleanup;
+use LumenWp\Reports;
 
 final class Tools
 {
@@ -190,6 +191,38 @@ final class Tools
 				<p class="description">
 					<?php esc_html_e('Quand Lumen remplace un fichier image, une copie de l’original est gardée. Pour la récupérer : ouvrez la fiche média → « Restaurer l’original ».', 'lumen-wp'); ?>
 				</p>
+			</section>
+
+			<section class="lumen-wp-panel">
+				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Rapports', 'lumen-wp'); ?></h2>
+				<p class="description">
+					<?php
+					printf(
+						/* translators: %d: max history entries */
+						esc_html__('Téléchargez un audit de la médiathèque ou l’historique des traitements (jusqu’à %d runs). Formats : CSV, Excel, PDF.', 'lumen-wp'),
+						(int) Bulk_Queue::HISTORY_MAX
+					);
+					?>
+				</p>
+
+				<div class="lumen-wp-reports">
+					<div class="lumen-wp-reports__block">
+						<h3 class="lumen-wp-reports__label"><?php esc_html_e('Audit médiathèque', 'lumen-wp'); ?></h3>
+						<p class="lumen-wp-reports__actions">
+							<a class="button" href="<?php echo esc_url(Reports::export_url('audit', 'csv')); ?>">CSV</a>
+							<a class="button" href="<?php echo esc_url(Reports::export_url('audit', 'xlsx')); ?>">Excel</a>
+							<a class="button" href="<?php echo esc_url(Reports::export_url('audit', 'pdf')); ?>">PDF</a>
+						</p>
+					</div>
+					<div class="lumen-wp-reports__block">
+						<h3 class="lumen-wp-reports__label"><?php esc_html_e('Historique des traitements', 'lumen-wp'); ?></h3>
+						<p class="lumen-wp-reports__actions">
+							<a class="button" href="<?php echo esc_url(Reports::export_url('history', 'csv')); ?>">CSV</a>
+							<a class="button" href="<?php echo esc_url(Reports::export_url('history', 'xlsx')); ?>">Excel</a>
+							<a class="button" href="<?php echo esc_url(Reports::export_url('history', 'pdf')); ?>">PDF</a>
+						</p>
+					</div>
+				</div>
 			</section>
 		</div>
 		<?php

@@ -7,11 +7,11 @@
 
 <p align="center">
   <strong>Plugin WordPress</strong> — optimise les images (WebP / AVIF / JPEG), enrichit les médias<br />
-  (images, SVG, PDF, vidéos) et génère un pack SEO prêt à coller (alts, JSON-LD, Gutenberg).
+  (images, SVG, PDF, vidéos) et génère un pack SEO (alts, JSON-LD, Gutenberg).
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.3.35-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.3.39-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -25,12 +25,12 @@
 | Domaine          | Détail                                                                                |
 | ---------------- | ------------------------------------------------------------------------------------- |
 | **Optimisation** | Conversion WebP / AVIF (si supporté) / JPEG, tailles natives WP                       |
-| **Original**     | Remplacement prioritaire WebP → AVIF → JPEG, ou sidecars                              |
+| **Original**     | Remplacement prioritaire WebP → AVIF → JPEG, ou sidecars ; réécriture des URLs contenu / Elementor |
 | **SEO**          | Alts SEO / WCAG / court, titre, légende, description (images, SVG, PDF, vidéos)       |
 | **Pack**         | JSON-LD `ImageObject` + snippet Gutenberg `<picture>` (images raster)                 |
 | **Traitement**   | File d’attente en arrière-plan (filtres Images / PDF / SVG / Vidéos, pause / reprise) |
 | **Restauration** | Sauvegarde de l’original avant remplacement + bouton fiche média                      |
-| **Outils**       | Nettoyage des variantes, état du traitement, avancer manuellement                     |
+| **Outils**       | Nettoyage, état du traitement, rapports audit / historique (CSV, Excel, PDF)          |
 | **Icônes**       | Kit PNG 16→512, ZIP, favicons injectés dans le `<head>`                               |
 | **IA**           | Vision multi-fournisseur : Mistral, OpenAI, Anthropic, Gemini + compteur local        |
 | **Apparence**    | Thème admin clair ou sombre                                                           |
@@ -129,6 +129,9 @@ lumen-wp/
 │   ├── Media_Types.php
 │   ├── Optimizer.php
 │   ├── Original_Backup.php
+│   ├── Content_Url_Rewriter.php
+│   ├── Reports.php
+│   ├── Exporters.php
 │   ├── Bulk_Queue.php
 │   ├── Cleanup.php
 │   ├── Seo.php
@@ -143,6 +146,24 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.3.39
+
+- PDF : correction des accents (WinAnsiEncoding + conversion UTF-8)
+
+### 1.3.38
+
+- PDF rapports : mise en page structurée (bandeau Lumen, KPI, tableaux, pied de page)
+
+### 1.3.37
+
+- Rapports : export audit médiathèque + historique (CSV, Excel, PDF) depuis Outils
+- Historique des traitements : capacité portée à 50 runs
+
+### 1.3.36
+
+- Remplacement d’original : réécriture des URLs en dur dans le contenu et Elementor (réglage)
+- Restauration : réécriture inverse des URLs
 
 ### 1.3.35
 
