@@ -6,6 +6,9 @@ namespace LumenWp;
 
 /**
  * Chunked diagnose / rewrite of stale media URLs (Hostinger-safe).
+ *
+ * Progress is driven primarily by the open Tools page (AJAX force-tick / status),
+ * with WP-Cron as a secondary helper when the tab is closed.
  */
 final class Url_Queue
 {
@@ -22,6 +25,9 @@ final class Url_Queue
 		add_action('wp_ajax_lumen_wp_urls_stop', [$this, 'ajax_stop']);
 		add_action('wp_ajax_lumen_wp_urls_status', [$this, 'ajax_status']);
 		add_action('wp_ajax_lumen_wp_urls_force_tick', [$this, 'ajax_force_tick']);
+		// Fallback sans JS (Hostinger / admin-ajax bloqué).
+		add_action('admin_post_lumen_wp_urls_start', [$this, 'handle_post_start']);
+		add_action('admin_post_lumen_wp_urls_stop', [$this, 'handle_post_stop']);
 	}
 
 	/**
@@ -99,12 +105,12 @@ final class Url_Queue
 			}
 			if ($last_tick !== '') {
 				$ts = strtotime($last_tick);
-				if ($ts !== false && (time() - $ts) > 120) {
+				if ($ts !== false && (time() - $ts) > 45) {
 					$stale = true;
 				}
 			} elseif (! empty($job['started_at'])) {
 				$ts = strtotime((string) $job['started_at']);
-				if ($ts !== false && (time() - $ts) > 90) {
+				if ($ts !== false && (time() - $ts) > 30) {
 					$stale = true;
 				}
 			}
@@ -122,48 +128,58 @@ final class Url_Queue
 		];
 	}
 
-	public function ajax_start(): void
+	/**
+	 * Start a job quickly (no heavy COUNT — Hostinger-safe).
+	 *
+	 * @return array<string, mixed>|\WP_Error
+	 */
+	public function start_job(string $mode)
 	{
-		$this->guard();
-
-		// phpcs:ignore WordPress.Security.NonceVerification
-		$mode = isset($_POST['mode']) ? sanitize_key((string) wp_unslash($_POST['mode'])) : 'diagnose';
+		$mode = sanitize_key($mode);
 		if (! in_array($mode, ['diagnose', 'rewrite'], true)) {
-			wp_send_json_error(['message' => __('Mode invalide.', 'lumen-wp')], 400);
+			return new \WP_Error('lumen_urls_mode', __('Mode invalide.', 'lumen-wp'));
 		}
 
 		$current = self::job();
 		if (($current['status'] ?? '') === 'running') {
-			wp_send_json_error(['message' => __('Un scan URLs est déjà en cours.', 'lumen-wp')], 409);
+			return new \WP_Error('lumen_urls_busy', __('Un scan URLs est déjà en cours. Cliquez sur Arrêter puis relancez.', 'lumen-wp'));
 		}
 
-		@set_time_limit(60); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-		$total = Content_Url_Rewriter::count_candidate_attachments();
-		$user  = wp_get_current_user();
-
-		$job                   = self::defaults();
+		$user = wp_get_current_user();
+		$job  = self::defaults();
 		$job['status']         = 'running';
 		$job['mode']           = $mode;
 		$job['cursor']         = 0;
-		$job['total_estimate'] = $total;
+		// Total unknown at start (COUNT is too slow/fragile on large libraries).
+		$job['total_estimate'] = 0;
 		$job['started_at']     = gmdate('c');
+		$job['last_tick_at']   = gmdate('c');
 		$job['user_id']        = (int) $user->ID;
 		$job['last_message']   = $mode === 'rewrite'
-			? sprintf(
-				/* translators: %d: candidates */
-				__('Réécriture démarrée — %d média(s) à parcourir.', 'lumen-wp'),
-				$total
-			)
-			: sprintf(
-				/* translators: %d: candidates */
-				__('Diagnostic démarré — %d média(s) à parcourir.', 'lumen-wp'),
-				$total
-			);
+			? __('Réécriture démarrée — progression automatique…', 'lumen-wp')
+			: __('Diagnostic démarré — progression automatique…', 'lumen-wp');
 		$job['log'] = [$this->log_line($job['last_message'])];
 		self::save($job);
 
 		$this->schedule_soon();
 		$this->spawn();
+
+		return self::job();
+	}
+
+	public function ajax_start(): void
+	{
+		$this->guard();
+		// phpcs:ignore WordPress.Security.NonceVerification
+		$mode = isset($_POST['mode']) ? (string) wp_unslash($_POST['mode']) : 'diagnose';
+		$job  = $this->start_job($mode);
+		if (is_wp_error($job)) {
+			wp_send_json_error(['message' => $job->get_error_message()], 409);
+		}
+
+		// Process the first item immediately so the UI moves right away.
+		delete_transient(self::LOCK);
+		$this->tick();
 
 		wp_send_json_success(
 			[
@@ -176,14 +192,7 @@ final class Url_Queue
 	public function ajax_stop(): void
 	{
 		$this->guard();
-		$job                 = self::job();
-		$job['status']       = 'idle';
-		$job['last_message'] = __('Arrêté.', 'lumen-wp');
-		$job['log']          = $this->push_log($job['log'] ?? [], $job['last_message']);
-		self::save($job);
-		wp_clear_scheduled_hook(self::CRON_HOOK);
-		delete_transient(self::LOCK);
-
+		$this->stop_job();
 		wp_send_json_success(
 			[
 				'job'    => self::job(),
@@ -197,16 +206,13 @@ final class Url_Queue
 		$this->guard();
 		$job = self::job();
 
+		// Drive the queue from the open Tools page (do not wait for WP-Cron).
 		if (($job['status'] ?? '') === 'running') {
-			if (! wp_next_scheduled(self::CRON_HOOK)) {
+			delete_transient(self::LOCK);
+			$this->tick();
+			if ((self::job()['status'] ?? '') === 'running') {
 				$this->schedule_soon();
 				$this->spawn();
-			}
-			// Hostinger / low traffic: nudge a tick from the open Tools page.
-			$health = self::health();
-			if (! empty($health['stale']) || ! empty($health['cron_disabled'])) {
-				delete_transient(self::LOCK);
-				$this->tick();
 			}
 		}
 
@@ -241,17 +247,47 @@ final class Url_Queue
 		);
 	}
 
+	public function handle_post_start(): void
+	{
+		if (! current_user_can('upload_files')) {
+			wp_die(esc_html__('Permission refusée.', 'lumen-wp'), 403);
+		}
+		check_admin_referer('lumen_wp_urls');
+
+		// phpcs:ignore WordPress.Security.NonceVerification
+		$mode = isset($_POST['mode']) ? (string) wp_unslash($_POST['mode']) : 'diagnose';
+		$job  = $this->start_job($mode);
+		if (! is_wp_error($job)) {
+			delete_transient(self::LOCK);
+			$this->tick();
+		}
+
+		wp_safe_redirect(admin_url('admin.php?page=lumen-wp-tools#lumen-wp-urls-broken'));
+		exit;
+	}
+
+	public function handle_post_stop(): void
+	{
+		if (! current_user_can('upload_files')) {
+			wp_die(esc_html__('Permission refusée.', 'lumen-wp'), 403);
+		}
+		check_admin_referer('lumen_wp_urls');
+		$this->stop_job();
+		wp_safe_redirect(admin_url('admin.php?page=lumen-wp-tools#lumen-wp-urls-broken'));
+		exit;
+	}
+
 	public function tick(): void
 	{
 		if (get_transient(self::LOCK)) {
 			return;
 		}
-		set_transient(self::LOCK, 1, 120);
-		@set_time_limit(120); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		set_transient(self::LOCK, 1, 90);
+		@set_time_limit(90); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 
 		try {
-			$job                  = self::job();
-			$job['last_tick_at']  = gmdate('c');
+			$job                 = self::job();
+			$job['last_tick_at'] = gmdate('c');
 			self::save($job);
 
 			if (($job['status'] ?? '') !== 'running') {
@@ -266,6 +302,12 @@ final class Url_Queue
 
 				return;
 			}
+
+			// Keep a live estimate for the progress bar.
+			$job['total_estimate'] = max(
+				(int) ($job['total_estimate'] ?? 0),
+				(int) ($job['processed'] ?? 0) + 1
+			);
 
 			$pairs = Content_Url_Rewriter::pairs_for_attachment($next);
 			$line  = '#' . $next;
@@ -286,6 +328,7 @@ final class Url_Queue
 
 			if ($mode === 'rewrite') {
 				$att_hits = 0;
+				$tick_repl = 0;
 				foreach ($pairs as $pair) {
 					$r = Content_Url_Rewriter::after_attachment_path_change(
 						(int) $pair['id'],
@@ -298,6 +341,7 @@ final class Url_Queue
 					$job['metas']        = (int) $job['metas'] + (int) ($r['metas'] ?? 0);
 					$job['options']      = (int) $job['options'] + (int) ($r['options'] ?? 0);
 					$job['replacements'] = (int) $job['replacements'] + (int) ($r['replacements'] ?? 0);
+					$tick_repl          += (int) ($r['replacements'] ?? 0);
 					if ((int) ($r['replacements'] ?? 0) > 0) {
 						$att_hits++;
 					}
@@ -306,27 +350,29 @@ final class Url_Queue
 					$job['attachments'] = (int) $job['attachments'] + 1;
 				}
 				$job['last_message'] = $line . ' — ' . sprintf(
-					/* translators: %d: replacements */
+					/* translators: %d: replacements this tick */
 					__('%d remplacement(s)', 'lumen-wp'),
-					(int) ($job['replacements'] ?? 0)
+					$tick_repl
 				);
 			} else {
+				$found = 0;
 				foreach ($pairs as $pair) {
 					$issue = Content_Url_Rewriter::diagnose_pair($pair);
 					if ($issue === null) {
 						continue;
 					}
+					$found++;
 					$job['issues_found'] = (int) $job['issues_found'] + 1;
 					$issues              = is_array($job['issues'] ?? null) ? $job['issues'] : [];
 					if (count($issues) < self::ISSUES_MAX) {
-						$issues[]       = $issue;
-						$job['issues']  = $issues;
+						$issues[]      = $issue;
+						$job['issues'] = $issues;
 					}
 				}
 				$job['last_message'] = $line . ' — ' . sprintf(
-					/* translators: %d: issues so far */
-					__('%d URL(s) obsolète(s) trouvée(s)', 'lumen-wp'),
-					(int) $job['issues_found']
+					/* translators: %d: issues found for this media */
+					__('%d URL(s) obsolète(s)', 'lumen-wp'),
+					$found
 				);
 			}
 
@@ -341,6 +387,17 @@ final class Url_Queue
 		} finally {
 			delete_transient(self::LOCK);
 		}
+	}
+
+	private function stop_job(): void
+	{
+		$job                 = self::job();
+		$job['status']       = 'idle';
+		$job['last_message'] = __('Arrêté.', 'lumen-wp');
+		$job['log']          = $this->push_log($job['log'] ?? [], $job['last_message']);
+		self::save($job);
+		wp_clear_scheduled_hook(self::CRON_HOOK);
+		delete_transient(self::LOCK);
 	}
 
 	/**
@@ -365,8 +422,9 @@ final class Url_Queue
 			);
 		}
 
-		$job['status'] = 'done';
-		$job['log']    = $this->push_log($job['log'] ?? [], $job['last_message']);
+		$job['status']         = 'done';
+		$job['total_estimate'] = max((int) ($job['total_estimate'] ?? 0), (int) ($job['processed'] ?? 0));
+		$job['log']            = $this->push_log($job['log'] ?? [], $job['last_message']);
 		self::save($job);
 		wp_clear_scheduled_hook(self::CRON_HOOK);
 	}

@@ -198,26 +198,46 @@ final class Tools
 			<section class="lumen-wp-panel" id="lumen-wp-urls-broken">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('URLs cassées', 'lumen-wp'); ?></h2>
 				<p class="description">
-					<?php esc_html_e('Après un remplacement (.jpg/.png → .webp), diagnostique puis réécrit les anciennes URLs (contenu, Elementor, options) par petites étapes — barre de progression, sans timeout.', 'lumen-wp'); ?>
+					<?php esc_html_e('Après un remplacement (.jpg/.png → .webp), diagnostique puis réécrit les anciennes URLs (contenu, Elementor, options) par petites étapes. Laissez cette page ouverte : la progression avance automatiquement.', 'lumen-wp'); ?>
 				</p>
 				<p class="lumen-wp-actions-row">
-					<button type="button" class="button" id="lumen-wp-urls-diagnose">
-						<?php esc_html_e('Diagnostiquer', 'lumen-wp'); ?>
-					</button>
-					<button type="button" class="button button-primary" id="lumen-wp-urls-rewrite">
-						<?php esc_html_e('Réécrire globalement', 'lumen-wp'); ?>
-					</button>
-					<button type="button" class="button" id="lumen-wp-urls-force-tick" disabled>
+					<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-inline-form lumen-wp-urls-form" data-urls-mode="diagnose">
+						<?php wp_nonce_field('lumen_wp_urls'); ?>
+						<input type="hidden" name="action" value="lumen_wp_urls_start" />
+						<input type="hidden" name="mode" value="diagnose" />
+						<button type="submit" class="button" id="lumen-wp-urls-diagnose">
+							<?php esc_html_e('Diagnostiquer', 'lumen-wp'); ?>
+						</button>
+					</form>
+					<form
+						method="post"
+						action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
+						class="lumen-wp-inline-form lumen-wp-urls-form"
+						data-urls-mode="rewrite"
+						data-confirm="<?php echo esc_attr__('Réécrire globalement les anciennes URLs (.jpg/.png → .webp) dans le contenu, Elementor et les options ?', 'lumen-wp'); ?>"
+					>
+						<?php wp_nonce_field('lumen_wp_urls'); ?>
+						<input type="hidden" name="action" value="lumen_wp_urls_start" />
+						<input type="hidden" name="mode" value="rewrite" />
+						<button type="submit" class="button button-primary" id="lumen-wp-urls-rewrite">
+							<?php esc_html_e('Réécrire globalement', 'lumen-wp'); ?>
+						</button>
+					</form>
+					<button type="button" class="button" id="lumen-wp-urls-force-tick" <?php echo (($urls_job['status'] ?? '') === 'running') ? '' : 'disabled'; ?>>
 						<?php esc_html_e('Avancer maintenant', 'lumen-wp'); ?>
 					</button>
-					<button type="button" class="button" id="lumen-wp-urls-stop" disabled>
-						<?php esc_html_e('Arrêter', 'lumen-wp'); ?>
-					</button>
+					<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-inline-form" id="lumen-wp-urls-stop-form">
+						<?php wp_nonce_field('lumen_wp_urls'); ?>
+						<input type="hidden" name="action" value="lumen_wp_urls_stop" />
+						<button type="submit" class="button" id="lumen-wp-urls-stop" <?php echo (($urls_job['status'] ?? '') === 'running') ? '' : 'disabled'; ?>>
+							<?php esc_html_e('Arrêter', 'lumen-wp'); ?>
+						</button>
+					</form>
 				</p>
 				<div
 					class="lumen-wp-progress"
 					id="lumen-wp-urls-progress"
-					<?php echo (($urls_job['status'] ?? '') === 'running') ? '' : 'hidden'; ?>
+					<?php echo in_array(($urls_job['status'] ?? ''), ['running', 'done'], true) ? '' : 'hidden'; ?>
 				>
 					<progress id="lumen-wp-urls-progress-bar" max="100" value="0"></progress>
 					<p id="lumen-wp-urls-progress-label" class="description">0 / 0</p>
