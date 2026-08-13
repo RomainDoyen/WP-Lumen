@@ -1233,6 +1233,33 @@ body.lumen-wp-admin #wpfooter {
 	margin-top: 0.25rem;
 }
 
+.lumen-wp-urls-meta {
+	margin-top: 0.35rem !important;
+	opacity: 0.85;
+}
+
+.lumen-wp-urls-error {
+	color: #b42318 !important;
+	font-weight: 600;
+}
+
+.lumen-wp-urls-errors {
+	margin: 0.5rem 0 0;
+	padding: 0.65rem 0.85rem;
+	max-height: 8rem;
+	overflow: auto;
+	list-style: none;
+	font-size: 0.82rem;
+	line-height: 1.45;
+	color: #b42318;
+	background: rgba(180, 35, 24, 0.08);
+	border-radius: 6px;
+}
+
+.lumen-wp-urls-errors li + li {
+	margin-top: 0.25rem;
+}
+
 .lumen-wp-progress {
 	max-width: 100%;
 	margin: 1.25rem 0;

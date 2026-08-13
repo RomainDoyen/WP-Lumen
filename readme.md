@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.3.46-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.3.47-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -146,6 +146,13 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.3.47
+
+- URLs cassées prod-hardened : ticks 25 s, timeout AJAX 25 s, reprise auto job stale, erreurs visibles
+- Fallback `admin-post` start / tick / stop (sans JS)
+- Rewrite direct des CSS Elementor sur disque + limites SQL allégées par tick
+- try/catch par média (un échec n’arrête plus toute la file)
 
 ### 1.3.46
 

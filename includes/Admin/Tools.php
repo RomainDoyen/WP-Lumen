@@ -39,6 +39,7 @@ final class Tools
 
 		$preview  = Cleanup::preview();
 		$health   = Bulk_Queue::health();
+		Url_Queue::maybe_recover_stale();
 		$urls_job = Url_Queue::job();
 
 		?>
@@ -198,13 +199,27 @@ final class Tools
 			<section class="lumen-wp-panel" id="lumen-wp-urls-broken">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('URLs cassées', 'lumen-wp'); ?></h2>
 				<p class="description">
-					<?php esc_html_e('Après un remplacement (.jpg/.png → .webp), diagnostique puis réécrit les anciennes URLs (contenu, Elementor, options) par petites étapes. Laissez cette page ouverte : la progression avance automatiquement.', 'lumen-wp'); ?>
+					<?php esc_html_e('Diagnostique / réécrit les anciennes URLs (contenu, Elementor, options, CSS Elementor) par petites étapes. Laissez cette page ouverte. En cas d’échec AJAX, les formulaires fonctionnent sans JavaScript.', 'lumen-wp'); ?>
+				</p>
+				<p class="description lumen-wp-urls-meta" id="lumen-wp-urls-meta">
+					<?php
+					printf(
+						/* translators: %s: plugin version */
+						esc_html__('Plugin %s', 'lumen-wp'),
+						esc_html(defined('LUMEN_WP_VERSION') ? LUMEN_WP_VERSION : '?')
+					);
+					?>
+					<span aria-hidden="true"> · </span>
+					<span id="lumen-wp-urls-job-state">
+						<?php echo esc_html((string) ($urls_job['status'] ?? 'idle')); ?>
+					</span>
 				</p>
 				<p class="lumen-wp-actions-row">
 					<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-inline-form lumen-wp-urls-form" data-urls-mode="diagnose">
 						<?php wp_nonce_field('lumen_wp_urls'); ?>
 						<input type="hidden" name="action" value="lumen_wp_urls_start" />
 						<input type="hidden" name="mode" value="diagnose" />
+						<input type="hidden" name="force_restart" value="0" class="lumen-wp-urls-force-restart" />
 						<button type="submit" class="button" id="lumen-wp-urls-diagnose">
 							<?php esc_html_e('Diagnostiquer', 'lumen-wp'); ?>
 						</button>
@@ -219,13 +234,18 @@ final class Tools
 						<?php wp_nonce_field('lumen_wp_urls'); ?>
 						<input type="hidden" name="action" value="lumen_wp_urls_start" />
 						<input type="hidden" name="mode" value="rewrite" />
+						<input type="hidden" name="force_restart" value="0" class="lumen-wp-urls-force-restart" />
 						<button type="submit" class="button button-primary" id="lumen-wp-urls-rewrite">
 							<?php esc_html_e('Réécrire globalement', 'lumen-wp'); ?>
 						</button>
 					</form>
-					<button type="button" class="button" id="lumen-wp-urls-force-tick" <?php echo (($urls_job['status'] ?? '') === 'running') ? '' : 'disabled'; ?>>
-						<?php esc_html_e('Avancer maintenant', 'lumen-wp'); ?>
-					</button>
+					<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-inline-form" id="lumen-wp-urls-tick-form">
+						<?php wp_nonce_field('lumen_wp_urls'); ?>
+						<input type="hidden" name="action" value="lumen_wp_urls_tick" />
+						<button type="submit" class="button" id="lumen-wp-urls-force-tick" <?php echo (($urls_job['status'] ?? '') === 'running') ? '' : 'disabled'; ?>>
+							<?php esc_html_e('Avancer maintenant', 'lumen-wp'); ?>
+						</button>
+					</form>
 					<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-inline-form" id="lumen-wp-urls-stop-form">
 						<?php wp_nonce_field('lumen_wp_urls'); ?>
 						<input type="hidden" name="action" value="lumen_wp_urls_stop" />
@@ -244,8 +264,12 @@ final class Tools
 					<p id="lumen-wp-urls-status-text" class="description">
 						<?php echo esc_html((string) ($urls_job['last_message'] ?? '')); ?>
 					</p>
+					<p id="lumen-wp-urls-error-text" class="description lumen-wp-urls-error" <?php echo empty($urls_job['last_error']) ? 'hidden' : ''; ?>>
+						<?php echo esc_html((string) ($urls_job['last_error'] ?? '')); ?>
+					</p>
 				</div>
 				<ul class="lumen-wp-urls-log" id="lumen-wp-urls-log" hidden></ul>
+				<ul class="lumen-wp-urls-errors" id="lumen-wp-urls-errors" hidden></ul>
 				<div id="lumen-wp-urls-results" class="lumen-wp-urls-results" hidden></div>
 			</section>
 

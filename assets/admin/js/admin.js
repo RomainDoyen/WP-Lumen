@@ -1474,11 +1474,13 @@
       });
   });
 
-  /* —— URLs cassées (file chunkée, pilotée par la page Outils) —— */
+  /* —— URLs cassées (file prod-hardened) —— */
   var urlsPollTimer = null;
   var urlsLastStatus = '';
   var urlsStatusReady = false;
   var urlsPollInFlight = false;
+  var URLS_AJAX_TIMEOUT = 25000;
+  var URLS_POLL_MS = 1800;
 
   function renderUrlsIssues(issues) {
     var $box = $('#lumen-wp-urls-results');
@@ -1544,17 +1546,39 @@
       return;
     }
     $ul.prop('hidden', false).empty();
-    log.slice(0, 12).forEach(function (line) {
+    log.slice(0, 16).forEach(function (line) {
       $ul.append($('<li/>').text(line));
     });
   }
 
-  function applyUrlsJob(job) {
+  function renderUrlsErrors(errors) {
+    var $ul = $('#lumen-wp-urls-errors');
+    if (!$ul.length) return;
+    errors = errors || [];
+    if (!errors.length) {
+      $ul.prop('hidden', true).empty();
+      return;
+    }
+    $ul.prop('hidden', false).empty();
+    errors.slice(0, 12).forEach(function (err) {
+      var msg =
+        (err && err.id ? '#' + err.id + ' — ' : '') +
+        ((err && err.message) || String(err || ''));
+      $ul.append($('<li/>').text(msg));
+    });
+  }
+
+  function applyUrlsJob(job, health) {
     if (!job || !$('#lumen-wp-urls-diagnose').length) return;
     var status = job.status || 'idle';
     var processed = parseInt(job.processed, 10) || 0;
     var total = parseInt(job.total_estimate, 10) || 0;
-    var pct = status === 'done' ? 100 : total ? Math.min(99, Math.round((processed / total) * 100)) : Math.min(95, processed * 3);
+    var pct =
+      status === 'done'
+        ? 100
+        : total
+          ? Math.min(99, Math.round((processed / total) * 100))
+          : Math.min(95, processed * 3);
     var running = status === 'running';
 
     $('#lumen-wp-urls-progress').prop('hidden', status === 'idle');
@@ -1562,11 +1586,26 @@
     var label =
       (total ? processed + ' / ~' + total : processed + ' traités') +
       (job.mode === 'rewrite'
-        ? ' — remplacements ' + (job.replacements || 0)
+        ? ' — rempl. ' +
+          (job.replacements || 0) +
+          ' / CSS ' +
+          (job.css_files || 0)
         : ' — obsolètes ' + (job.issues_found || 0));
+    if (job.err) {
+      label += ' / err ' + job.err;
+    }
     $('#lumen-wp-urls-progress-label').text(label);
     $('#lumen-wp-urls-status-text').text(job.last_message || status);
+    $('#lumen-wp-urls-job-state').text(status + (health && health.stale ? ' (stale)' : ''));
+
+    if (job.last_error) {
+      $('#lumen-wp-urls-error-text').prop('hidden', false).text(job.last_error);
+    } else {
+      $('#lumen-wp-urls-error-text').prop('hidden', true).text('');
+    }
+
     renderUrlsLog(job.log || []);
+    renderUrlsErrors(job.errors || []);
 
     $('#lumen-wp-urls-diagnose').prop('disabled', running);
     $('#lumen-wp-urls-rewrite').prop('disabled', running);
@@ -1585,6 +1624,8 @@
           (job.metas || 0) +
           ' / options ' +
           (job.options || 0) +
+          ' / CSS ' +
+          (job.css_files || 0) +
           '.';
         $('#lumen-wp-urls-results')
           .prop('hidden', false)
@@ -1593,7 +1634,11 @@
     }
 
     if (urlsStatusReady && status === 'done' && urlsLastStatus !== 'done') {
-      showModalSuccess(job.last_message || lumenWp.i18n.done);
+      if ((job.err || 0) > 0) {
+        showModalError(job.last_message || lumenWp.i18n.error);
+      } else {
+        showModalSuccess(job.last_message || lumenWp.i18n.done);
+      }
     }
     urlsLastStatus = status;
     urlsStatusReady = true;
@@ -1608,15 +1653,19 @@
   function pollUrlsStatus() {
     if (!$('#lumen-wp-urls-diagnose').length || urlsPollInFlight) return;
     urlsPollInFlight = true;
-    // status endpoint also runs one tick while running (Hostinger-safe).
-    ajax('lumen_wp_urls_status', {}, { timeout: 90000 })
+    ajax('lumen_wp_urls_status', {}, { timeout: URLS_AJAX_TIMEOUT })
       .done(function (res) {
         if (res && res.success && res.data) {
-          applyUrlsJob(res.data.job);
+          applyUrlsJob(res.data.job, res.data.health);
+        } else if (res && res.data && res.data.message) {
+          $('#lumen-wp-urls-error-text').prop('hidden', false).text(res.data.message);
         }
       })
       .fail(function (xhr) {
-        $('#lumen-wp-urls-status-text').text(ajaxErrorMessage(xhr, 'Scan interrompu'));
+        var msg = ajaxErrorMessage(xhr, 'Scan interrompu');
+        $('#lumen-wp-urls-status-text').text(msg);
+        $('#lumen-wp-urls-error-text').prop('hidden', false).text(msg);
+        // Keep polling — transient host glitches are common.
       })
       .always(function () {
         urlsPollInFlight = false;
@@ -1625,7 +1674,7 @@
 
   function startUrlsPoll() {
     if (urlsPollTimer) return;
-    urlsPollTimer = setInterval(pollUrlsStatus, 1500);
+    urlsPollTimer = setInterval(pollUrlsStatus, URLS_POLL_MS);
   }
 
   function stopUrlsPoll() {
@@ -1635,29 +1684,45 @@
     }
   }
 
-  function startUrlsJob(mode, $btn) {
+  function startUrlsJob(mode, $btn, forceRestart) {
     var label = $btn && $btn.length ? $btn.text() : '';
     if ($btn && $btn.length) {
       $btn.prop('disabled', true).text('Démarrage…');
     }
     $('#lumen-wp-urls-progress').prop('hidden', false);
     $('#lumen-wp-urls-status-text').text('Démarrage…');
+    $('#lumen-wp-urls-error-text').prop('hidden', true).text('');
     $('#lumen-wp-urls-results').prop('hidden', true).empty();
 
-    ajax('lumen_wp_urls_start', { mode: mode }, { timeout: 90000 })
+    ajax(
+      'lumen_wp_urls_start',
+      { mode: mode, force_restart: forceRestart ? 1 : 0 },
+      { timeout: URLS_AJAX_TIMEOUT }
+    )
       .done(function (res) {
         if (!res || !res.success) {
-          showModalError((res && res.data && res.data.message) || lumenWp.i18n.error);
+          var msg = (res && res.data && res.data.message) || lumenWp.i18n.error;
+          // Busy job: offer force restart once.
+          if (res && res.data && res.data.job && res.data.job.status === 'running' && !forceRestart) {
+            if (window.confirm(msg + '\n\nForcer un redémarrage ?')) {
+              startUrlsJob(mode, $btn, true);
+              return;
+            }
+          }
+          showModalError(msg);
           if ($btn && $btn.length) $btn.prop('disabled', false).text(label);
+          if (res && res.data && res.data.job) applyUrlsJob(res.data.job, res.data.health);
           return;
         }
-        applyUrlsJob(res.data.job);
+        applyUrlsJob(res.data.job, res.data.health);
         startUrlsPoll();
       })
       .fail(function (xhr) {
-        // Fallback Hostinger : POST admin-post natif (bypass handlers jQuery).
         var $form = $('.lumen-wp-urls-form[data-urls-mode="' + mode + '"]');
         if ($form.length && $form[0]) {
+          if (forceRestart) {
+            $form.find('.lumen-wp-urls-force-restart').val('1');
+          }
           $('#lumen-wp-urls-status-text').text('Bascule en mode formulaire…');
           $form[0].submit();
           return;
@@ -1681,22 +1746,23 @@
     if (confirmMsg && !window.confirm(String(confirmMsg))) {
       return;
     }
-    startUrlsJob(mode, $form.find('button[type="submit"]'));
+    startUrlsJob(mode, $form.find('button[type="submit"]'), false);
   });
 
-  $(document).on('click', '#lumen-wp-urls-force-tick', function (e) {
+  $(document).on('submit', '#lumen-wp-urls-tick-form', function (e) {
     e.preventDefault();
-    var btn = $(this).prop('disabled', true);
-    ajax('lumen_wp_urls_force_tick', {}, { timeout: 90000 })
+    var form = this;
+    var btn = $('#lumen-wp-urls-force-tick').prop('disabled', true);
+    ajax('lumen_wp_urls_force_tick', {}, { timeout: URLS_AJAX_TIMEOUT })
       .done(function (res) {
         if (!res || !res.success) {
           showModalError((res && res.data && res.data.message) || lumenWp.i18n.error);
           return;
         }
-        applyUrlsJob(res.data.job);
+        applyUrlsJob(res.data.job, res.data.health);
       })
-      .fail(function (xhr) {
-        showModalError(ajaxErrorMessage(xhr, 'Avance impossible'));
+      .fail(function () {
+        form.submit();
       })
       .always(function () {
         btn.prop('disabled', false);
@@ -1706,10 +1772,10 @@
   $(document).on('submit', '#lumen-wp-urls-stop-form', function (e) {
     e.preventDefault();
     var form = this;
-    ajax('lumen_wp_urls_stop')
+    ajax('lumen_wp_urls_stop', {}, { timeout: URLS_AJAX_TIMEOUT })
       .done(function (res) {
         if (res && res.success) {
-          applyUrlsJob(res.data.job);
+          applyUrlsJob(res.data.job, res.data.health);
         }
         stopUrlsPoll();
       })

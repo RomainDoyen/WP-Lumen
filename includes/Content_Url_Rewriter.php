@@ -446,6 +446,58 @@ final class Content_Url_Rewriter
 	}
 
 	/**
+	 * Rewrite hardcoded URLs inside generated Elementor CSS on disk
+	 * (mask-image, backgrounds, etc. that survive only in uploads/elementor/css).
+	 *
+	 * @return int Number of CSS files modified
+	 */
+	public static function rewrite_elementor_css_files(string $old_abs, string $new_abs): int
+	{
+		$pairs = self::build_pairs($old_abs, $new_abs);
+		if ($pairs === []) {
+			return 0;
+		}
+
+		$uploads = wp_upload_dir();
+		if (! empty($uploads['error'])) {
+			return 0;
+		}
+		$dir = trailingslashit(self::norm_path((string) $uploads['basedir'])) . 'elementor/css';
+		if (! is_dir($dir)) {
+			return 0;
+		}
+
+		$files = glob($dir . '/*.css') ?: [];
+		if ($files === []) {
+			return 0;
+		}
+
+		// Cap work per call (Hostinger).
+		$files = array_slice($files, 0, 80);
+		$changed = 0;
+
+		foreach ($files as $file) {
+			$file = (string) $file;
+			if ($file === '' || ! is_readable($file) || ! is_writable($file)) {
+				continue;
+			}
+			$raw = @file_get_contents($file);
+			if (! is_string($raw) || $raw === '') {
+				continue;
+			}
+			$updated = self::replace_all($raw, $pairs);
+			if ($updated === $raw) {
+				continue;
+			}
+			if (@file_put_contents($file, $updated) !== false) {
+				$changed++;
+			}
+		}
+
+		return $changed;
+	}
+
+	/**
 	 * @return list<array{id: int, title: string, old_abs: string, new_abs: string}>
 	 */
 	private static function collect_rewrite_candidates(int $limit): array
@@ -687,6 +739,20 @@ final class Content_Url_Rewriter
 	 */
 	private static function apply_pairs(array $pairs, string $old_abs): array
 	{
+		$empty = ['posts' => 0, 'metas' => 0, 'options' => 0, 'replacements' => 0];
+		try {
+			return self::apply_pairs_inner($pairs, $old_abs);
+		} catch (\Throwable $e) {
+			return $empty;
+		}
+	}
+
+	/**
+	 * @param array<string, string> $pairs
+	 * @return array{posts: int, metas: int, options: int, replacements: int}
+	 */
+	private static function apply_pairs_inner(array $pairs, string $old_abs): array
+	{
 		global $wpdb;
 
 		$posts_n = 0;
@@ -701,6 +767,7 @@ final class Content_Url_Rewriter
 
 		[$like_full, $like_sizes] = self::like_patterns_for_basename($old_basename);
 
+		// Smaller LIMITs — one attachment tick must stay under shared-host timeouts.
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$post_ids = $wpdb->get_col(
 			$wpdb->prepare(
@@ -708,7 +775,7 @@ final class Content_Url_Rewriter
 				WHERE post_status NOT IN ('trash', 'auto-draft')
 				AND post_type NOT IN ('attachment', 'revision')
 				AND (post_content LIKE %s OR post_content LIKE %s)
-				LIMIT 5000",
+				LIMIT 1500",
 				$like_full,
 				$like_sizes
 			)
@@ -744,7 +811,7 @@ final class Content_Url_Rewriter
 			$wpdb->prepare(
 				"SELECT meta_id, post_id, meta_value FROM {$wpdb->postmeta}
 				WHERE meta_key IN ($in) AND (meta_value LIKE %s OR meta_value LIKE %s)
-				LIMIT 5000",
+				LIMIT 1500",
 				$like_full,
 				$like_sizes
 			),
@@ -785,7 +852,7 @@ final class Content_Url_Rewriter
 				WHERE option_name NOT LIKE %s
 				  AND option_name NOT LIKE %s
 				  AND (option_value LIKE %s OR option_value LIKE %s)
-				LIMIT 2000",
+				LIMIT 800",
 				$wpdb->esc_like('_transient_') . '%',
 				$wpdb->esc_like('_site_transient_') . '%',
 				$like_full,
