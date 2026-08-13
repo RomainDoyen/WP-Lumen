@@ -177,6 +177,7 @@ final class Cleanup
 			if ($do_clear_status) {
 				delete_post_meta($id, Plugin::META_STATUS);
 				delete_post_meta($id, Plugin::META_ERROR);
+				delete_post_meta($id, Plugin::META_URLS_CLEAN);
 				$touched = true;
 			}
 

@@ -15,6 +15,7 @@ namespace LumenWp;
 final class Url_Queue
 {
 	public const OPTION = 'lumen_wp_urls_job';
+	public const LAST_ERRORS_OPTION = 'lumen_wp_urls_last_errors';
 	public const CRON_HOOK = 'lumen_wp_urls_tick';
 	public const LOCK = 'lumen_wp_urls_lock';
 	public const ISSUES_MAX = 100;
@@ -47,7 +48,10 @@ final class Url_Queue
 		return [
 			'status'         => 'idle',
 			'mode'           => 'diagnose',
+			'force_full'     => false,
 			'cursor'         => 0,
+			'queue_ids'      => [],
+			'queue_index'    => 0,
 			'total_estimate' => 0,
 			'processed'      => 0,
 			'issues_found'   => 0,
@@ -90,6 +94,11 @@ final class Url_Queue
 		if (! is_array($job['errors'] ?? null)) {
 			$job['errors'] = [];
 		}
+		if (! is_array($job['queue_ids'] ?? null)) {
+			$job['queue_ids'] = [];
+		}
+		$job['force_full']  = ! empty($job['force_full']);
+		$job['queue_index'] = max(0, (int) ($job['queue_index'] ?? 0));
 
 		return $job;
 	}
@@ -101,6 +110,79 @@ final class Url_Queue
 	{
 		$job['updated_at'] = gmdate('c');
 		update_option(self::OPTION, $job, false);
+	}
+
+	/**
+	 * Errors from the last finished / stopped job (survives job reset).
+	 *
+	 * @return list<array{id: int, message: string, at: string}>
+	 */
+	public static function last_errors(): array
+	{
+		$stored = get_option(self::LAST_ERRORS_OPTION, []);
+		if (! is_array($stored)) {
+			return [];
+		}
+		$out = [];
+		foreach ($stored as $row) {
+			if (! is_array($row)) {
+				continue;
+			}
+			$id = (int) ($row['id'] ?? 0);
+			$out[] = [
+				'id'      => $id,
+				'message' => (string) ($row['message'] ?? ''),
+				'at'      => (string) ($row['at'] ?? ''),
+			];
+			if (count($out) >= self::ERRORS_MAX) {
+				break;
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * @param list<array{id?: int, message?: string, at?: string}> $errors
+	 */
+	public static function save_last_errors(array $errors): void
+	{
+		$normalized = [];
+		foreach ($errors as $row) {
+			if (! is_array($row)) {
+				continue;
+			}
+			$normalized[] = [
+				'id'      => (int) ($row['id'] ?? 0),
+				'message' => (string) ($row['message'] ?? ''),
+				'at'      => (string) ($row['at'] ?? ''),
+			];
+			if (count($normalized) >= self::ERRORS_MAX) {
+				break;
+			}
+		}
+		update_option(self::LAST_ERRORS_OPTION, $normalized, false);
+	}
+
+	/**
+	 * Unique positive attachment IDs from last_errors (stable order of first appearance).
+	 *
+	 * @return list<int>
+	 */
+	public static function last_error_ids(): array
+	{
+		$ids  = [];
+		$seen = [];
+		foreach (self::last_errors() as $row) {
+			$id = (int) ($row['id'] ?? 0);
+			if ($id <= 0 || isset($seen[$id])) {
+				continue;
+			}
+			$seen[$id] = true;
+			$ids[]     = $id;
+		}
+
+		return $ids;
 	}
 
 	/**
@@ -178,10 +260,10 @@ final class Url_Queue
 	/**
 	 * @return array<string, mixed>|\WP_Error
 	 */
-	public function start_job(string $mode, bool $force_restart = false)
+	public function start_job(string $mode, bool $force_restart = false, bool $force_full = false)
 	{
 		$mode = sanitize_key($mode);
-		if (! in_array($mode, ['diagnose', 'rewrite'], true)) {
+		if (! in_array($mode, ['diagnose', 'rewrite', 'retry'], true)) {
 			return new \WP_Error('lumen_urls_mode', __('Mode invalide.', 'lumen-wp'));
 		}
 
@@ -197,22 +279,50 @@ final class Url_Queue
 					__('Un scan URLs est déjà en cours. Utilisez « Avancer maintenant », « Arrêter », ou attendez la reprise auto.', 'lumen-wp')
 				);
 			}
-			$this->stop_job(__('Ancien job remplacé.', 'lumen-wp'));
+			$this->stop_job(__('Ancien job remplacé.', 'lumen-wp'), false);
+		}
+
+		$queue_ids = [];
+		if ($mode === 'retry') {
+			$queue_ids = self::last_error_ids();
+			if ($queue_ids === []) {
+				return new \WP_Error(
+					'lumen_urls_no_errors',
+					__('Aucune erreur à réessayer. Lancez d’abord un diagnostic ou une réécriture.', 'lumen-wp')
+				);
+			}
 		}
 
 		$user = wp_get_current_user();
 		$job  = self::defaults();
 		$job['status']         = 'running';
 		$job['mode']           = $mode;
+		$job['force_full']     = $mode !== 'retry' && $force_full;
 		$job['cursor']         = 0;
-		$job['total_estimate'] = 0;
+		$job['queue_ids']      = $queue_ids;
+		$job['queue_index']    = 0;
+		$job['total_estimate'] = $mode === 'retry' ? count($queue_ids) : 0;
 		$job['started_at']     = gmdate('c');
 		$job['last_tick_at']   = gmdate('c');
 		$job['user_id']        = (int) $user->ID;
 		$job['plugin_version'] = defined('LUMEN_WP_VERSION') ? LUMEN_WP_VERSION : '';
-		$job['last_message']   = $mode === 'rewrite'
-			? __('Réécriture démarrée — laissez cette page ouverte.', 'lumen-wp')
-			: __('Diagnostic démarré — laissez cette page ouverte.', 'lumen-wp');
+
+		if ($mode === 'rewrite') {
+			$job['last_message'] = ! empty($job['force_full'])
+				? __('Réécriture complète démarrée — laissez cette page ouverte.', 'lumen-wp')
+				: __('Réécriture démarrée (skip déjà propres) — laissez cette page ouverte.', 'lumen-wp');
+		} elseif ($mode === 'retry') {
+			$job['last_message'] = sprintf(
+				/* translators: %d: error count */
+				__('Réessai de %d média(s) en erreur — laissez cette page ouverte.', 'lumen-wp'),
+				count($queue_ids)
+			);
+		} else {
+			$job['last_message'] = ! empty($job['force_full'])
+				? __('Diagnostic complet démarré — laissez cette page ouverte.', 'lumen-wp')
+				: __('Diagnostic démarré (skip déjà propres) — laissez cette page ouverte.', 'lumen-wp');
+		}
+
 		$job['log'] = [$this->log_line($job['last_message'])];
 		self::save($job);
 
@@ -229,15 +339,19 @@ final class Url_Queue
 		$mode = isset($_POST['mode']) ? (string) wp_unslash($_POST['mode']) : 'diagnose';
 		// phpcs:ignore WordPress.Security.NonceVerification
 		$force = ! empty($_POST['force_restart']);
-		$job   = $this->start_job($mode, $force);
+		// phpcs:ignore WordPress.Security.NonceVerification
+		$force_full = ! empty($_POST['force_full']);
+		$job        = $this->start_job($mode, $force, $force_full);
 		if (is_wp_error($job)) {
+			$code = $job->get_error_code() === 'lumen_urls_busy' ? 409 : 400;
 			wp_send_json_error(
 				[
-					'message' => $job->get_error_message(),
-					'job'     => self::job(),
-					'health'  => self::health(),
+					'message'     => $job->get_error_message(),
+					'job'         => self::job(),
+					'health'      => self::health(),
+					'last_errors' => self::last_errors(),
 				],
-				409
+				$code
 			);
 		}
 
@@ -305,7 +419,9 @@ final class Url_Queue
 		$mode = isset($_POST['mode']) ? (string) wp_unslash($_POST['mode']) : 'diagnose';
 		// phpcs:ignore WordPress.Security.NonceVerification
 		$force = ! empty($_POST['force_restart']);
-		$job   = $this->start_job($mode, $force);
+		// phpcs:ignore WordPress.Security.NonceVerification
+		$force_full = ! empty($_POST['force_full']);
+		$job        = $this->start_job($mode, $force, $force_full);
 		if (! is_wp_error($job)) {
 			delete_transient(self::LOCK);
 			$this->tick();
@@ -354,13 +470,37 @@ final class Url_Queue
 				return;
 			}
 
-			$mode = (string) ($job['mode'] ?? 'diagnose');
-			$next = Content_Url_Rewriter::next_candidate_id((int) ($job['cursor'] ?? 0));
+			$mode       = (string) ($job['mode'] ?? 'diagnose');
+			$force_full = ! empty($job['force_full']);
+			$is_retry   = $mode === 'retry';
+			$work_mode  = $is_retry ? 'rewrite' : $mode;
 
-			if ($next <= 0) {
-				$this->finalize($job, $mode);
+			if ($is_retry) {
+				$queue = is_array($job['queue_ids'] ?? null) ? $job['queue_ids'] : [];
+				$idx   = (int) ($job['queue_index'] ?? 0);
+				if ($idx >= count($queue)) {
+					$this->finalize($job, $mode);
 
-				return;
+					return;
+				}
+				$next = (int) $queue[ $idx ];
+				if ($next <= 0) {
+					$job['queue_index'] = $idx + 1;
+					$job['processed']   = (int) $job['processed'] + 1;
+					$job['last_message'] = __('ID invalide ignoré', 'lumen-wp');
+					$job['log']          = $this->push_log($job['log'] ?? [], $job['last_message']);
+					self::save($job);
+					$this->schedule_soon();
+
+					return;
+				}
+			} else {
+				$next = Content_Url_Rewriter::next_candidate_id((int) ($job['cursor'] ?? 0), $force_full);
+				if ($next <= 0) {
+					$this->finalize($job, $mode);
+
+					return;
+				}
 			}
 
 			$job['total_estimate'] = max(
@@ -372,9 +512,9 @@ final class Url_Queue
 				$pairs = Content_Url_Rewriter::pairs_for_attachment($next);
 			} catch (\Throwable $e) {
 				$this->record_error($job, $next, $e->getMessage());
-				$job['cursor']    = $next;
-				$job['processed'] = (int) $job['processed'] + 1;
-				$job['err']       = (int) $job['err'] + 1;
+				$this->advance_cursor($job, $next, $is_retry);
+				$job['processed']    = (int) $job['processed'] + 1;
+				$job['err']          = (int) $job['err'] + 1;
 				$job['last_message'] = '#' . $next . ' — ' . __('erreur (ignoré)', 'lumen-wp');
 				$job['log']          = $this->push_log($job['log'] ?? [], $job['last_message']);
 				self::save($job);
@@ -386,7 +526,8 @@ final class Url_Queue
 			$line = '#' . $next;
 
 			if ($pairs === []) {
-				$job['cursor']       = $next;
+				Content_Url_Rewriter::mark_urls_clean($next);
+				$this->advance_cursor($job, $next, $is_retry);
 				$job['processed']    = (int) $job['processed'] + 1;
 				$job['last_message'] = $line . ' — ' . __('aucun chemin obsolète', 'lumen-wp');
 				$job['log']          = $this->push_log($job['log'] ?? [], $job['last_message']);
@@ -399,8 +540,9 @@ final class Url_Queue
 			$title = (string) ($pairs[0]['title'] ?? ('#' . $next));
 			$line  = '#' . $next . ' — ' . $title;
 
+			$ok_for_clean = false;
 			try {
-				if ($mode === 'rewrite') {
+				if ($work_mode === 'rewrite') {
 					$att_hits  = 0;
 					$tick_repl = 0;
 					$css_n     = 0;
@@ -436,6 +578,7 @@ final class Url_Queue
 						$css_n
 					);
 					$job['last_error'] = '';
+					$ok_for_clean      = true;
 				} else {
 					$found = 0;
 					foreach ($pairs as $pair) {
@@ -462,9 +605,14 @@ final class Url_Queue
 				$this->record_error($job, $next, $e->getMessage());
 				$job['err']          = (int) $job['err'] + 1;
 				$job['last_message'] = $line . ' — ' . __('erreur (ignoré)', 'lumen-wp');
+				$ok_for_clean        = false;
 			}
 
-			$job['cursor']    = $next;
+			if ($ok_for_clean) {
+				Content_Url_Rewriter::mark_urls_clean($next);
+			}
+
+			$this->advance_cursor($job, $next, $is_retry);
 			$job['processed'] = (int) $job['processed'] + 1;
 			$job['log']       = $this->push_log($job['log'] ?? [], $job['last_message']);
 			self::save($job);
@@ -484,22 +632,46 @@ final class Url_Queue
 	}
 
 	/**
-	 * @return array{job: array<string, mixed>, health: array<string, mixed>}
+	 * @return array{job: array<string, mixed>, health: array<string, mixed>, last_errors: list<array{id: int, message: string, at: string}>}
 	 */
 	private function payload(): array
 	{
 		return [
-			'job'    => self::job(),
-			'health' => self::health(),
+			'job'         => self::job(),
+			'health'      => self::health(),
+			'last_errors' => self::last_errors(),
 		];
 	}
 
-	private function stop_job(string $message): void
+	/**
+	 * @param array<string, mixed> $job
+	 */
+	private function advance_cursor(array &$job, int $next, bool $is_retry): void
+	{
+		$job['cursor'] = $next;
+		if ($is_retry) {
+			$job['queue_index'] = (int) ($job['queue_index'] ?? 0) + 1;
+		}
+	}
+
+	/**
+	 * @param array<string, mixed> $job
+	 */
+	private function persist_last_errors_from_job(array $job): void
+	{
+		$errors = is_array($job['errors'] ?? null) ? $job['errors'] : [];
+		self::save_last_errors($errors);
+	}
+
+	private function stop_job(string $message, bool $persist_errors = true): void
 	{
 		$job                 = self::job();
 		$job['status']       = 'idle';
 		$job['last_message'] = $message;
 		$job['log']          = $this->push_log($job['log'] ?? [], $job['last_message']);
+		if ($persist_errors) {
+			$this->persist_last_errors_from_job($job);
+		}
 		self::save($job);
 		wp_clear_scheduled_hook(self::CRON_HOOK);
 		delete_transient(self::LOCK);
@@ -510,7 +682,7 @@ final class Url_Queue
 	 */
 	private function finalize(array $job, string $mode): void
 	{
-		if ($mode === 'rewrite') {
+		if ($mode === 'rewrite' || $mode === 'retry') {
 			Content_Url_Rewriter::clear_elementor_cache();
 			$job['last_message'] = sprintf(
 				/* translators: 1: attachments 2: replacements 3: css 4: errors */
@@ -536,6 +708,7 @@ final class Url_Queue
 			? (string) ($job['last_error'] ?? '')
 			: '';
 		$job['log'] = $this->push_log($job['log'] ?? [], $job['last_message']);
+		$this->persist_last_errors_from_job($job);
 		self::save($job);
 		wp_clear_scheduled_hook(self::CRON_HOOK);
 	}

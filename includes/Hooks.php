@@ -307,6 +307,7 @@ final class Hooks
 		self::$processing[$attachment_id] = true;
 		update_post_meta($attachment_id, Plugin::META_STATUS, 'processing');
 		delete_post_meta($attachment_id, Plugin::META_ERROR);
+		Content_Url_Rewriter::clear_urls_clean($attachment_id);
 
 		try {
 			$variants = [];

@@ -289,16 +289,44 @@ final class Content_Url_Rewriter
 		return ! empty($settings['rewrite_content_urls']);
 	}
 
+	public static function mark_urls_clean(int $attachment_id): void
+	{
+		$attachment_id = max(0, $attachment_id);
+		if ($attachment_id <= 0) {
+			return;
+		}
+		update_post_meta($attachment_id, Plugin::META_URLS_CLEAN, gmdate('Y-m-d H:i:s'));
+	}
+
+	public static function clear_urls_clean(int $attachment_id): void
+	{
+		$attachment_id = max(0, $attachment_id);
+		if ($attachment_id <= 0) {
+			return;
+		}
+		delete_post_meta($attachment_id, Plugin::META_URLS_CLEAN);
+	}
+
 	/**
 	 * Count attachment candidates for the URLs queue (lightweight).
 	 */
-	public static function count_candidate_attachments(): int
+	public static function count_candidate_attachments(bool $force_full = false): int
 	{
 		global $wpdb;
 
 		$status_key = Plugin::META_STATUS;
 		$backup_key = Plugin::META_ORIGINAL_BACKUP;
+		$clean_key  = Plugin::META_URLS_CLEAN;
 		$img_sql    = Media_Types::mime_where_sql([Media_Types::KIND_IMAGE], 'p');
+
+		$clean_join  = '';
+		$clean_where = '';
+		$args        = [$backup_key, $status_key];
+		if (! $force_full) {
+			$clean_join  = "LEFT JOIN {$wpdb->postmeta} c ON c.post_id = p.ID AND c.meta_key = %s";
+			$clean_where = 'AND c.meta_id IS NULL';
+			$args[]      = $clean_key;
+		}
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$total = (int) $wpdb->get_var(
@@ -309,6 +337,7 @@ final class Content_Url_Rewriter
 					ON b.post_id = p.ID AND b.meta_key = %s
 				LEFT JOIN {$wpdb->postmeta} s
 					ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
+				{$clean_join}
 				WHERE p.post_type = 'attachment'
 				  AND p.post_status = 'inherit'
 				  AND {$img_sql}
@@ -316,9 +345,9 @@ final class Content_Url_Rewriter
 					b.meta_id IS NOT NULL
 					OR p.post_mime_type IN ('image/webp', 'image/avif')
 					OR s.meta_id IS NOT NULL
-				  )",
-				$backup_key,
-				$status_key
+				  )
+				  {$clean_where}",
+				...$args
 			)
 		);
 		// phpcs:enable
@@ -329,14 +358,25 @@ final class Content_Url_Rewriter
 	/**
 	 * Next candidate attachment ID after cursor (ASC) for chunked jobs.
 	 */
-	public static function next_candidate_id(int $after_id): int
+	public static function next_candidate_id(int $after_id, bool $force_full = false): int
 	{
 		global $wpdb;
 
 		$status_key = Plugin::META_STATUS;
 		$backup_key = Plugin::META_ORIGINAL_BACKUP;
+		$clean_key  = Plugin::META_URLS_CLEAN;
 		$img_sql    = Media_Types::mime_where_sql([Media_Types::KIND_IMAGE], 'p');
 		$after_id   = max(0, $after_id);
+
+		$clean_join  = '';
+		$clean_where = '';
+		$args        = [$backup_key, $status_key];
+		if (! $force_full) {
+			$clean_join  = "LEFT JOIN {$wpdb->postmeta} c ON c.post_id = p.ID AND c.meta_key = %s";
+			$clean_where = 'AND c.meta_id IS NULL';
+			$args[]      = $clean_key;
+		}
+		$args[] = $after_id;
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$id = (int) $wpdb->get_var(
@@ -347,6 +387,7 @@ final class Content_Url_Rewriter
 					ON b.post_id = p.ID AND b.meta_key = %s
 				LEFT JOIN {$wpdb->postmeta} s
 					ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
+				{$clean_join}
 				WHERE p.post_type = 'attachment'
 				  AND p.post_status = 'inherit'
 				  AND {$img_sql}
@@ -355,12 +396,11 @@ final class Content_Url_Rewriter
 					OR p.post_mime_type IN ('image/webp', 'image/avif')
 					OR s.meta_id IS NOT NULL
 				  )
+				  {$clean_where}
 				  AND p.ID > %d
 				ORDER BY p.ID ASC
 				LIMIT 1",
-				$backup_key,
-				$status_key,
-				$after_id
+				...$args
 			)
 		);
 		// phpcs:enable

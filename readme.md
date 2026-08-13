@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.3.47-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.3.48-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -146,6 +146,12 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.3.48
+
+- URLs cassées incrémentales : skip des médias déjà propres (`_lumen_urls_clean`)
+- Case « Parcours complet » + bouton « Réessayer les erreurs » (IDs du dernier run)
+- Invalidation clean meta après re-optimisation / restauration original
 
 ### 1.3.47
 

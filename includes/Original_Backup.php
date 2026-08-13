@@ -158,6 +158,7 @@ final class Original_Backup
 		delete_post_meta($attachment_id, Plugin::META_JSONLD);
 		delete_post_meta($attachment_id, Plugin::META_GUTENBERG);
 		delete_post_meta($attachment_id, Plugin::META_ERROR);
+		delete_post_meta($attachment_id, Plugin::META_URLS_CLEAN);
 		update_post_meta($attachment_id, Plugin::META_STATUS, 'restored');
 
 		clean_post_cache($attachment_id);

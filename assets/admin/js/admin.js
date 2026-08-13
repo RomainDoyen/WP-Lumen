@@ -1568,7 +1568,19 @@
     });
   }
 
-  function applyUrlsJob(job, health) {
+  function urlsLastErrorIds(lastErrors) {
+    var ids = [];
+    var seen = {};
+    (lastErrors || []).forEach(function (err) {
+      var id = err && err.id ? parseInt(err.id, 10) : 0;
+      if (!id || seen[id]) return;
+      seen[id] = true;
+      ids.push(id);
+    });
+    return ids;
+  }
+
+  function applyUrlsJob(job, health, lastErrors) {
     if (!job || !$('#lumen-wp-urls-diagnose').length) return;
     var status = job.status || 'idle';
     var processed = parseInt(job.processed, 10) || 0;
@@ -1580,17 +1592,26 @@
           ? Math.min(99, Math.round((processed / total) * 100))
           : Math.min(95, processed * 3);
     var running = status === 'running';
+    var mode = job.mode || 'diagnose';
+    var isRewrite = mode === 'rewrite' || mode === 'retry';
+    var errIds = urlsLastErrorIds(lastErrors);
 
     $('#lumen-wp-urls-progress').prop('hidden', status === 'idle');
     $('#lumen-wp-urls-progress-bar').val(pct);
     var label =
       (total ? processed + ' / ~' + total : processed + ' traités') +
-      (job.mode === 'rewrite'
+      (isRewrite
         ? ' — rempl. ' +
           (job.replacements || 0) +
           ' / CSS ' +
           (job.css_files || 0)
         : ' — obsolètes ' + (job.issues_found || 0));
+    if (job.force_full) {
+      label += ' / complet';
+    }
+    if (mode === 'retry') {
+      label += ' / retry';
+    }
     if (job.err) {
       label += ' / err ' + job.err;
     }
@@ -1609,11 +1630,15 @@
 
     $('#lumen-wp-urls-diagnose').prop('disabled', running);
     $('#lumen-wp-urls-rewrite').prop('disabled', running);
+    $('#lumen-wp-urls-retry')
+      .prop('disabled', running || !errIds.length)
+      .text('Réessayer les erreurs (' + errIds.length + ')');
+    $('#lumen-wp-urls-force-full').prop('disabled', running);
     $('#lumen-wp-urls-force-tick').prop('disabled', !running);
     $('#lumen-wp-urls-stop').prop('disabled', !running);
 
     if (status === 'done') {
-      if (job.mode === 'diagnose') {
+      if (mode === 'diagnose') {
         renderUrlsIssues(job.issues || []);
       } else {
         var summary =
@@ -1656,7 +1681,7 @@
     ajax('lumen_wp_urls_status', {}, { timeout: URLS_AJAX_TIMEOUT })
       .done(function (res) {
         if (res && res.success && res.data) {
-          applyUrlsJob(res.data.job, res.data.health);
+          applyUrlsJob(res.data.job, res.data.health, res.data.last_errors);
         } else if (res && res.data && res.data.message) {
           $('#lumen-wp-urls-error-text').prop('hidden', false).text(res.data.message);
         }
@@ -1686,6 +1711,8 @@
 
   function startUrlsJob(mode, $btn, forceRestart) {
     var label = $btn && $btn.length ? $btn.text() : '';
+    var forceFull =
+      mode !== 'retry' && $('#lumen-wp-urls-force-full').is(':checked') ? 1 : 0;
     if ($btn && $btn.length) {
       $btn.prop('disabled', true).text('Démarrage…');
     }
@@ -1696,7 +1723,11 @@
 
     ajax(
       'lumen_wp_urls_start',
-      { mode: mode, force_restart: forceRestart ? 1 : 0 },
+      {
+        mode: mode,
+        force_restart: forceRestart ? 1 : 0,
+        force_full: forceFull,
+      },
       { timeout: URLS_AJAX_TIMEOUT }
     )
       .done(function (res) {
@@ -1711,10 +1742,12 @@
           }
           showModalError(msg);
           if ($btn && $btn.length) $btn.prop('disabled', false).text(label);
-          if (res && res.data && res.data.job) applyUrlsJob(res.data.job, res.data.health);
+          if (res && res.data && res.data.job) {
+            applyUrlsJob(res.data.job, res.data.health, res.data.last_errors);
+          }
           return;
         }
-        applyUrlsJob(res.data.job, res.data.health);
+        applyUrlsJob(res.data.job, res.data.health, res.data.last_errors);
         startUrlsPoll();
       })
       .fail(function (xhr) {
@@ -1723,6 +1756,7 @@
           if (forceRestart) {
             $form.find('.lumen-wp-urls-force-restart').val('1');
           }
+          $form.find('.lumen-wp-urls-force-full-field').val(forceFull ? '1' : '0');
           $('#lumen-wp-urls-status-text').text('Bascule en mode formulaire…');
           $form[0].submit();
           return;
@@ -1746,6 +1780,9 @@
     if (confirmMsg && !window.confirm(String(confirmMsg))) {
       return;
     }
+    var forceFull =
+      mode !== 'retry' && $('#lumen-wp-urls-force-full').is(':checked') ? 1 : 0;
+    $form.find('.lumen-wp-urls-force-full-field').val(forceFull ? '1' : '0');
     startUrlsJob(mode, $form.find('button[type="submit"]'), false);
   });
 
@@ -1759,7 +1796,7 @@
           showModalError((res && res.data && res.data.message) || lumenWp.i18n.error);
           return;
         }
-        applyUrlsJob(res.data.job, res.data.health);
+        applyUrlsJob(res.data.job, res.data.health, res.data.last_errors);
       })
       .fail(function () {
         form.submit();
@@ -1775,7 +1812,7 @@
     ajax('lumen_wp_urls_stop', {}, { timeout: URLS_AJAX_TIMEOUT })
       .done(function (res) {
         if (res && res.success) {
-          applyUrlsJob(res.data.job, res.data.health);
+          applyUrlsJob(res.data.job, res.data.health, res.data.last_errors);
         }
         stopUrlsPoll();
       })
