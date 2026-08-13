@@ -601,36 +601,54 @@ final class Optimizer
 			]
 		);
 
-		// Keep WP metadata in sync with the new extension/MIME.
-		$meta = wp_get_attachment_metadata($attachment_id);
-		if (is_array($meta)) {
-			$uploads = wp_upload_dir();
-			$basedir = trailingslashit(str_replace('\\', '/', $uploads['basedir']));
-			$norm    = str_replace('\\', '/', $new_path);
-			if (strpos($norm, $basedir) === 0) {
-				$meta['file'] = ltrim(substr($norm, strlen($basedir)), '/');
-			} else {
-				$meta['file'] = basename($new_path);
+		// Rewrite hardcoded URLs first (while old -WxH.ext sidecars still exist on disk).
+		Content_Url_Rewriter::after_attachment_path_change($attachment_id, $original, $new_path);
+
+		// Regenerate WP intermediates from the new original (.webp/.avif) so srcset/metadata match.
+		if (! function_exists('wp_generate_attachment_metadata')) {
+			require_once ABSPATH . 'wp-admin/includes/image.php';
+		}
+		$meta = wp_generate_attachment_metadata($attachment_id, $new_path);
+		if (is_array($meta) && $meta !== []) {
+			wp_update_attachment_metadata($attachment_id, $meta);
+		} else {
+			$meta = wp_get_attachment_metadata($attachment_id);
+			if (is_array($meta)) {
+				$uploads = wp_upload_dir();
+				$basedir = trailingslashit(str_replace('\\', '/', $uploads['basedir']));
+				$norm    = str_replace('\\', '/', $new_path);
+				if (strpos($norm, $basedir) === 0) {
+					$meta['file'] = ltrim(substr($norm, strlen($basedir)), '/');
+				} else {
+					$meta['file'] = basename($new_path);
+				}
+				if (function_exists('wp_getimagesize')) {
+					$info = @wp_getimagesize($new_path);
+				} else {
+					$info = @getimagesize($new_path);
+				}
+				if (is_array($info)) {
+					$meta['width']  = (int) $info[0];
+					$meta['height'] = (int) $info[1];
+				}
+				wp_update_attachment_metadata($attachment_id, $meta);
 			}
-			if (function_exists('wp_getimagesize')) {
-				$info = @wp_getimagesize($new_path);
-			} else {
-				$info = @getimagesize($new_path);
-			}
-			if (is_array($info)) {
-				$meta['width']  = (int) $info[0];
-				$meta['height'] = (int) $info[1];
-				if (! empty($info['mime'])) {
-					$meta['sizes'] = $meta['sizes'] ?? [];
+		}
+
+		// Drop obsolete jpg/png intermediates left beside the new original.
+		$old_ext = strtolower((string) pathinfo($original, PATHINFO_EXTENSION));
+		$new_ext = strtolower((string) pathinfo($new_path, PATHINFO_EXTENSION));
+		$stem    = (string) pathinfo($original, PATHINFO_FILENAME);
+		$dir     = dirname($original);
+		if ($old_ext !== '' && $old_ext !== $new_ext && $stem !== '' && is_dir($dir)) {
+			foreach (glob($dir . '/' . $stem . '-*.' . $old_ext) ?: [] as $stale) {
+				if (preg_match('/-\d+x\d+\.' . preg_quote($old_ext, '/') . '$/i', (string) $stale)) {
+					@unlink((string) $stale);
 				}
 			}
-			wp_update_attachment_metadata($attachment_id, $meta);
 		}
 
 		clean_post_cache($attachment_id);
-
-		// Rewrite hardcoded URLs in content / Elementor (jpg → webp, etc.).
-		Content_Url_Rewriter::after_attachment_path_change($attachment_id, $original, $new_path);
 
 		return true;
 	}

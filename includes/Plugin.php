@@ -51,6 +51,7 @@ final class Plugin
 	{
 		(new Hooks())->register();
 		(new Bulk_Queue())->register();
+		(new Url_Queue())->register();
 		(new Reports())->register();
 
 		if (is_admin()) {
@@ -71,6 +72,7 @@ final class Plugin
 			'Media_Types.php',
 			'Vision_Ai.php',
 			'Bulk_Queue.php',
+			'Url_Queue.php',
 			'Original_Backup.php',
 			'Content_Url_Rewriter.php',
 			'Exporters.php',

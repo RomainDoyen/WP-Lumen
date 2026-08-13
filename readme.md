@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.3.43-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.3.45-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -146,6 +146,16 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.3.45
+
+- Outils → URLs cassées : file d’attente + barre de progression (1 média / tick, cron + force-tick) — plus de timeout 500
+- Inclut 1.3.44 : réécriture des tailles `-WxH.png` + régénération miniatures au replace
+
+### 1.3.44
+
+- URLs cassées : réécriture aussi des tailles WordPress (`-110x37.png` → `.webp` / full) — corrige logos Elementor flous après replace
+- Remplacement original : régénération des miniatures + nettoyage des anciennes tailles jpg/png
 
 ### 1.3.43
 

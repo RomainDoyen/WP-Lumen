@@ -1474,4 +1474,247 @@
       });
   });
 
+  /* —— URLs cassées (file chunkée) —— */
+  var urlsPollTimer = null;
+  var urlsLastStatus = '';
+  var urlsStatusReady = false;
+  var urlsForceInFlight = false;
+
+  function renderUrlsIssues(issues) {
+    var $box = $('#lumen-wp-urls-results');
+    if (!$box.length) return;
+    issues = issues || [];
+    if (!issues.length) {
+      $box
+        .prop('hidden', false)
+        .html(
+          '<p class="description">Aucune ancienne URL détectée dans le contenu / Elementor / options.</p>'
+        );
+      return;
+    }
+    var html =
+      '<table class="widefat striped lumen-wp-urls-table"><thead><tr>' +
+      '<th>Média</th><th>Ancienne URL</th><th>Nouvelle URL</th><th>Réfs</th><th></th>' +
+      '</tr></thead><tbody>';
+    issues.forEach(function (row) {
+      var refs = row.refs || {};
+      var refTxt =
+        (refs.posts || 0) + 'p / ' + (refs.metas || 0) + 'm / ' + (refs.options || 0) + 'o';
+      var warn =
+        row.old_missing && row.new_exists
+          ? ' <span class="lumen-wp-urls-pill">404→webp</span>'
+          : '';
+      html +=
+        '<tr>' +
+        '<td><strong>' +
+        $('<div/>').text(row.title || '#' + row.id).html() +
+        '</strong> <code>#' +
+        row.id +
+        '</code>' +
+        warn +
+        '</td>' +
+        '<td class="lumen-wp-urls-url"><code>' +
+        $('<div/>').text(row.old_url || '').html() +
+        '</code></td>' +
+        '<td class="lumen-wp-urls-url"><code>' +
+        $('<div/>').text(row.new_url || '').html() +
+        '</code></td>' +
+        '<td>' +
+        refTxt +
+        '</td>' +
+        '<td>' +
+        (row.edit_url
+          ? '<a class="button button-small" href="' +
+            row.edit_url +
+            '" target="_blank" rel="noopener">Fiche</a>'
+          : '') +
+        '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    $box.prop('hidden', false).html(html);
+  }
+
+  function renderUrlsLog(log) {
+    var $ul = $('#lumen-wp-urls-log');
+    if (!$ul.length) return;
+    log = log || [];
+    if (!log.length) {
+      $ul.prop('hidden', true).empty();
+      return;
+    }
+    $ul.prop('hidden', false).empty();
+    log.slice(0, 12).forEach(function (line) {
+      $ul.append($('<li/>').text(line));
+    });
+  }
+
+  function applyUrlsJob(job, meta) {
+    if (!job || !$('#lumen-wp-urls-diagnose').length) return;
+    var status = job.status || 'idle';
+    var processed = parseInt(job.processed, 10) || 0;
+    var total = parseInt(job.total_estimate, 10) || 0;
+    var pct = total
+      ? Math.min(100, Math.round((processed / total) * 100))
+      : status === 'done'
+        ? 100
+        : 0;
+    var running = status === 'running';
+
+    $('#lumen-wp-urls-progress').prop('hidden', status === 'idle');
+    $('#lumen-wp-urls-progress-bar').val(pct);
+    var label =
+      processed +
+      ' / ' +
+      total +
+      (job.mode === 'rewrite'
+        ? ' — remplacements ' + (job.replacements || 0)
+        : ' — obsolètes ' + (job.issues_found || 0));
+    $('#lumen-wp-urls-progress-label').text(label);
+    $('#lumen-wp-urls-status-text').text(job.last_message || status);
+    renderUrlsLog(job.log || []);
+
+    $('#lumen-wp-urls-diagnose').prop('disabled', running);
+    $('#lumen-wp-urls-rewrite').prop('disabled', running);
+    $('#lumen-wp-urls-force-tick').prop('disabled', !running);
+    $('#lumen-wp-urls-stop').prop('disabled', !running);
+
+    if (status === 'done') {
+      if (job.mode === 'diagnose') {
+        renderUrlsIssues(job.issues || []);
+      } else {
+        var $box = $('#lumen-wp-urls-results');
+        var summary =
+          (job.last_message || 'Réécriture terminée.') +
+          ' Posts ' +
+          (job.posts || 0) +
+          ' / Elementor ' +
+          (job.metas || 0) +
+          ' / options ' +
+          (job.options || 0) +
+          '.';
+        $box
+          .prop('hidden', false)
+          .html('<p class="description">' + $('<div/>').text(summary).html() + '</p>');
+      }
+    }
+
+    if (urlsStatusReady && status === 'done' && urlsLastStatus !== 'done') {
+      window.lumenWpModal.success(job.last_message || lumenWp.i18n.done);
+    }
+    urlsLastStatus = status;
+    urlsStatusReady = true;
+
+    if (running) {
+      startUrlsPoll();
+      if (meta && meta.health && meta.health.stale && !urlsForceInFlight) {
+        urlsForceInFlight = true;
+        ajax('lumen_wp_urls_force_tick')
+          .done(function (res) {
+            if (res && res.success && res.data) {
+              applyUrlsJob(res.data.job, res.data);
+            }
+          })
+          .always(function () {
+            urlsForceInFlight = false;
+          });
+      }
+    } else {
+      stopUrlsPoll();
+    }
+  }
+
+  function pollUrlsStatus() {
+    if (!$('#lumen-wp-urls-diagnose').length) return;
+    ajax('lumen_wp_urls_status').done(function (res) {
+      if (res && res.success && res.data) {
+        applyUrlsJob(res.data.job, res.data);
+      }
+    });
+  }
+
+  function startUrlsPoll() {
+    if (urlsPollTimer) return;
+    urlsPollTimer = setInterval(pollUrlsStatus, 2000);
+  }
+
+  function stopUrlsPoll() {
+    if (urlsPollTimer) {
+      clearInterval(urlsPollTimer);
+      urlsPollTimer = null;
+    }
+  }
+
+  function startUrlsJob(mode) {
+    ajax('lumen_wp_urls_start', { mode: mode })
+      .done(function (res) {
+        if (!res || !res.success) {
+          window.lumenWpModal.error(
+            (res && res.data && res.data.message) || lumenWp.i18n.error
+          );
+          return;
+        }
+        $('#lumen-wp-urls-results').prop('hidden', true).empty();
+        applyUrlsJob(res.data.job, res.data);
+        startUrlsPoll();
+      })
+      .fail(function (xhr) {
+        window.lumenWpModal.error(ajaxErrorMessage(xhr, 'Démarrage impossible'));
+      });
+  }
+
+  $(function () {
+    if ($('#lumen-wp-urls-diagnose').length) {
+      pollUrlsStatus();
+    }
+  });
+
+  $(document).on('click', '#lumen-wp-urls-diagnose', function (e) {
+    e.preventDefault();
+    startUrlsJob('diagnose');
+  });
+
+  $(document).on('click', '#lumen-wp-urls-rewrite', function (e) {
+    e.preventDefault();
+    if (
+      !window.confirm(
+        'Réécrire globalement les anciennes URLs (.jpg/.png → .webp) dans le contenu, Elementor et les options ?'
+      )
+    ) {
+      return;
+    }
+    startUrlsJob('rewrite');
+  });
+
+  $(document).on('click', '#lumen-wp-urls-force-tick', function (e) {
+    e.preventDefault();
+    var btn = $(this).prop('disabled', true);
+    ajax('lumen_wp_urls_force_tick')
+      .done(function (res) {
+        if (!res || !res.success) {
+          window.lumenWpModal.error(
+            (res && res.data && res.data.message) || lumenWp.i18n.error
+          );
+          return;
+        }
+        applyUrlsJob(res.data.job, res.data);
+      })
+      .fail(function (xhr) {
+        window.lumenWpModal.error(ajaxErrorMessage(xhr, 'Avance impossible'));
+      })
+      .always(function () {
+        btn.prop('disabled', false);
+      });
+  });
+
+  $(document).on('click', '#lumen-wp-urls-stop', function (e) {
+    e.preventDefault();
+    ajax('lumen_wp_urls_stop').done(function (res) {
+      if (res && res.success) {
+        applyUrlsJob(res.data.job, res.data);
+      }
+      stopUrlsPoll();
+    });
+  });
+
 })(jQuery);

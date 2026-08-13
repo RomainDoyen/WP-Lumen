@@ -19,7 +19,7 @@ final class Content_Url_Rewriter
 	/**
 	 * @return array{posts: int, metas: int, options: int, replacements: int}
 	 */
-	public static function rewrite_paths(string $old_abs, string $new_abs, bool $force = false): array
+	public static function rewrite_paths(string $old_abs, string $new_abs, bool $force = false, bool $clear_elementor = true): array
 	{
 		$empty = ['posts' => 0, 'metas' => 0, 'options' => 0, 'replacements' => 0];
 
@@ -38,8 +38,8 @@ final class Content_Url_Rewriter
 			return $empty;
 		}
 
-		$result = self::apply_pairs($pairs, basename($old_abs));
-		if ($result['replacements'] > 0) {
+		$result = self::apply_pairs($pairs, $old_abs);
+		if ($clear_elementor && $result['replacements'] > 0) {
 			self::maybe_clear_elementor_cache();
 		}
 
@@ -51,9 +51,14 @@ final class Content_Url_Rewriter
 	 *
 	 * @return array{posts: int, metas: int, options: int, replacements: int}
 	 */
-	public static function after_attachment_path_change(int $attachment_id, string $old_abs, string $new_abs, bool $force = false): array
-	{
-		$result = self::rewrite_paths($old_abs, $new_abs, $force);
+	public static function after_attachment_path_change(
+		int $attachment_id,
+		string $old_abs,
+		string $new_abs,
+		bool $force = false,
+		bool $clear_elementor = true
+	): array {
+		$result = self::rewrite_paths($old_abs, $new_abs, $force, $clear_elementor);
 
 		if ((! $force && ! self::enabled()) || $attachment_id <= 0) {
 			return $result;
@@ -79,7 +84,83 @@ final class Content_Url_Rewriter
 			}
 		}
 
+		// Keep _wp_attachment_metadata size filenames on the new extension when files exist.
+		self::sync_attachment_metadata_extensions($attachment_id, $old_abs, $new_abs);
+
 		return $result;
+	}
+
+	/**
+	 * Update attachment metadata `file` / `sizes[*].file` extensions after a path change.
+	 */
+	public static function sync_attachment_metadata_extensions(int $attachment_id, string $old_abs, string $new_abs): void
+	{
+		if ($attachment_id <= 0) {
+			return;
+		}
+
+		$old_ext = strtolower((string) pathinfo($old_abs, PATHINFO_EXTENSION));
+		$new_ext = strtolower((string) pathinfo($new_abs, PATHINFO_EXTENSION));
+		if ($old_ext === '' || $new_ext === '' || $old_ext === $new_ext) {
+			return;
+		}
+
+		$meta = wp_get_attachment_metadata($attachment_id);
+		if (! is_array($meta)) {
+			return;
+		}
+
+		$changed = false;
+		$dir     = dirname(self::norm_path($new_abs));
+
+		if (! empty($meta['file']) && is_string($meta['file'])) {
+			$updated_file = (string) preg_replace(
+				'/\.' . preg_quote($old_ext, '/') . '$/i',
+				'.' . $new_ext,
+				$meta['file']
+			);
+			if ($updated_file !== '' && $updated_file !== $meta['file']) {
+				$meta['file'] = $updated_file;
+				$changed      = true;
+			}
+		}
+
+		if (! empty($meta['sizes']) && is_array($meta['sizes'])) {
+			foreach ($meta['sizes'] as $key => $size) {
+				if (! is_array($size) || empty($size['file']) || ! is_string($size['file'])) {
+					continue;
+				}
+				$old_size_name = $size['file'];
+				$new_size_name = (string) preg_replace(
+					'/\.' . preg_quote($old_ext, '/') . '$/i',
+					'.' . $new_ext,
+					$old_size_name
+				);
+				if ($new_size_name === '' || $new_size_name === $old_size_name) {
+					continue;
+				}
+				$candidate = $dir . '/' . basename($new_size_name);
+				// Prefer real webp/avif size; otherwise keep pointing at full new file basename.
+				if (is_readable($candidate)) {
+					$meta['sizes'][$key]['file'] = basename($new_size_name);
+					if (isset($meta['sizes'][$key]['mime-type'])) {
+						$meta['sizes'][$key]['mime-type'] = $new_ext === 'avif' ? 'image/avif' : 'image/webp';
+					}
+					$changed = true;
+				} else {
+					$meta['sizes'][$key]['file'] = basename($new_abs);
+					if (isset($meta['sizes'][$key]['mime-type'])) {
+						$meta['sizes'][$key]['mime-type'] = $new_ext === 'avif' ? 'image/avif' : 'image/webp';
+					}
+					$changed = true;
+				}
+			}
+		}
+
+		if ($changed) {
+			wp_update_attachment_metadata($attachment_id, $meta);
+			clean_post_cache($attachment_id);
+		}
 	}
 
 	/**
@@ -177,7 +258,7 @@ final class Content_Url_Rewriter
 			}
 			$seen[$key] = true;
 
-			$r = self::after_attachment_path_change($pair['id'], $pair['old_abs'], $pair['new_abs'], true);
+			$r = self::after_attachment_path_change($pair['id'], $pair['old_abs'], $pair['new_abs'], true, false);
 			$sum['posts']        += $r['posts'];
 			$sum['metas']        += $r['metas'];
 			$sum['options']      += $r['options'];
@@ -209,9 +290,9 @@ final class Content_Url_Rewriter
 	}
 
 	/**
-	 * @return list<array{id: int, title: string, old_abs: string, new_abs: string}>
+	 * Count attachment candidates for the URLs queue (lightweight).
 	 */
-	private static function collect_rewrite_candidates(int $limit): array
+	public static function count_candidate_attachments(): int
 	{
 		global $wpdb;
 
@@ -220,9 +301,47 @@ final class Content_Url_Rewriter
 		$img_sql    = Media_Types::mime_where_sql([Media_Types::KIND_IMAGE], 'p');
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$ids = $wpdb->get_col(
+		$total = (int) $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT DISTINCT p.ID
+				"SELECT COUNT(DISTINCT p.ID)
+				FROM {$wpdb->posts} p
+				LEFT JOIN {$wpdb->postmeta} b
+					ON b.post_id = p.ID AND b.meta_key = %s
+				LEFT JOIN {$wpdb->postmeta} s
+					ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
+				WHERE p.post_type = 'attachment'
+				  AND p.post_status = 'inherit'
+				  AND {$img_sql}
+				  AND (
+					b.meta_id IS NOT NULL
+					OR p.post_mime_type IN ('image/webp', 'image/avif')
+					OR s.meta_id IS NOT NULL
+				  )",
+				$backup_key,
+				$status_key
+			)
+		);
+		// phpcs:enable
+
+		return max(0, $total);
+	}
+
+	/**
+	 * Next candidate attachment ID after cursor (ASC) for chunked jobs.
+	 */
+	public static function next_candidate_id(int $after_id): int
+	{
+		global $wpdb;
+
+		$status_key = Plugin::META_STATUS;
+		$backup_key = Plugin::META_ORIGINAL_BACKUP;
+		$img_sql    = Media_Types::mime_where_sql([Media_Types::KIND_IMAGE], 'p');
+		$after_id   = max(0, $after_id);
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$id = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT p.ID
 				FROM {$wpdb->posts} p
 				LEFT JOIN {$wpdb->postmeta} b
 					ON b.post_id = p.ID AND b.meta_key = %s
@@ -236,49 +355,117 @@ final class Content_Url_Rewriter
 					OR p.post_mime_type IN ('image/webp', 'image/avif')
 					OR s.meta_id IS NOT NULL
 				  )
-				ORDER BY (b.meta_id IS NULL) ASC, p.ID DESC
-				LIMIT %d",
+				  AND p.ID > %d
+				ORDER BY p.ID ASC
+				LIMIT 1",
 				$backup_key,
 				$status_key,
-				$limit
+				$after_id
 			)
 		);
 		// phpcs:enable
 
-		$out = [];
-		if (! is_array($ids)) {
-			return $out;
+		return max(0, $id);
+	}
+
+	/**
+	 * @return list<array{id: int, title: string, old_abs: string, new_abs: string}>
+	 */
+	public static function pairs_for_attachment(int $attachment_id): array
+	{
+		$attachment_id = max(0, $attachment_id);
+		if ($attachment_id <= 0) {
+			return [];
 		}
 
-		foreach ($ids as $raw_id) {
-			$id = (int) $raw_id;
-			$new = get_attached_file($id);
-			if (! is_string($new) || $new === '' || ! is_readable($new)) {
+		$new = get_attached_file($attachment_id);
+		if (! is_string($new) || $new === '' || ! is_readable($new)) {
+			return [];
+		}
+		$new = self::norm_path($new);
+
+		$title = (string) get_the_title($attachment_id);
+		if ($title === '') {
+			$title = basename($new);
+		}
+
+		$out = [];
+		foreach (self::resolve_old_paths($attachment_id, $new) as $old) {
+			if ($old === '' || $old === $new) {
 				continue;
 			}
-			$new = self::norm_path($new);
-
-			$title = (string) get_the_title($id);
-			if ($title === '') {
-				$title = basename($new);
+			$old_ext = strtolower((string) pathinfo($old, PATHINFO_EXTENSION));
+			$new_ext = strtolower((string) pathinfo($new, PATHINFO_EXTENSION));
+			if ($old_ext === $new_ext && is_readable($old)) {
+				continue;
 			}
 
-			foreach (self::resolve_old_paths($id, $new) as $old) {
-				if ($old === '' || $old === $new) {
-					continue;
-				}
-				$old_ext = strtolower((string) pathinfo($old, PATHINFO_EXTENSION));
-				$new_ext = strtolower((string) pathinfo($new, PATHINFO_EXTENSION));
-				if ($old_ext === $new_ext && is_readable($old)) {
-					continue;
-				}
+			$out[] = [
+				'id'      => $attachment_id,
+				'title'   => $title,
+				'old_abs' => $old,
+				'new_abs' => $new,
+			];
+		}
 
-				$out[] = [
-					'id'      => $id,
-					'title'   => $title,
-					'old_abs' => $old,
-					'new_abs' => $new,
-				];
+		return $out;
+	}
+
+	/**
+	 * Diagnose a single candidate pair (for queue ticks).
+	 *
+	 * @param array{id: int, title: string, old_abs: string, new_abs: string} $pair
+	 * @return array<string, mixed>|null
+	 */
+	public static function diagnose_pair(array $pair): ?array
+	{
+		$refs = self::count_references_fast(basename((string) ($pair['old_abs'] ?? '')));
+		if ($refs['posts'] + $refs['metas'] + $refs['options'] <= 0) {
+			return null;
+		}
+
+		$old_abs = (string) ($pair['old_abs'] ?? '');
+		$new_abs = (string) ($pair['new_abs'] ?? '');
+
+		return [
+			'id'          => (int) ($pair['id'] ?? 0),
+			'title'       => (string) ($pair['title'] ?? ''),
+			'old_url'     => self::abs_to_url($old_abs),
+			'new_url'     => self::abs_to_url($new_abs),
+			'old_missing' => $old_abs === '' || ! is_readable($old_abs),
+			'new_exists'  => $new_abs !== '' && is_readable($new_abs),
+			'refs'        => $refs,
+			'edit_url'    => Bulk_Queue::edit_url_for((int) ($pair['id'] ?? 0)),
+		];
+	}
+
+	/** Public wrapper for end-of-job Elementor purge. */
+	public static function clear_elementor_cache(): void
+	{
+		self::maybe_clear_elementor_cache();
+	}
+
+	/**
+	 * @return list<array{id: int, title: string, old_abs: string, new_abs: string}>
+	 */
+	private static function collect_rewrite_candidates(int $limit): array
+	{
+		$limit = max(1, min(400, $limit));
+		$out   = [];
+		$cursor = 0;
+
+		// Prefer ASC cursor walk (same as Url_Queue) but stop at $limit pairs.
+		while (count($out) < $limit) {
+			$id = self::next_candidate_id($cursor);
+			if ($id <= 0) {
+				break;
+			}
+			$cursor = $id;
+			foreach (self::pairs_for_attachment($id) as $pair) {
+				$out[] = $pair;
+				if (count($out) >= $limit) {
+					break;
+				}
 			}
 		}
 
@@ -331,6 +518,7 @@ final class Content_Url_Rewriter
 
 	/**
 	 * Fast reference counts (COUNT only — no content loading).
+	 * Matches the full basename AND WordPress intermediate sizes (`stem-110x37.ext`).
 	 *
 	 * @return array{posts: int, metas: int, options: int}
 	 */
@@ -342,7 +530,7 @@ final class Content_Url_Rewriter
 			return ['posts' => 0, 'metas' => 0, 'options' => 0];
 		}
 
-		$like = '%' . $wpdb->esc_like($old_basename) . '%';
+		[$like_full, $like_sizes] = self::like_patterns_for_basename($old_basename);
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$posts = (int) $wpdb->get_var(
@@ -350,8 +538,9 @@ final class Content_Url_Rewriter
 				"SELECT COUNT(ID) FROM {$wpdb->posts}
 				WHERE post_status NOT IN ('trash', 'auto-draft')
 				AND post_type NOT IN ('attachment', 'revision')
-				AND post_content LIKE %s",
-				$like
+				AND (post_content LIKE %s OR post_content LIKE %s)",
+				$like_full,
+				$like_sizes
 			)
 		);
 
@@ -360,8 +549,9 @@ final class Content_Url_Rewriter
 		$metas = (int) $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COUNT(meta_id) FROM {$wpdb->postmeta}
-				WHERE meta_key IN ($in) AND meta_value LIKE %s",
-				$like
+				WHERE meta_key IN ($in) AND (meta_value LIKE %s OR meta_value LIKE %s)",
+				$like_full,
+				$like_sizes
 			)
 		);
 		// phpcs:enable
@@ -371,10 +561,11 @@ final class Content_Url_Rewriter
 				"SELECT COUNT(option_id) FROM {$wpdb->options}
 				WHERE option_name NOT LIKE %s
 				  AND option_name NOT LIKE %s
-				  AND option_value LIKE %s",
+				  AND (option_value LIKE %s OR option_value LIKE %s)",
 				$wpdb->esc_like('_transient_') . '%',
 				$wpdb->esc_like('_site_transient_') . '%',
-				$like
+				$like_full,
+				$like_sizes
 			)
 		);
 		// phpcs:enable
@@ -384,6 +575,23 @@ final class Content_Url_Rewriter
 			'metas'   => $metas,
 			'options' => $opts,
 		];
+	}
+
+	/**
+	 * @return array{0: string, 1: string} [like_full, like_sizes]
+	 */
+	private static function like_patterns_for_basename(string $old_basename): array
+	{
+		global $wpdb;
+
+		$stem = (string) pathinfo($old_basename, PATHINFO_FILENAME);
+		$ext  = strtolower((string) pathinfo($old_basename, PATHINFO_EXTENSION));
+
+		$like_full  = '%' . $wpdb->esc_like($old_basename) . '%';
+		// WP intermediates: stem-110x37.ext (stem- alone is too broad without ext anchor).
+		$like_sizes = '%' . $wpdb->esc_like($stem . '-') . '%' . $wpdb->esc_like('.' . $ext) . '%';
+
+		return [$like_full, $like_sizes];
 	}
 
 	/**
@@ -405,25 +613,61 @@ final class Content_Url_Rewriter
 			}
 		};
 
-		$old_url = self::abs_to_url($old_abs);
-		$new_url = self::abs_to_url($new_abs);
-		$add($old_url, $new_url);
+		$add_path_pair = static function (string $from_abs, string $to_abs) use ($add): void {
+			$from_abs = self::norm_path($from_abs);
+			$to_abs   = self::norm_path($to_abs);
+			if ($from_abs === '' || $to_abs === '' || $from_abs === $to_abs) {
+				return;
+			}
 
-		if (strpos($old_url, 'https://') === 0) {
-			$add('http://' . substr($old_url, 8), 'http://' . substr($new_url, 8));
-		} elseif (strpos($old_url, 'http://') === 0) {
-			$add('https://' . substr($old_url, 7), 'https://' . substr($new_url, 7));
-		}
+			$old_url = self::abs_to_url($from_abs);
+			$new_url = self::abs_to_url($to_abs);
+			$add($old_url, $new_url);
 
-		if (preg_match('#^https?:#', $old_url)) {
-			$add(preg_replace('#^https?:#', '', $old_url) ?? '', preg_replace('#^https?:#', '', $new_url) ?? '');
-		}
+			if ($old_url !== '' && strpos($old_url, 'https://') === 0) {
+				$add('http://' . substr($old_url, 8), 'http://' . substr($new_url, 8));
+			} elseif ($old_url !== '' && strpos($old_url, 'http://') === 0) {
+				$add('https://' . substr($old_url, 7), 'https://' . substr($new_url, 7));
+			}
 
-		$old_rel = self::abs_to_uploads_rel($old_abs);
-		$new_rel = self::abs_to_uploads_rel($new_abs);
-		if ($old_rel !== '' && $new_rel !== '') {
-			$add($old_rel, $new_rel);
-			$add('/' . ltrim($old_rel, '/'), '/' . ltrim($new_rel, '/'));
+			if ($old_url !== '' && preg_match('#^https?:#', $old_url)) {
+				$add(preg_replace('#^https?:#', '', $old_url) ?? '', preg_replace('#^https?:#', '', $new_url) ?? '');
+			}
+
+			$old_rel = self::abs_to_uploads_rel($from_abs);
+			$new_rel = self::abs_to_uploads_rel($to_abs);
+			if ($old_rel !== '' && $new_rel !== '') {
+				$add($old_rel, $new_rel);
+				$add('/' . ltrim($old_rel, '/'), '/' . ltrim($new_rel, '/'));
+			}
+		};
+
+		$add_path_pair($old_abs, $new_abs);
+
+		// WordPress intermediates: logo-110x37.png → logo-110x37.webp (or full .webp fallback).
+		$old_ext = strtolower((string) pathinfo($old_abs, PATHINFO_EXTENSION));
+		$new_ext = strtolower((string) pathinfo($new_abs, PATHINFO_EXTENSION));
+		$stem    = (string) pathinfo($old_abs, PATHINFO_FILENAME);
+		$dir     = dirname($old_abs);
+
+		if ($old_ext !== '' && $new_ext !== '' && $old_ext !== $new_ext && $stem !== '' && is_dir($dir)) {
+			$pattern = $dir . '/' . $stem . '-*.' . $old_ext;
+			$found   = glob($pattern) ?: [];
+			foreach ($found as $old_size) {
+				$old_size = self::norm_path((string) $old_size);
+				if (! preg_match('/-\d+x\d+\.' . preg_quote($old_ext, '/') . '$/i', $old_size)) {
+					continue;
+				}
+				$new_size = (string) preg_replace(
+					'/\.' . preg_quote($old_ext, '/') . '$/i',
+					'.' . $new_ext,
+					$old_size
+				);
+				$target = (is_string($new_size) && $new_size !== '' && is_readable($new_size))
+					? $new_size
+					: $new_abs;
+				$add_path_pair($old_size, $target);
+			}
 		}
 
 		uksort(
@@ -438,9 +682,10 @@ final class Content_Url_Rewriter
 
 	/**
 	 * @param array<string, string> $pairs
+	 * @param string                 $old_abs Absolute path of the pre-replace file (full size).
 	 * @return array{posts: int, metas: int, options: int, replacements: int}
 	 */
-	private static function apply_pairs(array $pairs, string $old_basename): array
+	private static function apply_pairs(array $pairs, string $old_abs): array
 	{
 		global $wpdb;
 
@@ -449,11 +694,12 @@ final class Content_Url_Rewriter
 		$opts_n  = 0;
 		$repl_n  = 0;
 
+		$old_basename = basename($old_abs);
 		if ($old_basename === '') {
 			return ['posts' => 0, 'metas' => 0, 'options' => 0, 'replacements' => 0];
 		}
 
-		$like = '%' . $wpdb->esc_like($old_basename) . '%';
+		[$like_full, $like_sizes] = self::like_patterns_for_basename($old_basename);
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$post_ids = $wpdb->get_col(
@@ -461,9 +707,10 @@ final class Content_Url_Rewriter
 				"SELECT ID FROM {$wpdb->posts}
 				WHERE post_status NOT IN ('trash', 'auto-draft')
 				AND post_type NOT IN ('attachment', 'revision')
-				AND post_content LIKE %s
+				AND (post_content LIKE %s OR post_content LIKE %s)
 				LIMIT 5000",
-				$like
+				$like_full,
+				$like_sizes
 			)
 		);
 		// phpcs:enable
@@ -496,9 +743,10 @@ final class Content_Url_Rewriter
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT meta_id, post_id, meta_value FROM {$wpdb->postmeta}
-				WHERE meta_key IN ($in) AND meta_value LIKE %s
+				WHERE meta_key IN ($in) AND (meta_value LIKE %s OR meta_value LIKE %s)
 				LIMIT 5000",
-				$like
+				$like_full,
+				$like_sizes
 			),
 			ARRAY_A
 		);
@@ -536,11 +784,12 @@ final class Content_Url_Rewriter
 				"SELECT option_id, option_name, option_value FROM {$wpdb->options}
 				WHERE option_name NOT LIKE %s
 				  AND option_name NOT LIKE %s
-				  AND option_value LIKE %s
+				  AND (option_value LIKE %s OR option_value LIKE %s)
 				LIMIT 2000",
 				$wpdb->esc_like('_transient_') . '%',
 				$wpdb->esc_like('_site_transient_') . '%',
-				$like
+				$like_full,
+				$like_sizes
 			),
 			ARRAY_A
 		);
