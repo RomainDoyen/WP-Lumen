@@ -6,6 +6,7 @@ namespace LumenWp\Admin;
 
 use LumenWp\Bulk_Queue;
 use LumenWp\Cleanup;
+use LumenWp\Content_Url_Rewriter;
 use LumenWp\Reports;
 
 final class Tools
@@ -16,6 +17,8 @@ final class Tools
 		add_action('wp_ajax_lumen_wp_cleanup_preview', [$this, 'ajax_cleanup_preview']);
 		add_action('wp_ajax_lumen_wp_cleanup_run', [$this, 'ajax_cleanup_run']);
 		add_action('wp_ajax_lumen_wp_cron_health', [$this, 'ajax_cron_health']);
+		add_action('wp_ajax_lumen_wp_urls_diagnose', [$this, 'ajax_urls_diagnose']);
+		add_action('wp_ajax_lumen_wp_urls_rewrite', [$this, 'ajax_urls_rewrite']);
 	}
 
 	public function add_menu(): void
@@ -194,6 +197,23 @@ final class Tools
 			</section>
 
 			<section class="lumen-wp-panel">
+				<h2 class="lumen-wp-panel__title"><?php esc_html_e('URLs cassées', 'lumen-wp'); ?></h2>
+				<p class="description">
+					<?php esc_html_e('Après un remplacement (.jpg/.png → .webp), diagnostique les anciennes URLs encore présentes dans les pages, Elementor et les options, puis force une réécriture globale.', 'lumen-wp'); ?>
+				</p>
+				<p class="lumen-wp-actions-row">
+					<button type="button" class="button" id="lumen-wp-urls-diagnose">
+						<?php esc_html_e('Diagnostiquer', 'lumen-wp'); ?>
+					</button>
+					<button type="button" class="button button-primary" id="lumen-wp-urls-rewrite">
+						<?php esc_html_e('Réécrire globalement', 'lumen-wp'); ?>
+					</button>
+				</p>
+				<p class="description" id="lumen-wp-urls-summary" hidden></p>
+				<div id="lumen-wp-urls-results" class="lumen-wp-urls-results" hidden></div>
+			</section>
+
+			<section class="lumen-wp-panel">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Rapports', 'lumen-wp'); ?></h2>
 				<p class="description">
 					<?php
@@ -285,6 +305,35 @@ final class Tools
 			[
 				'health' => Bulk_Queue::health(),
 				'job'    => Bulk_Queue::job(),
+			]
+		);
+	}
+
+	public function ajax_urls_diagnose(): void
+	{
+		$this->guard();
+		@set_time_limit(120); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		$report = Content_Url_Rewriter::diagnose_stale_urls(400);
+		wp_send_json_success(['report' => $report]);
+	}
+
+	public function ajax_urls_rewrite(): void
+	{
+		$this->guard();
+		@set_time_limit(180); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		$result = Content_Url_Rewriter::rewrite_all_stale(400);
+		$report = Content_Url_Rewriter::diagnose_stale_urls(400);
+		wp_send_json_success(
+			[
+				'result'  => $result,
+				'report'  => $report,
+				'message' => sprintf(
+					/* translators: 1: attachments, 2: replacements, 3: remaining issues */
+					__('Réécriture terminée — %1$d média(s), %2$d remplacement(s). Problèmes restants : %3$d.', 'lumen-wp'),
+					(int) $result['attachments'],
+					(int) $result['replacements'],
+					(int) $result['issues_remaining']
+				),
 			]
 		);
 	}

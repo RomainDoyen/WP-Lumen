@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.3.39-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.3.41-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -30,7 +30,7 @@
 | **Pack**         | JSON-LD `ImageObject` + snippet Gutenberg `<picture>` (images raster)                 |
 | **Traitement**   | File d’attente en arrière-plan (filtres Images / PDF / SVG / Vidéos, pause / reprise) |
 | **Restauration** | Sauvegarde de l’original avant remplacement + bouton fiche média                      |
-| **Outils**       | Nettoyage, état du traitement, rapports audit / historique (CSV, Excel, PDF)          |
+| **Outils**       | Nettoyage, URLs cassées (diagnostic / réécriture), rapports (CSV, Excel, PDF)         |
 | **Icônes**       | Kit PNG 16→512, ZIP, favicons injectés dans le `<head>`                               |
 | **IA**           | Vision multi-fournisseur : Mistral, OpenAI, Anthropic, Gemini + compteur local        |
 | **Apparence**    | Thème admin clair ou sombre                                                           |
@@ -146,6 +146,14 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.3.41
+
+- Optimisation : gros JPEG/drone/panorama — plafond 4096 px, limites Imagick, moins de « time limit exceeded »
+
+### 1.3.40
+
+- Outils : diagnostiquer les URLs obsolètes + réécriture globale (contenu, Elementor, options)
 
 ### 1.3.39
 

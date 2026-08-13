@@ -1434,4 +1434,131 @@
         btn.prop('disabled', false).text('Lancer le nettoyage');
       });
   });
+
+  function renderUrlsReport(report) {
+    var $summary = $('#lumen-wp-urls-summary');
+    var $box = $('#lumen-wp-urls-results');
+    if (!$summary.length || !$box.length || !report) return;
+
+    var totals = report.totals || {};
+    var issues = report.issues || [];
+    $summary
+      .prop('hidden', false)
+      .text(
+        'Scan : ' +
+          (report.scanned || 0) +
+          ' média(s) — ' +
+          (totals.issues || 0) +
+          ' URL(s) obsolète(s) (posts ' +
+          (totals.posts || 0) +
+          ', Elementor ' +
+          (totals.metas || 0) +
+          ', options ' +
+          (totals.options || 0) +
+          ').'
+      );
+
+    if (!issues.length) {
+      $box.prop('hidden', false).html(
+        '<p class="description">Aucune ancienne URL détectée dans le contenu / Elementor / options.</p>'
+      );
+      return;
+    }
+
+    var html =
+      '<table class="widefat striped lumen-wp-urls-table"><thead><tr>' +
+      '<th>Média</th><th>Ancienne URL</th><th>Nouvelle URL</th><th>Réfs</th><th></th>' +
+      '</tr></thead><tbody>';
+
+    issues.forEach(function (row) {
+      var refs = row.refs || {};
+      var refTxt =
+        (refs.posts || 0) + 'p / ' + (refs.metas || 0) + 'm / ' + (refs.options || 0) + 'o';
+      var warn = row.old_missing && row.new_exists ? ' <span class="lumen-wp-urls-pill">404→webp</span>' : '';
+      html +=
+        '<tr>' +
+        '<td><strong>' +
+        $('<div/>').text(row.title || '#' + row.id).html() +
+        '</strong> <code>#' +
+        row.id +
+        '</code>' +
+        warn +
+        '</td>' +
+        '<td class="lumen-wp-urls-url"><code>' +
+        $('<div/>').text(row.old_url || '').html() +
+        '</code></td>' +
+        '<td class="lumen-wp-urls-url"><code>' +
+        $('<div/>').text(row.new_url || '').html() +
+        '</code></td>' +
+        '<td>' +
+        refTxt +
+        '</td>' +
+        '<td>' +
+        (row.edit_url
+          ? '<a class="button button-small" href="' +
+            row.edit_url +
+            '" target="_blank" rel="noopener">Fiche</a>'
+          : '') +
+        '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    $box.prop('hidden', false).html(html);
+  }
+
+  $(document).on('click', '#lumen-wp-urls-diagnose', function (e) {
+    e.preventDefault();
+    var btn = $(this).prop('disabled', true);
+    ajax('lumen_wp_urls_diagnose')
+      .done(function (res) {
+        if (!res || !res.success) {
+          window.lumenWpModal.error(
+            (res && res.data && res.data.message) || lumenWp.i18n.error
+          );
+          return;
+        }
+        renderUrlsReport(res.data.report);
+      })
+      .fail(function (xhr) {
+        window.lumenWpModal.error(
+          (xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) ||
+            lumenWp.i18n.error
+        );
+      })
+      .always(function () {
+        btn.prop('disabled', false);
+      });
+  });
+
+  $(document).on('click', '#lumen-wp-urls-rewrite', function (e) {
+    e.preventDefault();
+    if (
+      !window.confirm(
+        'Réécrire globalement les anciennes URLs (.jpg/.png → .webp) dans le contenu, Elementor et les options ?'
+      )
+    ) {
+      return;
+    }
+    var btn = $(this).prop('disabled', true).text(lumenWp.i18n.processing || '…');
+    ajax('lumen_wp_urls_rewrite')
+      .done(function (res) {
+        if (!res || !res.success) {
+          window.lumenWpModal.error(
+            (res && res.data && res.data.message) || lumenWp.i18n.error
+          );
+          return;
+        }
+        renderUrlsReport(res.data.report);
+        window.lumenWpModal.success(res.data.message || lumenWp.i18n.done);
+      })
+      .fail(function (xhr) {
+        window.lumenWpModal.error(
+          (xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) ||
+            lumenWp.i18n.error
+        );
+      })
+      .always(function () {
+        btn.prop('disabled', false).text('Réécrire globalement');
+      });
+  });
 })(jQuery);

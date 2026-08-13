@@ -6,6 +6,9 @@ namespace LumenWp;
 
 final class Optimizer
 {
+	/** Max edge (px) kept in memory for huge drone/panorama sources. */
+	public const MAX_SOURCE_EDGE = 4096;
+
 	public const SIZES = [
 		['key' => 'full', 'label' => 'Original', 'max' => null, 'crop' => false],
 		['key' => 'large', 'label' => 'Large', 'max' => 1024, 'crop' => false],
@@ -23,6 +26,9 @@ final class Optimizer
 	 */
 	public function process_attachment(int $attachment_id): array
 	{
+		@set_time_limit(180); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		self::boost_imagick_limits();
+
 		$file = get_attached_file($attachment_id);
 		if (! is_string($file) || $file === '' || ! is_readable($file)) {
 			throw new \RuntimeException(__('Fichier attachment introuvable.', 'lumen-wp'));
@@ -44,7 +50,19 @@ final class Optimizer
 			throw new \RuntimeException(__('Imagick ou GD est requis.', 'lumen-wp'));
 		}
 
-		$source = $this->load_source($file, $caps);
+		try {
+			$source = $this->load_source($file, $caps, self::MAX_SOURCE_EDGE);
+		} catch (\ImagickException $e) {
+			throw new \RuntimeException(
+				sprintf(
+					/* translators: %s: Imagick error */
+					__('Image trop lourde ou Imagick en échec : %s', 'lumen-wp'),
+					$this->simplify_imagick_error($e->getMessage())
+				),
+				0,
+				$e
+			);
+		}
 		$src_w  = (int) $source['width'];
 		$src_h  = (int) $source['height'];
 
@@ -169,23 +187,86 @@ final class Optimizer
 	}
 
 	/**
+	 * Raise Imagick resource ceilings when the host allows it (helps DJI / panoramas).
+	 */
+	public static function boost_imagick_limits(): void
+	{
+		if (! class_exists('\Imagick') || ! method_exists('\Imagick', 'setResourceLimit')) {
+			return;
+		}
+
+		try {
+			// Values are in bytes / seconds / pixels depending on the resource type.
+			if (defined('\Imagick::RESOURCETYPE_TIME')) {
+				\Imagick::setResourceLimit(\Imagick::RESOURCETYPE_TIME, 120);
+			}
+			if (defined('\Imagick::RESOURCETYPE_MEMORY')) {
+				\Imagick::setResourceLimit(\Imagick::RESOURCETYPE_MEMORY, 512 * 1024 * 1024);
+			}
+			if (defined('\Imagick::RESOURCETYPE_MAP')) {
+				\Imagick::setResourceLimit(\Imagick::RESOURCETYPE_MAP, 512 * 1024 * 1024);
+			}
+			if (defined('\Imagick::RESOURCETYPE_AREA')) {
+				\Imagick::setResourceLimit(\Imagick::RESOURCETYPE_AREA, 128 * 1024 * 1024);
+			}
+			if (defined('\Imagick::RESOURCETYPE_DISK')) {
+				\Imagick::setResourceLimit(\Imagick::RESOURCETYPE_DISK, 2 * 1024 * 1024 * 1024);
+			}
+		} catch (\Throwable $e) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch
+			// Host policy may forbid raising limits.
+		}
+	}
+
+	private function simplify_imagick_error(string $message): string
+	{
+		$message = trim($message);
+		if ($message === '') {
+			return __('erreur inconnue', 'lumen-wp');
+		}
+		if (stripos($message, 'time limit') !== false || stripos($message, 'GetImagePixelCache') !== false) {
+			return __('limite de temps/mémoire Imagick dépassée (image très grande). Lumen réduit désormais ces fichiers à 4096 px.', 'lumen-wp');
+		}
+		// Keep message short for bulk logs.
+		if (function_exists('mb_substr')) {
+			return mb_substr($message, 0, 180);
+		}
+
+		return substr($message, 0, 180);
+	}
+
+	/**
 	 * @param array{imagick: bool, gd: bool, webp: bool, avif: bool} $caps
 	 * @return array{engine: string, resource: mixed, width: int, height: int}
 	 */
-	private function load_source(string $file, array $caps): array
+	private function load_source(string $file, array $caps, int $max_edge = self::MAX_SOURCE_EDGE): array
 	{
+		$max_edge = max(1024, $max_edge);
+
 		if ($caps['imagick']) {
-			$img = new \Imagick($file);
+			$img = new \Imagick();
+			// Decode JPEG roughly at target size (avoids full 50–100 MP pixel cache).
+			if (preg_match('/\.(jpe?g)$/i', $file)) {
+				$img->setOption('jpeg:size', $max_edge . 'x' . $max_edge);
+			}
+			$img->readImage($file);
 			$img->setImageOrientation(\Imagick::ORIENTATION_TOPLEFT);
 			if (method_exists($img, 'autoOrient')) {
 				@$img->autoOrient();
 			}
 
+			$w = (int) $img->getImageWidth();
+			$h = (int) $img->getImageHeight();
+			if ($w > $max_edge || $h > $max_edge) {
+				$img->resizeImage($max_edge, $max_edge, \Imagick::FILTER_LANCZOS, 1, true);
+				$w = (int) $img->getImageWidth();
+				$h = (int) $img->getImageHeight();
+			}
+
 			return [
 				'engine'   => 'imagick',
 				'resource' => $img,
-				'width'    => (int) $img->getImageWidth(),
-				'height'   => (int) $img->getImageHeight(),
+				'width'    => $w,
+				'height'   => $h,
 			];
 		}
 
@@ -199,11 +280,26 @@ final class Optimizer
 			throw new \RuntimeException(__('GD ne peut pas décoder cette image.', 'lumen-wp'));
 		}
 
+		$w = (int) imagesx($gd);
+		$h = (int) imagesy($gd);
+		if ($w > $max_edge || $h > $max_edge) {
+			$scale = $max_edge / max($w, $h);
+			$nw    = max(1, (int) round($w * $scale));
+			$nh    = max(1, (int) round($h * $scale));
+			$resized = imagescale($gd, $nw, $nh);
+			if ($resized !== false) {
+				imagedestroy($gd);
+				$gd = $resized;
+				$w  = $nw;
+				$h  = $nh;
+			}
+		}
+
 		return [
 			'engine'   => 'gd',
 			'resource' => $gd,
-			'width'    => (int) imagesx($gd),
-			'height'   => (int) imagesy($gd),
+			'width'    => $w,
+			'height'   => $h,
 		];
 	}
 

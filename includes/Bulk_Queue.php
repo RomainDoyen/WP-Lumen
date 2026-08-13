@@ -389,7 +389,9 @@ final class Bulk_Queue
 		if (get_transient(self::LOCK)) {
 			return;
 		}
-		set_transient(self::LOCK, 1, 120);
+		set_transient(self::LOCK, 1, 180);
+		@set_time_limit(180); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		Optimizer::boost_imagick_limits();
 
 		try {
 			$job = self::job();
