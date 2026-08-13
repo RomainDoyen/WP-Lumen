@@ -312,30 +312,56 @@ final class Tools
 	public function ajax_urls_diagnose(): void
 	{
 		$this->guard();
-		@set_time_limit(120); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-		$report = Content_Url_Rewriter::diagnose_stale_urls(400);
-		wp_send_json_success(['report' => $report]);
+		@set_time_limit(180); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		try {
+			$report = Content_Url_Rewriter::diagnose_stale_urls(150);
+			wp_send_json_success(['report' => $report]);
+		} catch (\Throwable $e) {
+			wp_send_json_error(
+				[
+					'message' => sprintf(
+						/* translators: %s: error message */
+						__('Diagnostic impossible : %s', 'lumen-wp'),
+						$e->getMessage()
+					),
+				],
+				500
+			);
+		}
 	}
 
 	public function ajax_urls_rewrite(): void
 	{
 		$this->guard();
-		@set_time_limit(180); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
-		$result = Content_Url_Rewriter::rewrite_all_stale(400);
-		$report = Content_Url_Rewriter::diagnose_stale_urls(400);
-		wp_send_json_success(
-			[
-				'result'  => $result,
-				'report'  => $report,
-				'message' => sprintf(
-					/* translators: 1: attachments, 2: replacements, 3: remaining issues */
-					__('Réécriture terminée — %1$d média(s), %2$d remplacement(s). Problèmes restants : %3$d.', 'lumen-wp'),
-					(int) $result['attachments'],
-					(int) $result['replacements'],
-					(int) $result['issues_remaining']
-				),
-			]
-		);
+		@set_time_limit(240); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		try {
+			$result = Content_Url_Rewriter::rewrite_all_stale(150);
+			$report = Content_Url_Rewriter::diagnose_stale_urls(100);
+			wp_send_json_success(
+				[
+					'result'  => $result,
+					'report'  => $report,
+					'message' => sprintf(
+						/* translators: 1: attachments, 2: replacements, 3: remaining issues */
+						__('Réécriture terminée — %1$d média(s), %2$d remplacement(s). Problèmes restants : %3$d.', 'lumen-wp'),
+						(int) $result['attachments'],
+						(int) $result['replacements'],
+						(int) $result['issues_remaining']
+					),
+				]
+			);
+		} catch (\Throwable $e) {
+			wp_send_json_error(
+				[
+					'message' => sprintf(
+						/* translators: %s: error message */
+						__('Réécriture impossible : %s', 'lumen-wp'),
+						$e->getMessage()
+					),
+				],
+				500
+			);
+		}
 	}
 
 	private function guard(): void

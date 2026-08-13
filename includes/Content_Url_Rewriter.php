@@ -100,17 +100,24 @@ final class Content_Url_Rewriter
 	 *   totals: array{issues: int, posts: int, metas: int, options: int}
 	 * }
 	 */
-	public static function diagnose_stale_urls(int $limit = 300): array
+	public static function diagnose_stale_urls(int $limit = 150): array
 	{
-		$limit   = max(1, min(1000, $limit));
+		$limit   = max(1, min(400, $limit));
 		$pairs   = self::collect_rewrite_candidates($limit);
 		$issues  = [];
 		$t_posts = 0;
 		$t_metas = 0;
 		$t_opts  = 0;
+		$seen    = [];
 
 		foreach ($pairs as $pair) {
-			$refs = self::count_references(basename($pair['old_abs']), self::build_pairs($pair['old_abs'], $pair['new_abs']));
+			$key = $pair['id'] . '|' . $pair['old_abs'];
+			if (isset($seen[$key])) {
+				continue;
+			}
+			$seen[$key] = true;
+
+			$refs = self::count_references_fast(basename($pair['old_abs']));
 			if ($refs['posts'] + $refs['metas'] + $refs['options'] <= 0) {
 				continue;
 			}
@@ -145,7 +152,7 @@ final class Content_Url_Rewriter
 	}
 
 	/**
-	 * Force-rewrite all diagnosed stale URL pairs (ignores the settings checkbox).
+	 * Force-rewrite all candidate stale URL pairs (ignores the settings checkbox).
 	 *
 	 * @return array{
 	 *   attachments: int,
@@ -156,31 +163,33 @@ final class Content_Url_Rewriter
 	 *   issues_remaining: int
 	 * }
 	 */
-	public static function rewrite_all_stale(int $limit = 300): array
+	public static function rewrite_all_stale(int $limit = 150): array
 	{
 		$pairs = self::collect_rewrite_candidates($limit);
 		$sum   = ['posts' => 0, 'metas' => 0, 'options' => 0, 'replacements' => 0];
 		$done  = 0;
+		$seen  = [];
 
 		foreach ($pairs as $pair) {
-			$refs = self::count_references(basename($pair['old_abs']), self::build_pairs($pair['old_abs'], $pair['new_abs']));
-			if ($refs['posts'] + $refs['metas'] + $refs['options'] <= 0) {
-				// Still fix guid if needed.
-				self::after_attachment_path_change($pair['id'], $pair['old_abs'], $pair['new_abs'], true);
+			$key = $pair['id'] . '|' . $pair['old_abs'];
+			if (isset($seen[$key])) {
 				continue;
 			}
+			$seen[$key] = true;
 
 			$r = self::after_attachment_path_change($pair['id'], $pair['old_abs'], $pair['new_abs'], true);
-			$sum['posts']         += $r['posts'];
-			$sum['metas']         += $r['metas'];
-			$sum['options']       += $r['options'];
-			$sum['replacements']  += $r['replacements'];
-			$done++;
+			$sum['posts']        += $r['posts'];
+			$sum['metas']        += $r['metas'];
+			$sum['options']      += $r['options'];
+			$sum['replacements'] += $r['replacements'];
+			if ($r['replacements'] > 0) {
+				$done++;
+			}
 		}
 
 		self::maybe_clear_elementor_cache();
 
-		$after = self::diagnose_stale_urls($limit);
+		$after = self::diagnose_stale_urls(min(100, $limit));
 
 		return [
 			'attachments'      => $done,
@@ -227,7 +236,7 @@ final class Content_Url_Rewriter
 					OR p.post_mime_type IN ('image/webp', 'image/avif')
 					OR s.meta_id IS NOT NULL
 				  )
-				ORDER BY p.ID DESC
+				ORDER BY (b.meta_id IS NULL) ASC, p.ID DESC
 				LIMIT %d",
 				$backup_key,
 				$status_key,
@@ -295,19 +304,25 @@ final class Content_Url_Rewriter
 		}
 
 		$guesses = [];
-		foreach (['png', 'jpg', 'jpeg', 'gif'] as $candidate) {
+
+		// Prefer extension still present on the attachment guid (often pre-replace).
+		$guid = (string) get_post_field('guid', $attachment_id);
+		if (preg_match('/\.(jpe?g|png|gif)(?:\?|#|$)/i', $guid, $m)) {
+			$from_guid = (string) preg_replace('/\.[^.]+$/', '.' . strtolower($m[1]), $current_abs);
+			if ($from_guid !== '' && $from_guid !== $current_abs) {
+				$guesses[] = self::norm_path($from_guid);
+			}
+		}
+
+		foreach (['png', 'jpg', 'jpeg'] as $candidate) {
 			$guess = (string) preg_replace('/\.[^.]+$/', '.' . $candidate, $current_abs);
 			if ($guess === '' || $guess === $current_abs) {
 				continue;
 			}
 			$guess = self::norm_path($guess);
-			$pairs = self::build_pairs($guess, $current_abs);
-			$refs  = self::count_references(basename($guess), $pairs);
-			if ($refs['posts'] + $refs['metas'] + $refs['options'] > 0 || ! is_readable($guess)) {
-				// Keep guesses that are still referenced, or missing on disk (classic after replace).
-				if ($refs['posts'] + $refs['metas'] + $refs['options'] > 0) {
-					$guesses[] = $guess;
-				}
+			// Classic after replace: old file is gone from disk.
+			if (! is_readable($guess)) {
+				$guesses[] = $guess;
 			}
 		}
 
@@ -315,105 +330,60 @@ final class Content_Url_Rewriter
 	}
 
 	/**
-	 * @param array<string, string> $pairs
+	 * Fast reference counts (COUNT only — no content loading).
+	 *
 	 * @return array{posts: int, metas: int, options: int}
 	 */
-	private static function count_references(string $old_basename, array $pairs): array
+	private static function count_references_fast(string $old_basename): array
 	{
 		global $wpdb;
 
-		$posts = 0;
-		$metas = 0;
-		$opts  = 0;
-		if ($old_basename === '' || $pairs === []) {
+		if ($old_basename === '') {
 			return ['posts' => 0, 'metas' => 0, 'options' => 0];
 		}
 
 		$like = '%' . $wpdb->esc_like($old_basename) . '%';
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$post_ids = $wpdb->get_col(
+		$posts = (int) $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT ID FROM {$wpdb->posts}
+				"SELECT COUNT(ID) FROM {$wpdb->posts}
 				WHERE post_status NOT IN ('trash', 'auto-draft')
 				AND post_type NOT IN ('attachment', 'revision')
-				AND post_content LIKE %s
-				LIMIT 500",
+				AND post_content LIKE %s",
+				$like
+			)
+		);
+
+		$in = "'" . implode("','", array_map('esc_sql', self::META_KEYS)) . "'";
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$metas = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(meta_id) FROM {$wpdb->postmeta}
+				WHERE meta_key IN ($in) AND meta_value LIKE %s",
 				$like
 			)
 		);
 		// phpcs:enable
 
-		if (is_array($post_ids)) {
-			foreach ($post_ids as $post_id) {
-				$content = (string) get_post_field('post_content', (int) $post_id);
-				if (self::haystack_has_pair($content, $pairs)) {
-					$posts++;
-				}
-			}
-		}
-
-		$in = "'" . implode("','", array_map('esc_sql', self::META_KEYS)) . "'";
-		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$rows = $wpdb->get_results(
+		$opts = (int) $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT meta_value FROM {$wpdb->postmeta}
-				WHERE meta_key IN ($in) AND meta_value LIKE %s
-				LIMIT 500",
-				$like
-			),
-			ARRAY_A
-		);
-		// phpcs:enable
-		if (is_array($rows)) {
-			foreach ($rows as $row) {
-				if (self::haystack_has_pair((string) ($row['meta_value'] ?? ''), $pairs)) {
-					$metas++;
-				}
-			}
-		}
-
-		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$opt_rows = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT option_value FROM {$wpdb->options}
+				"SELECT COUNT(option_id) FROM {$wpdb->options}
 				WHERE option_name NOT LIKE %s
 				  AND option_name NOT LIKE %s
-				  AND option_value LIKE %s
-				LIMIT 300",
+				  AND option_value LIKE %s",
 				$wpdb->esc_like('_transient_') . '%',
 				$wpdb->esc_like('_site_transient_') . '%',
 				$like
-			),
-			ARRAY_A
+			)
 		);
 		// phpcs:enable
-		if (is_array($opt_rows)) {
-			foreach ($opt_rows as $row) {
-				if (self::haystack_has_pair((string) ($row['option_value'] ?? ''), $pairs)) {
-					$opts++;
-				}
-			}
-		}
 
-		return ['posts' => $posts, 'metas' => $metas, 'options' => $opts];
-	}
-
-	/**
-	 * @param array<string, string> $pairs
-	 */
-	private static function haystack_has_pair(string $haystack, array $pairs): bool
-	{
-		if ($haystack === '') {
-			return false;
-		}
-		foreach ($pairs as $from => $to) {
-			if ($from !== '' && strpos($haystack, $from) !== false) {
-				return true;
-			}
-		}
-
-		return false;
+		return [
+			'posts'   => $posts,
+			'metas'   => $metas,
+			'options' => $opts,
+		];
 	}
 
 	/**

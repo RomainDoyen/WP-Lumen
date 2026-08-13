@@ -1,8 +1,47 @@
 (function ($) {
   'use strict';
 
-  function ajax(action, data) {
-    return $.post(lumenWp.ajaxUrl, Object.assign({ action: action, nonce: lumenWp.nonce }, data || {}));
+  function ajax(action, data, opts) {
+    opts = opts || {};
+    return $.ajax({
+      url: lumenWp.ajaxUrl,
+      method: 'POST',
+      dataType: 'json',
+      timeout: opts.timeout || 60000,
+      data: Object.assign({ action: action, nonce: lumenWp.nonce }, data || {})
+    });
+  }
+
+  function ajaxErrorMessage(xhr, fallback) {
+    if (xhr && xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) {
+      return xhr.responseJSON.data.message;
+    }
+    if (xhr && xhr.statusText === 'timeout') {
+      return 'Délai dépassé — réessayez (bibliothèque volumineuse).';
+    }
+    if (xhr && xhr.status === 0) {
+      return 'Requête interrompue — vérifiez la connexion.';
+    }
+    if (xhr && xhr.status) {
+      return (fallback || (lumenWp.i18n && lumenWp.i18n.error) || 'Erreur') + ' (HTTP ' + xhr.status + ')';
+    }
+    return fallback || (lumenWp.i18n && lumenWp.i18n.error) || 'Erreur';
+  }
+
+  function showModalError(message) {
+    if (window.lumenWpModal && typeof window.lumenWpModal.error === 'function') {
+      window.lumenWpModal.error(message);
+      return;
+    }
+    window.alert(message);
+  }
+
+  function showModalSuccess(message) {
+    if (window.lumenWpModal && typeof window.lumenWpModal.success === 'function') {
+      window.lumenWpModal.success(message);
+      return;
+    }
+    window.alert(message);
   }
 
   // —— Custom select (options au thème Lumen) ——
@@ -1508,25 +1547,28 @@
 
   $(document).on('click', '#lumen-wp-urls-diagnose', function (e) {
     e.preventDefault();
-    var btn = $(this).prop('disabled', true);
-    ajax('lumen_wp_urls_diagnose')
+    var $btn = $(this);
+    var label = $btn.text();
+    $btn.prop('disabled', true).text('Analyse…');
+    $('#lumen-wp-urls-summary')
+      .prop('hidden', false)
+      .text('Analyse en cours (peut prendre une minute sur une grosse médiathèque)…');
+    $('#lumen-wp-urls-results').prop('hidden', true).empty();
+
+    ajax('lumen_wp_urls_diagnose', {}, { timeout: 180000 })
       .done(function (res) {
         if (!res || !res.success) {
-          window.lumenWpModal.error(
-            (res && res.data && res.data.message) || lumenWp.i18n.error
-          );
+          showModalError((res && res.data && res.data.message) || lumenWp.i18n.error);
           return;
         }
         renderUrlsReport(res.data.report);
       })
       .fail(function (xhr) {
-        window.lumenWpModal.error(
-          (xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) ||
-            lumenWp.i18n.error
-        );
+        showModalError(ajaxErrorMessage(xhr, 'Diagnostic impossible'));
+        $('#lumen-wp-urls-summary').prop('hidden', false).text('Échec du diagnostic.');
       })
       .always(function () {
-        btn.prop('disabled', false);
+        $btn.prop('disabled', false).text(label);
       });
   });
 
@@ -1539,26 +1581,27 @@
     ) {
       return;
     }
-    var btn = $(this).prop('disabled', true).text(lumenWp.i18n.processing || '…');
-    ajax('lumen_wp_urls_rewrite')
+    var $btn = $(this);
+    var label = $btn.text();
+    $btn.prop('disabled', true).text(lumenWp.i18n.processing || '…');
+    $('#lumen-wp-urls-summary')
+      .prop('hidden', false)
+      .text('Réécriture en cours…');
+
+    ajax('lumen_wp_urls_rewrite', {}, { timeout: 240000 })
       .done(function (res) {
         if (!res || !res.success) {
-          window.lumenWpModal.error(
-            (res && res.data && res.data.message) || lumenWp.i18n.error
-          );
+          showModalError((res && res.data && res.data.message) || lumenWp.i18n.error);
           return;
         }
         renderUrlsReport(res.data.report);
-        window.lumenWpModal.success(res.data.message || lumenWp.i18n.done);
+        showModalSuccess(res.data.message || lumenWp.i18n.done);
       })
       .fail(function (xhr) {
-        window.lumenWpModal.error(
-          (xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) ||
-            lumenWp.i18n.error
-        );
+        showModalError(ajaxErrorMessage(xhr, 'Réécriture impossible'));
       })
       .always(function () {
-        btn.prop('disabled', false).text('Réécrire globalement');
+        $btn.prop('disabled', false).text(label || 'Réécrire globalement');
       });
   });
 })(jQuery);
