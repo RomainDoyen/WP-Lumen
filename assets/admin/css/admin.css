@@ -1211,6 +1211,11 @@ body.lumen-wp-admin #wpfooter {
 	margin: 0;
 }
 
+.lumen-wp-inline-form {
+	display: inline-flex;
+	margin: 0;
+}
+
 .lumen-wp-progress {
 	max-width: 100%;
 	margin: 1.25rem 0;
