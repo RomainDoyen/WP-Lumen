@@ -201,7 +201,7 @@ final class Tools
 			<section class="lumen-wp-panel" id="lumen-wp-urls-broken">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('URLs cassées', 'lumen-wp'); ?></h2>
 				<p class="description">
-					<?php esc_html_e('Diagnostique / réécrit les anciennes URLs (contenu, Elementor, options, CSS Elementor) par petites étapes. Par défaut, les médias déjà vérifiés sont ignorés. Laissez cette page ouverte.', 'lumen-wp'); ?>
+					<?php esc_html_e('Diagnostique / réécrit les anciennes URLs par ticks adaptatifs (Action Scheduler). Par défaut, les médias déjà propres sont ignorés. Un ping vers wp-cron.php permet d’avancer sans laisser cette page ouverte.', 'lumen-wp'); ?>
 				</p>
 				<p class="description lumen-wp-urls-meta" id="lumen-wp-urls-meta">
 					<?php

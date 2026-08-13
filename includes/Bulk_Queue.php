@@ -38,6 +38,10 @@ final class Bulk_Queue
 			'ai_label'       => '',
 			'cursor'         => 0,
 			'total_estimate' => 0,
+			'batch_size'     => 2,
+			'batch_min'      => 1,
+			'batch_max'      => 10,
+			'tick_budget'    => 22,
 			'processed'      => 0,
 			'ok'             => 0,
 			'err'            => 0,
@@ -213,8 +217,12 @@ final class Bulk_Queue
 		if (! is_array($job['log'] ?? null)) {
 			$job['log'] = [];
 		}
-		$job['types']  = Media_Types::normalize_types($job['types'] ?? Media_Types::all_types());
-		$job['errors'] = self::normalize_errors($job['errors'] ?? []);
+		$job['types']       = Media_Types::normalize_types($job['types'] ?? Media_Types::all_types());
+		$job['errors']      = self::normalize_errors($job['errors'] ?? []);
+		$job['batch_min']   = max(1, (int) ($job['batch_min'] ?? 1));
+		$job['batch_max']   = max($job['batch_min'], (int) ($job['batch_max'] ?? 10));
+		$job['batch_size']  = max($job['batch_min'], min($job['batch_max'], (int) ($job['batch_size'] ?? 2)));
+		$job['tick_budget'] = max(8, min(60, (int) ($job['tick_budget'] ?? 22)));
 
 		return $job;
 	}
@@ -254,9 +262,8 @@ final class Bulk_Queue
 			self::push_history($current, ($current['status'] ?? '') === 'done' ? 'done' : 'stopped');
 		}
 
-		$user  = wp_get_current_user();
-		$total = $this->count_pending($force, $types);
-		$job   = self::defaults();
+		$user = wp_get_current_user();
+		$job  = self::defaults();
 		$job['status']         = 'running';
 		$job['force']          = $force;
 		$job['use_ai']         = $use_ai;
@@ -264,24 +271,25 @@ final class Bulk_Queue
 		$job['ai_provider']    = $use_ai ? Vision_Ai::active_provider() : 'none';
 		$job['ai_label']       = $use_ai ? Vision_Ai::provider_label(Vision_Ai::active_provider()) : '';
 		$job['cursor']         = 0;
-		$job['total_estimate'] = $total;
+		$job['total_estimate'] = 0; // Filled asynchronously (no heavy COUNT at start).
+		$job['batch_size']     = $use_ai ? 1 : 2;
 		$job['started_at']     = gmdate('c');
+		$job['last_tick_at']   = gmdate('c');
 		$job['user_id']        = (int) $user->ID;
 		$job['user_name']      = (string) ($user->display_name !== '' ? $user->display_name : $user->user_login);
-		$job['last_message']   = sprintf(
-			/* translators: %d: estimated total */
-			__('Démarré — %d média(s) estimé(s).', 'lumen-wp'),
-			$total
-		);
-		$job['log'] = [$this->log_line($job['last_message'], true)];
+		$job['last_message']   = __('Démarré — estimation du total en arrière-plan…', 'lumen-wp');
+		$job['log']            = [$this->log_line($job['last_message'], true)];
 		self::save($job);
 
+		As_Bridge::enqueue_count_estimate('bulk');
 		$this->schedule_soon();
 		$this->spawn();
+		As_Bridge::run_pending(8);
 
 		wp_send_json_success([
 			'job'     => self::job(),
 			'history' => self::history(),
+			'health'  => self::health(),
 		]);
 	}
 
@@ -297,6 +305,7 @@ final class Bulk_Queue
 		$job['log'] = $this->push_log($job['log'] ?? [], $job['last_message'], true);
 		self::save($job);
 		wp_clear_scheduled_hook(self::CRON_HOOK);
+		As_Bridge::cancel_bulk();
 		wp_send_json_success(['job' => self::job()]);
 	}
 
@@ -313,6 +322,7 @@ final class Bulk_Queue
 		self::save($job);
 		$this->schedule_soon();
 		$this->spawn();
+		As_Bridge::run_pending(8);
 		wp_send_json_success(['job' => self::job()]);
 	}
 
@@ -327,6 +337,7 @@ final class Bulk_Queue
 		$job['log'] = $this->push_log($job['log'] ?? [], $job['last_message'], true);
 		self::save($job);
 		wp_clear_scheduled_hook(self::CRON_HOOK);
+		As_Bridge::cancel_bulk();
 		delete_transient(self::LOCK);
 		wp_send_json_success([
 			'job'     => self::job(),
@@ -339,14 +350,17 @@ final class Bulk_Queue
 		$this->guard();
 		$job = self::job();
 
-		// Relance un tick si running mais pas de cron planifié (sites sans trafic).
-		if (($job['status'] ?? '') === 'running' && ! wp_next_scheduled(self::CRON_HOOK)) {
-			$this->schedule_soon();
-			$this->spawn();
+		if (($job['status'] ?? '') === 'running') {
+			As_Bridge::run_pending(12);
+			$job = self::job();
+			if (($job['status'] ?? '') === 'running') {
+				$this->schedule_soon();
+				$this->spawn();
+			}
 		}
 
 		wp_send_json_success([
-			'job'            => $job,
+			'job'            => self::job(),
 			'history'        => self::history(),
 			'ai'             => [
 				'provider'       => Vision_Ai::active_provider(),
@@ -359,6 +373,7 @@ final class Bulk_Queue
 			'cron_disabled'  => defined('DISABLE_WP_CRON') && DISABLE_WP_CRON,
 			'next_scheduled' => wp_next_scheduled(self::CRON_HOOK),
 			'health'         => self::health(),
+			'as_available'   => As_Bridge::available(),
 		]);
 	}
 
@@ -371,6 +386,7 @@ final class Bulk_Queue
 		}
 
 		delete_transient(self::LOCK);
+		As_Bridge::run_pending(5);
 		$this->tick();
 		if ((self::job()['status'] ?? '') === 'running') {
 			$this->schedule_soon();
@@ -389,12 +405,19 @@ final class Bulk_Queue
 		if (get_transient(self::LOCK)) {
 			return;
 		}
-		set_transient(self::LOCK, 1, 180);
-		@set_time_limit(180); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		set_transient(self::LOCK, 1, 45);
+		$job          = self::job();
+		$tick_budget  = (int) ($job['tick_budget'] ?? 22);
+		@set_time_limit($tick_budget + 10); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 		Optimizer::boost_imagick_limits();
 
+		$started_at = microtime(true);
+		$deadline   = $started_at + $tick_budget;
+		$processed_in_tick = 0;
+		$hit_budget        = false;
+
 		try {
-			$job = self::job();
+			$job                 = self::job();
 			$job['last_tick_at'] = gmdate('c');
 			self::save($job);
 
@@ -402,52 +425,78 @@ final class Bulk_Queue
 				return;
 			}
 
-			$force  = ! empty($job['force']);
-			$use_ai = ! empty($job['use_ai']);
-			$types  = Media_Types::normalize_types($job['types'] ?? Media_Types::all_types());
-			$next   = $this->next_id((int) $job['cursor'], $force, $types);
+			$force      = ! empty($job['force']);
+			$use_ai     = ! empty($job['use_ai']);
+			$types      = Media_Types::normalize_types($job['types'] ?? Media_Types::all_types());
+			$batch_size = (int) ($job['batch_size'] ?? 2);
 
-			if ($next <= 0) {
-				$job['status'] = 'done';
-				$job['last_message'] = sprintf(
-					/* translators: 1: ok count, 2: error count */
-					__('Terminé — %1$d OK / %2$d erreur(s).', 'lumen-wp'),
-					(int) $job['ok'],
-					(int) $job['err']
-				);
-				$job['log'] = $this->push_log($job['log'] ?? [], $job['last_message'], true);
-				self::push_history($job, 'done');
-				$job['archived'] = true;
+			for ($i = 0; $i < $batch_size; $i++) {
+				if (microtime(true) >= $deadline) {
+					$hit_budget = true;
+					break;
+				}
+
+				$job  = self::job();
+				if (($job['status'] ?? '') !== 'running') {
+					return;
+				}
+
+				$next = $this->next_id((int) $job['cursor'], $force, $types);
+				if ($next <= 0) {
+					$job['status'] = 'done';
+					$job['last_message'] = sprintf(
+						/* translators: 1: ok count, 2: error count */
+						__('Terminé — %1$d OK / %2$d erreur(s).', 'lumen-wp'),
+						(int) $job['ok'],
+						(int) $job['err']
+					);
+					$job['log'] = $this->push_log($job['log'] ?? [], $job['last_message'], true);
+					self::push_history($job, 'done');
+					$job['archived'] = true;
+					self::save($job);
+					wp_clear_scheduled_hook(self::CRON_HOOK);
+					As_Bridge::cancel_bulk();
+
+					return;
+				}
+
+				$result = (new Hooks())->process($next, $force, $use_ai);
+				$ok     = ! empty($result['ok']);
+				$msg    = (string) ($result['message'] ?? ($result['status'] ?? ''));
+				if ($msg === '') {
+					$msg = $ok ? 'ok' : 'error';
+				}
+				$entry = self::make_error_entry($next, $msg);
+				$line  = '#' . $next . ' — ' . $entry['title'] . ' — ' . $msg;
+
+				$job                 = self::job();
+				$job['cursor']       = $next;
+				$job['processed']    = (int) $job['processed'] + 1;
+				$job['last_tick_at'] = gmdate('c');
+				if ($ok) {
+					$job['ok'] = (int) $job['ok'] + 1;
+				} else {
+					$job['err'] = (int) $job['err'] + 1;
+					$errors     = self::normalize_errors($job['errors'] ?? []);
+					array_unshift($errors, $entry);
+					$job['errors'] = array_slice($errors, 0, self::ERRORS_MAX);
+				}
+				$job['last_message'] = $line;
+				$job['log']          = $this->push_log($job['log'] ?? [], $line, $ok);
 				self::save($job);
-				wp_clear_scheduled_hook(self::CRON_HOOK);
-
-				return;
+				$processed_in_tick++;
 			}
 
-			$result = (new Hooks())->process($next, $force, $use_ai);
-			$ok     = ! empty($result['ok']);
-			$msg    = (string) ($result['message'] ?? ($result['status'] ?? ''));
-			if ($msg === '') {
-				$msg = $ok ? 'ok' : 'error';
-			}
-			$entry  = self::make_error_entry($next, $msg);
-			$line   = '#' . $next . ' — ' . $entry['title'] . ' — ' . $msg;
-
-			$job['cursor']    = $next;
-			$job['processed'] = (int) $job['processed'] + 1;
-			if ($ok) {
-				$job['ok'] = (int) $job['ok'] + 1;
-			} else {
-				$job['err'] = (int) $job['err'] + 1;
-				$errors     = self::normalize_errors($job['errors'] ?? []);
-				array_unshift($errors, $entry);
-				$job['errors'] = array_slice($errors, 0, self::ERRORS_MAX);
-			}
-			$job['last_message'] = $line;
-			$job['log']          = $this->push_log($job['log'] ?? [], $line, $ok);
-			self::save($job);
-
+			$job = self::job();
 			if (($job['status'] ?? '') === 'running') {
+				$elapsed = microtime(true) - $started_at;
+				$job['batch_size'] = $this->adapt_batch_size(
+					$job,
+					$processed_in_tick,
+					$elapsed,
+					$hit_budget || $elapsed >= ($tick_budget * 0.95)
+				);
+				self::save($job);
 				$this->schedule_soon();
 			}
 		} finally {
@@ -455,8 +504,29 @@ final class Bulk_Queue
 		}
 	}
 
+	/**
+	 * @param array<string, mixed> $job
+	 */
+	private function adapt_batch_size(array $job, int $processed_in_tick, float $elapsed, bool $pressure): int
+	{
+		$min    = max(1, (int) ($job['batch_min'] ?? 1));
+		$max    = max($min, (int) ($job['batch_max'] ?? 10));
+		$budget = max(8, (int) ($job['tick_budget'] ?? 22));
+		$size   = max($min, min($max, (int) ($job['batch_size'] ?? 2)));
+
+		if ($pressure) {
+			return max($min, $size - 1);
+		}
+		if ($processed_in_tick >= $size && $elapsed < ($budget * 0.6)) {
+			return min($max, $size + 1);
+		}
+
+		return $size;
+	}
+
 	private function schedule_soon(): void
 	{
+		As_Bridge::enqueue_bulk_tick();
 		wp_clear_scheduled_hook(self::CRON_HOOK);
 		wp_schedule_single_event(time() + 1, self::CRON_HOOK);
 	}
@@ -474,6 +544,16 @@ final class Bulk_Queue
 			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
 		}
 		check_ajax_referer('lumen_wp_admin', 'nonce');
+	}
+
+	/**
+	 * Public wrapper for async total estimate (As_Bridge).
+	 *
+	 * @param list<string> $types
+	 */
+	public function count_pending_public(bool $force, array $types): int
+	{
+		return $this->count_pending($force, $types);
 	}
 
 	/**

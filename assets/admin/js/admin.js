@@ -702,13 +702,24 @@
     var status = job.status || 'idle';
     var processed = parseInt(job.processed, 10) || 0;
     var total = parseInt(job.total_estimate, 10) || 0;
-    var pct = total ? Math.min(100, Math.round((processed / total) * 100)) : status === 'done' ? 100 : 0;
+    var batch = parseInt(job.batch_size, 10) || 0;
+    var pct =
+      status === 'done'
+        ? 100
+        : total
+          ? Math.min(99, Math.round((processed / total) * 100))
+          : Math.min(95, processed > 0 ? Math.max(3, Math.round(Math.log10(processed + 1) * 20)) : 0);
 
     $('#lumen-wp-bulk-progress').prop('hidden', status === 'idle');
     $('#lumen-wp-progress-bar').val(pct);
-    $('#lumen-wp-progress-label').text(
-      processed + ' / ' + total + ' — OK ' + (job.ok || 0) + ' / err ' + (job.err || 0)
-    );
+    var progressLabel = total
+      ? processed + ' / ~' + total
+      : processed + ' traités';
+    progressLabel += ' — OK ' + (job.ok || 0) + ' / err ' + (job.err || 0);
+    if (batch) {
+      progressLabel += ' · ×' + batch;
+    }
+    $('#lumen-wp-progress-label').text(progressLabel);
     $('#lumen-wp-bulk-status-text').text(job.last_message || status);
     renderBulkLog(job.log || []);
     renderBulkErrors(job.errors || []);
@@ -1611,6 +1622,9 @@
     }
     if (mode === 'retry') {
       label += ' / retry';
+    }
+    if (job.batch_size) {
+      label += ' · ×' + job.batch_size;
     }
     if (job.err) {
       label += ' / err ' + job.err;

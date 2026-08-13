@@ -53,6 +53,10 @@ final class Url_Queue
 			'queue_ids'      => [],
 			'queue_index'    => 0,
 			'total_estimate' => 0,
+			'batch_size'     => 1,
+			'batch_min'      => 1,
+			'batch_max'      => 5,
+			'tick_budget'    => 22,
 			'processed'      => 0,
 			'issues_found'   => 0,
 			'attachments'    => 0,
@@ -99,6 +103,10 @@ final class Url_Queue
 		}
 		$job['force_full']  = ! empty($job['force_full']);
 		$job['queue_index'] = max(0, (int) ($job['queue_index'] ?? 0));
+		$job['batch_min']   = max(1, (int) ($job['batch_min'] ?? 1));
+		$job['batch_max']   = max($job['batch_min'], (int) ($job['batch_max'] ?? 5));
+		$job['batch_size']  = max($job['batch_min'], min($job['batch_max'], (int) ($job['batch_size'] ?? 1)));
+		$job['tick_budget'] = max(8, min(60, (int) ($job['tick_budget'] ?? 22)));
 
 		return $job;
 	}
@@ -323,11 +331,16 @@ final class Url_Queue
 				: __('Diagnostic démarré (skip déjà propres) — laissez cette page ouverte.', 'lumen-wp');
 		}
 
+		$job['batch_size'] = 1;
 		$job['log'] = [$this->log_line($job['last_message'])];
 		self::save($job);
 
+		if ($mode !== 'retry') {
+			As_Bridge::enqueue_count_estimate('urls');
+		}
 		$this->schedule_soon();
 		$this->spawn();
+		As_Bridge::run_pending(8);
 
 		return self::job();
 	}
@@ -375,6 +388,7 @@ final class Url_Queue
 		$job = self::job();
 
 		if (($job['status'] ?? '') === 'running') {
+			As_Bridge::run_pending(12);
 			delete_transient(self::LOCK);
 			$this->tick();
 			if ((self::job()['status'] ?? '') === 'running') {
@@ -459,7 +473,15 @@ final class Url_Queue
 			return;
 		}
 		set_transient(self::LOCK, 1, self::LOCK_TTL);
-		@set_time_limit(self::TICK_TIME_LIMIT); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+
+		$job         = self::job();
+		$tick_budget = (int) ($job['tick_budget'] ?? self::TICK_TIME_LIMIT);
+		@set_time_limit($tick_budget + 8); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+
+		$started_at        = microtime(true);
+		$deadline          = $started_at + $tick_budget;
+		$processed_in_tick = 0;
+		$hit_budget        = false;
 
 		try {
 			$job                 = self::job();
@@ -470,154 +492,31 @@ final class Url_Queue
 				return;
 			}
 
-			$mode       = (string) ($job['mode'] ?? 'diagnose');
-			$force_full = ! empty($job['force_full']);
-			$is_retry   = $mode === 'retry';
-			$work_mode  = $is_retry ? 'rewrite' : $mode;
-
-			if ($is_retry) {
-				$queue = is_array($job['queue_ids'] ?? null) ? $job['queue_ids'] : [];
-				$idx   = (int) ($job['queue_index'] ?? 0);
-				if ($idx >= count($queue)) {
-					$this->finalize($job, $mode);
-
+			$batch_size = (int) ($job['batch_size'] ?? 1);
+			for ($i = 0; $i < $batch_size; $i++) {
+				if (microtime(true) >= $deadline) {
+					$hit_budget = true;
+					break;
+				}
+				$result = $this->process_one_url();
+				if ($result === 'done') {
 					return;
 				}
-				$next = (int) $queue[ $idx ];
-				if ($next <= 0) {
-					$job['queue_index'] = $idx + 1;
-					$job['processed']   = (int) $job['processed'] + 1;
-					$job['last_message'] = __('ID invalide ignoré', 'lumen-wp');
-					$job['log']          = $this->push_log($job['log'] ?? [], $job['last_message']);
-					self::save($job);
-					$this->schedule_soon();
-
-					return;
-				}
-			} else {
-				$next = Content_Url_Rewriter::next_candidate_id((int) ($job['cursor'] ?? 0), $force_full);
-				if ($next <= 0) {
-					$this->finalize($job, $mode);
-
-					return;
+				if ($result === 'ok' || $result === 'err') {
+					$processed_in_tick++;
 				}
 			}
 
-			$job['total_estimate'] = max(
-				(int) ($job['total_estimate'] ?? 0),
-				(int) ($job['processed'] ?? 0) + 1
-			);
-
-			try {
-				$pairs = Content_Url_Rewriter::pairs_for_attachment($next);
-			} catch (\Throwable $e) {
-				$this->record_error($job, $next, $e->getMessage());
-				$this->advance_cursor($job, $next, $is_retry);
-				$job['processed']    = (int) $job['processed'] + 1;
-				$job['err']          = (int) $job['err'] + 1;
-				$job['last_message'] = '#' . $next . ' — ' . __('erreur (ignoré)', 'lumen-wp');
-				$job['log']          = $this->push_log($job['log'] ?? [], $job['last_message']);
-				self::save($job);
-				$this->schedule_soon();
-
-				return;
-			}
-
-			$line = '#' . $next;
-
-			if ($pairs === []) {
-				Content_Url_Rewriter::mark_urls_clean($next);
-				$this->advance_cursor($job, $next, $is_retry);
-				$job['processed']    = (int) $job['processed'] + 1;
-				$job['last_message'] = $line . ' — ' . __('aucun chemin obsolète', 'lumen-wp');
-				$job['log']          = $this->push_log($job['log'] ?? [], $job['last_message']);
-				self::save($job);
-				$this->schedule_soon();
-
-				return;
-			}
-
-			$title = (string) ($pairs[0]['title'] ?? ('#' . $next));
-			$line  = '#' . $next . ' — ' . $title;
-
-			$ok_for_clean = false;
-			try {
-				if ($work_mode === 'rewrite') {
-					$att_hits  = 0;
-					$tick_repl = 0;
-					$css_n     = 0;
-					foreach ($pairs as $pair) {
-						$r = Content_Url_Rewriter::after_attachment_path_change(
-							(int) $pair['id'],
-							(string) $pair['old_abs'],
-							(string) $pair['new_abs'],
-							true,
-							false
-						);
-						$job['posts']        = (int) $job['posts'] + (int) ($r['posts'] ?? 0);
-						$job['metas']        = (int) $job['metas'] + (int) ($r['metas'] ?? 0);
-						$job['options']      = (int) $job['options'] + (int) ($r['options'] ?? 0);
-						$job['replacements'] = (int) $job['replacements'] + (int) ($r['replacements'] ?? 0);
-						$tick_repl          += (int) ($r['replacements'] ?? 0);
-						if ((int) ($r['replacements'] ?? 0) > 0) {
-							$att_hits++;
-						}
-						$css_n += Content_Url_Rewriter::rewrite_elementor_css_files(
-							(string) $pair['old_abs'],
-							(string) $pair['new_abs']
-						);
-					}
-					$job['css_files'] = (int) $job['css_files'] + $css_n;
-					if ($att_hits > 0) {
-						$job['attachments'] = (int) $job['attachments'] + 1;
-					}
-					$job['last_message'] = $line . ' — ' . sprintf(
-						/* translators: 1: replacements 2: css files */
-						__('%1$d remplaç. / %2$d CSS', 'lumen-wp'),
-						$tick_repl,
-						$css_n
-					);
-					$job['last_error'] = '';
-					$ok_for_clean      = true;
-				} else {
-					$found = 0;
-					foreach ($pairs as $pair) {
-						$issue = Content_Url_Rewriter::diagnose_pair($pair);
-						if ($issue === null) {
-							continue;
-						}
-						$found++;
-						$job['issues_found'] = (int) $job['issues_found'] + 1;
-						$issues              = is_array($job['issues'] ?? null) ? $job['issues'] : [];
-						if (count($issues) < self::ISSUES_MAX) {
-							$issues[]      = $issue;
-							$job['issues'] = $issues;
-						}
-					}
-					$job['last_message'] = $line . ' — ' . sprintf(
-						/* translators: %d: issues */
-						__('%d URL(s) obsolète(s)', 'lumen-wp'),
-						$found
-					);
-					$job['last_error'] = '';
-				}
-			} catch (\Throwable $e) {
-				$this->record_error($job, $next, $e->getMessage());
-				$job['err']          = (int) $job['err'] + 1;
-				$job['last_message'] = $line . ' — ' . __('erreur (ignoré)', 'lumen-wp');
-				$ok_for_clean        = false;
-			}
-
-			if ($ok_for_clean) {
-				Content_Url_Rewriter::mark_urls_clean($next);
-			}
-
-			$this->advance_cursor($job, $next, $is_retry);
-			$job['processed'] = (int) $job['processed'] + 1;
-			$job['log']       = $this->push_log($job['log'] ?? [], $job['last_message']);
-			self::save($job);
-
+			$job = self::job();
 			if (($job['status'] ?? '') === 'running') {
+				$elapsed           = microtime(true) - $started_at;
+				$job['batch_size'] = $this->adapt_batch_size(
+					$job,
+					$processed_in_tick,
+					$elapsed,
+					$hit_budget || $elapsed >= ($tick_budget * 0.95)
+				);
+				self::save($job);
 				$this->schedule_soon();
 			}
 		} catch (\Throwable $e) {
@@ -629,6 +528,183 @@ final class Url_Queue
 		} finally {
 			delete_transient(self::LOCK);
 		}
+	}
+
+	/**
+	 * @param array<string, mixed> $job
+	 */
+	private function adapt_batch_size(array $job, int $processed_in_tick, float $elapsed, bool $pressure): int
+	{
+		$min    = max(1, (int) ($job['batch_min'] ?? 1));
+		$max    = max($min, (int) ($job['batch_max'] ?? 5));
+		$budget = max(8, (int) ($job['tick_budget'] ?? 22));
+		$size   = max($min, min($max, (int) ($job['batch_size'] ?? 1)));
+
+		if ($pressure) {
+			return max($min, $size - 1);
+		}
+		if ($processed_in_tick >= $size && $elapsed < ($budget * 0.6)) {
+			return min($max, $size + 1);
+		}
+
+		return $size;
+	}
+
+	/**
+	 * Process a single candidate. Returns done|ok|err|skip.
+	 */
+	private function process_one_url(): string
+	{
+		$job = self::job();
+		if (($job['status'] ?? '') !== 'running') {
+			return 'done';
+		}
+
+		$mode       = (string) ($job['mode'] ?? 'diagnose');
+		$force_full = ! empty($job['force_full']);
+		$is_retry   = $mode === 'retry';
+		$work_mode  = $is_retry ? 'rewrite' : $mode;
+
+		if ($is_retry) {
+			$queue = is_array($job['queue_ids'] ?? null) ? $job['queue_ids'] : [];
+			$idx   = (int) ($job['queue_index'] ?? 0);
+			if ($idx >= count($queue)) {
+				$this->finalize($job, $mode);
+
+				return 'done';
+			}
+			$next = (int) $queue[ $idx ];
+			if ($next <= 0) {
+				$job['queue_index']  = $idx + 1;
+				$job['processed']    = (int) $job['processed'] + 1;
+				$job['last_message'] = __('ID invalide ignoré', 'lumen-wp');
+				$job['log']          = $this->push_log($job['log'] ?? [], $job['last_message']);
+				self::save($job);
+
+				return 'skip';
+			}
+		} else {
+			$next = Content_Url_Rewriter::next_candidate_id((int) ($job['cursor'] ?? 0), $force_full);
+			if ($next <= 0) {
+				$this->finalize($job, $mode);
+
+				return 'done';
+			}
+		}
+
+		$job['total_estimate'] = max(
+			(int) ($job['total_estimate'] ?? 0),
+			(int) ($job['processed'] ?? 0) + 1
+		);
+
+		try {
+			$pairs = Content_Url_Rewriter::pairs_for_attachment($next);
+		} catch (\Throwable $e) {
+			$this->record_error($job, $next, $e->getMessage());
+			$this->advance_cursor($job, $next, $is_retry);
+			$job['processed']    = (int) $job['processed'] + 1;
+			$job['err']          = (int) $job['err'] + 1;
+			$job['last_message'] = '#' . $next . ' — ' . __('erreur (ignoré)', 'lumen-wp');
+			$job['log']          = $this->push_log($job['log'] ?? [], $job['last_message']);
+			self::save($job);
+
+			return 'err';
+		}
+
+		$line = '#' . $next;
+
+		if ($pairs === []) {
+			Content_Url_Rewriter::mark_urls_clean($next);
+			$this->advance_cursor($job, $next, $is_retry);
+			$job['processed']    = (int) $job['processed'] + 1;
+			$job['last_message'] = $line . ' — ' . __('aucun chemin obsolète', 'lumen-wp');
+			$job['log']          = $this->push_log($job['log'] ?? [], $job['last_message']);
+			self::save($job);
+
+			return 'ok';
+		}
+
+		$title = (string) ($pairs[0]['title'] ?? ('#' . $next));
+		$line  = '#' . $next . ' — ' . $title;
+
+		$ok_for_clean = false;
+		try {
+			if ($work_mode === 'rewrite') {
+				$att_hits  = 0;
+				$tick_repl = 0;
+				$css_n     = 0;
+				foreach ($pairs as $pair) {
+					$r = Content_Url_Rewriter::after_attachment_path_change(
+						(int) $pair['id'],
+						(string) $pair['old_abs'],
+						(string) $pair['new_abs'],
+						true,
+						false
+					);
+					$job['posts']        = (int) $job['posts'] + (int) ($r['posts'] ?? 0);
+					$job['metas']        = (int) $job['metas'] + (int) ($r['metas'] ?? 0);
+					$job['options']      = (int) $job['options'] + (int) ($r['options'] ?? 0);
+					$job['replacements'] = (int) $job['replacements'] + (int) ($r['replacements'] ?? 0);
+					$tick_repl          += (int) ($r['replacements'] ?? 0);
+					if ((int) ($r['replacements'] ?? 0) > 0) {
+						$att_hits++;
+					}
+					$css_n += Content_Url_Rewriter::rewrite_elementor_css_files(
+						(string) $pair['old_abs'],
+						(string) $pair['new_abs']
+					);
+				}
+				$job['css_files'] = (int) $job['css_files'] + $css_n;
+				if ($att_hits > 0) {
+					$job['attachments'] = (int) $job['attachments'] + 1;
+				}
+				$job['last_message'] = $line . ' — ' . sprintf(
+					/* translators: 1: replacements 2: css files */
+					__('%1$d remplaç. / %2$d CSS', 'lumen-wp'),
+					$tick_repl,
+					$css_n
+				);
+				$job['last_error'] = '';
+				$ok_for_clean      = true;
+			} else {
+				$found = 0;
+				foreach ($pairs as $pair) {
+					$issue = Content_Url_Rewriter::diagnose_pair($pair);
+					if ($issue === null) {
+						continue;
+					}
+					$found++;
+					$job['issues_found'] = (int) $job['issues_found'] + 1;
+					$issues              = is_array($job['issues'] ?? null) ? $job['issues'] : [];
+					if (count($issues) < self::ISSUES_MAX) {
+						$issues[]      = $issue;
+						$job['issues'] = $issues;
+					}
+				}
+				$job['last_message'] = $line . ' — ' . sprintf(
+					/* translators: %d: issues */
+					__('%d URL(s) obsolète(s)', 'lumen-wp'),
+					$found
+				);
+				$job['last_error'] = '';
+			}
+		} catch (\Throwable $e) {
+			$this->record_error($job, $next, $e->getMessage());
+			$job['err']          = (int) $job['err'] + 1;
+			$job['last_message'] = $line . ' — ' . __('erreur (ignoré)', 'lumen-wp');
+			$ok_for_clean        = false;
+		}
+
+		if ($ok_for_clean) {
+			Content_Url_Rewriter::mark_urls_clean($next);
+		}
+
+		$this->advance_cursor($job, $next, $is_retry);
+		$job['processed'] = (int) $job['processed'] + 1;
+		$job['log']       = $this->push_log($job['log'] ?? [], $job['last_message']);
+		self::save($job);
+
+		return $ok_for_clean || ($work_mode !== 'rewrite') ? 'ok' : 'err';
 	}
 
 	/**
@@ -674,6 +750,7 @@ final class Url_Queue
 		}
 		self::save($job);
 		wp_clear_scheduled_hook(self::CRON_HOOK);
+		As_Bridge::cancel_urls();
 		delete_transient(self::LOCK);
 	}
 
@@ -711,6 +788,7 @@ final class Url_Queue
 		$this->persist_last_errors_from_job($job);
 		self::save($job);
 		wp_clear_scheduled_hook(self::CRON_HOOK);
+		As_Bridge::cancel_urls();
 	}
 
 	/**
@@ -738,6 +816,7 @@ final class Url_Queue
 
 	private function schedule_soon(): void
 	{
+		As_Bridge::enqueue_urls_tick();
 		wp_clear_scheduled_hook(self::CRON_HOOK);
 		wp_schedule_single_event(time() + 1, self::CRON_HOOK);
 	}

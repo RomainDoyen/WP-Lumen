@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.3.48-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.4.0-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -28,7 +28,7 @@
 | **Original**     | Remplacement prioritaire WebP → AVIF → JPEG, ou sidecars ; réécriture des URLs contenu / Elementor |
 | **SEO**          | Alts SEO / WCAG / court, titre, légende, description (images, SVG, PDF, vidéos)       |
 | **Pack**         | JSON-LD `ImageObject` + snippet Gutenberg `<picture>` (images raster)                 |
-| **Traitement**   | File d’attente en arrière-plan (filtres Images / PDF / SVG / Vidéos, pause / reprise) |
+| **Traitement**   | Action Scheduler + ticks adaptatifs multi-médias, total estimé en lazy (scale 50k+) |
 | **Restauration** | Sauvegarde de l’original avant remplacement + bouton fiche média                      |
 | **Outils**       | Nettoyage, URLs cassées (diagnostic / réécriture), rapports (CSV, Excel, PDF)         |
 | **Icônes**       | Kit PNG 16→512, ZIP, favicons injectés dans le `<head>`                               |
@@ -146,6 +146,14 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.4.0
+
+- Action Scheduler embarqué (`lib/action-scheduler` 3.6.4) pour bulk + URLs
+- Ticks multi-médias **auto-adaptatifs** (budget temps Hostinger)
+- Start sans gros `COUNT` : total estimé en arrière-plan (lazy)
+- Poll Outils / Traitement réveille aussi le runner AS
+- Notice : ping externe `wp-cron.php` pour tourner sans page ouverte
 
 ### 1.3.48
 

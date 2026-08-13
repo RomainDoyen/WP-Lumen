@@ -51,6 +51,7 @@ final class Plugin
 
 	public function boot(): void
 	{
+		(new As_Bridge())->register();
 		(new Hooks())->register();
 		(new Bulk_Queue())->register();
 		(new Url_Queue())->register();
@@ -73,6 +74,7 @@ final class Plugin
 			'Seo.php',
 			'Media_Types.php',
 			'Vision_Ai.php',
+			'As_Bridge.php',
 			'Bulk_Queue.php',
 			'Url_Queue.php',
 			'Original_Backup.php',

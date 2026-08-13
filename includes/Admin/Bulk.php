@@ -46,9 +46,18 @@ final class Bulk
 			Brand::render_nav('bulk');
 			Brand::render_header(
 				__('Traitement', 'lumen-wp'),
-				__('Traite les médias en arrière-plan (optimisation, SEO, IA) — continue même si vous fermez l’onglet.', 'lumen-wp')
+				__('File Action Scheduler + ticks adaptatifs. Le total s’estime en arrière-plan (pas de COUNT bloquant au démarrage).', 'lumen-wp')
 			);
 			?>
+
+			<p class="description">
+				<?php
+				esc_html_e(
+					'Pour avancer sans page ouverte sur un hébergement partagé : planifiez un ping toutes les 1–5 min vers /wp-cron.php (cron-job.org, etc.), ou gardez cet écran / Outils ouvert.',
+					'lumen-wp'
+				);
+				?>
+			</p>
 
 			<?php if ($cron_off) : ?>
 				<p class="lumen-wp-dash-banner lumen-wp-dash-banner--muted">
