@@ -33,12 +33,14 @@ final class Bulk
 			return;
 		}
 
-		$job      = Bulk_Queue::job();
-		$history  = Bulk_Queue::history();
-		$provider = Vision_Ai::active_provider();
-		$usage    = Vision_Ai::usage();
-		$budget   = (int) (\LumenWp\Plugin::instance()->settings()['ai_budget_month'] ?? 0);
-		$cron_off = defined('DISABLE_WP_CRON') && DISABLE_WP_CRON;
+		$tab = isset($_GET['tab']) ? sanitize_key((string) wp_unslash($_GET['tab'])) : 'launch'; // phpcs:ignore WordPress.Security.NonceVerification
+		if (! in_array($tab, ['launch', 'validate'], true)) {
+			$tab = 'launch';
+		}
+
+		$pending = Validation::pending_count();
+		$launch_url = admin_url('admin.php?page=lumen-wp-bulk&tab=launch');
+		$validate_url = Validation::tab_url();
 
 		?>
 		<div class="wrap lumen-wp-wrap">
@@ -46,9 +48,63 @@ final class Bulk
 			Brand::render_nav('bulk');
 			Brand::render_header(
 				__('Traitement', 'lumen-wp'),
-				__('File Action Scheduler + ticks adaptatifs. Le total s’estime en arrière-plan (pas de COUNT bloquant au démarrage).', 'lumen-wp')
+				$tab === 'validate'
+					? __('Relisez les métadonnées IA avant de les publier sur les médias.', 'lumen-wp')
+					: __('File Action Scheduler + ticks adaptatifs. Le total s’estime en arrière-plan (pas de COUNT bloquant au démarrage).', 'lumen-wp')
 			);
 			?>
+
+			<nav class="lumen-wp-seg" aria-label="<?php esc_attr_e('Sections traitement', 'lumen-wp'); ?>">
+				<a class="lumen-wp-seg__item<?php echo $tab === 'launch' ? ' is-active' : ''; ?>" href="<?php echo esc_url($launch_url); ?>">
+					<span class="lumen-wp-seg__label"><?php esc_html_e('Lancer', 'lumen-wp'); ?></span>
+				</a>
+				<a class="lumen-wp-seg__item<?php echo $tab === 'validate' ? ' is-active' : ''; ?>" href="<?php echo esc_url($validate_url); ?>">
+					<span class="lumen-wp-seg__label"><?php esc_html_e('À valider', 'lumen-wp'); ?></span>
+					<span class="lumen-wp-seg__count"><?php echo esc_html((string) $pending); ?></span>
+				</a>
+			</nav>
+
+			<?php if ($tab === 'validate') : ?>
+				<?php Validation::render_tab(); ?>
+			<?php else : ?>
+				<?php $this->render_launch_tab($pending); ?>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	private function render_launch_tab(int $pending): void
+	{
+		$job      = Bulk_Queue::job();
+		$history  = Bulk_Queue::history();
+		$provider = Vision_Ai::active_provider();
+		$usage    = Vision_Ai::usage();
+		$budget   = (int) (\LumenWp\Plugin::instance()->settings()['ai_budget_month'] ?? 0);
+		$cron_off = defined('DISABLE_WP_CRON') && DISABLE_WP_CRON;
+
+		if ($pending > 0) {
+			?>
+			<p class="lumen-wp-dash-banner">
+				<?php
+				echo esc_html(
+					sprintf(
+						/* translators: %d: pending count */
+						_n(
+							'%d média attend une validation IA.',
+							'%d médias attendent une validation IA.',
+							$pending,
+							'lumen-wp'
+						),
+						$pending
+					)
+				);
+				echo ' ';
+				echo '<a href="' . esc_url(Validation::tab_url()) . '">' . esc_html__('Ouvrir l’onglet À valider', 'lumen-wp') . '</a>';
+				?>
+			</p>
+			<?php
+		}
+		?>
 
 			<p class="description">
 				<?php
@@ -193,12 +249,12 @@ final class Bulk
 			</section>
 
 			<section class="lumen-wp-panel" id="lumen-wp-bulk-history-panel">
-				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Historique', 'lumen-wp'); ?></h2>
+				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Runs récents', 'lumen-wp'); ?></h2>
 				<p class="description">
 					<?php
 					printf(
 						/* translators: %d: max history entries */
-						esc_html__('%d derniers traitements', 'lumen-wp'),
+						esc_html__('%d derniers traitements (distinct de Lumen → Historique médias).', 'lumen-wp'),
 						(int) Bulk_Queue::HISTORY_MAX
 					);
 					?>
@@ -215,7 +271,6 @@ final class Bulk
 					<?php endif; ?>
 				</ul>
 			</section>
-		</div>
 		<?php
 	}
 

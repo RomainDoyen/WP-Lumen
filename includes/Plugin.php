@@ -65,6 +65,7 @@ final class Plugin
 			(new Admin\Dashboard())->register();
 			(new Admin\Bulk())->register();
 			(new Admin\Validation())->register();
+			(new Admin\History())->register();
 			(new Admin\Audit())->register();
 			(new Admin\Tools())->register();
 			(new Admin\Icons())->register();
@@ -94,12 +95,14 @@ final class Plugin
 			'Llms_Txt.php',
 			'Seo_Geo_Auditor.php',
 			'Audit_Fixer.php',
+			'History_Query.php',
 			'Hooks.php',
 			'Admin/Brand.php',
 			'Admin/Dashboard.php',
 			'Admin/Settings.php',
 			'Admin/Bulk.php',
 			'Admin/Validation.php',
+			'Admin/History.php',
 			'Admin/Audit.php',
 			'Admin/Tools.php',
 			'Admin/Icons.php',

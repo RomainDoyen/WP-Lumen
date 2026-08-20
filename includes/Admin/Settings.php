@@ -507,9 +507,9 @@ final class Settings
 								<?php
 								echo wp_kses(
 									sprintf(
-										/* translators: %s: Validation page link */
-										__('Si coché, l’optimisation fichier s’applique tout de suite ; alt / titre / légende attendent Lumen → Validation. %s', 'lumen-wp'),
-										'<a href="' . esc_url(admin_url('admin.php?page=lumen-wp-validation')) . '">' . esc_html__('Ouvrir la file', 'lumen-wp') . '</a>'
+										/* translators: %s: Traitement validate tab link */
+										__('Si coché, l’optimisation fichier s’applique tout de suite ; alt / titre / légende attendent Traitement → À valider. %s', 'lumen-wp'),
+										'<a href="' . esc_url(Validation::tab_url()) . '">' . esc_html__('Ouvrir la file', 'lumen-wp') . '</a>'
 									),
 									['a' => ['href' => true]]
 								);

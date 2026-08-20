@@ -14,12 +14,14 @@ final class Validation
 	public function register(): void
 	{
 		add_action('admin_menu', [$this, 'add_menu']);
+		add_action('admin_menu', [$this, 'hide_menu'], 999);
 		add_action('admin_post_lumen_wp_validation_item', [$this, 'handle_item']);
 		add_action('admin_post_lumen_wp_validation_bulk', [$this, 'handle_bulk']);
 	}
 
 	public function add_menu(): void
 	{
+		// Kept for redirects / deep links; hidden from WP sidebar (see hide_menu).
 		add_submenu_page(
 			'lumen-wp',
 			__('Validation IA Lumen', 'lumen-wp'),
@@ -27,6 +29,25 @@ final class Validation
 			'upload_files',
 			'lumen-wp-validation',
 			[$this, 'render_page']
+		);
+	}
+
+	public function hide_menu(): void
+	{
+		remove_submenu_page('lumen-wp', 'lumen-wp-validation');
+	}
+
+	public static function tab_url(array $args = []): string
+	{
+		return add_query_arg(
+			array_merge(
+				[
+					'page' => 'lumen-wp-bulk',
+					'tab'  => 'validate',
+				],
+				$args
+			),
+			admin_url('admin.php')
 		);
 	}
 
@@ -79,85 +100,93 @@ final class Validation
 		// phpcs:enable
 	}
 
+	/** Legacy URL → Traitement onglet À valider. */
 	public function render_page(): void
 	{
 		if (! current_user_can('upload_files')) {
 			return;
 		}
 
-		$page    = max(1, (int) ($_GET['paged'] ?? 1)); // phpcs:ignore WordPress.Security.NonceVerification
-		$offset  = ($page - 1) * self::PER_PAGE;
-		$total   = self::pending_count();
-		$ids     = self::pending_ids(self::PER_PAGE, $offset);
-		$pages   = max(1, (int) ceil($total / self::PER_PAGE));
-		$notice  = isset($_GET['lumen_validated']) ? sanitize_key((string) wp_unslash($_GET['lumen_validated'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$args = ['tab' => 'validate'];
+		if (isset($_GET['lumen_validated'])) { // phpcs:ignore WordPress.Security.NonceVerification
+			$args['lumen_validated'] = sanitize_key((string) wp_unslash($_GET['lumen_validated'])); // phpcs:ignore WordPress.Security.NonceVerification
+		}
+		if (isset($_GET['paged'])) { // phpcs:ignore WordPress.Security.NonceVerification
+			$args['paged'] = max(1, (int) $_GET['paged']); // phpcs:ignore WordPress.Security.NonceVerification
+		}
 
+		wp_safe_redirect(self::tab_url($args));
+		exit;
+	}
+
+	/**
+	 * Panel content for Traitement → À valider (no outer wrap/nav).
+	 */
+	public static function render_tab(): void
+	{
+		$page   = max(1, (int) ($_GET['paged'] ?? 1)); // phpcs:ignore WordPress.Security.NonceVerification
+		$offset = ($page - 1) * self::PER_PAGE;
+		$total  = self::pending_count();
+		$ids    = self::pending_ids(self::PER_PAGE, $offset);
+		$pages  = max(1, (int) ceil($total / self::PER_PAGE));
+		$notice = isset($_GET['lumen_validated']) ? sanitize_key((string) wp_unslash($_GET['lumen_validated'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$base   = self::tab_url();
+
+		if ($notice === 'approved') {
+			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Métadonnées approuvées.', 'lumen-wp') . '</p></div>';
+		} elseif ($notice === 'rejected') {
+			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Proposition IA rejetée (média optimisé conservé).', 'lumen-wp') . '</p></div>';
+		} elseif ($notice === 'bulk') {
+			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Action groupée effectuée.', 'lumen-wp') . '</p></div>';
+		}
 		?>
-		<div class="wrap lumen-wp-wrap">
-			<?php
-			Brand::render_nav('validation');
-			Brand::render_header(
-				__('Validation IA', 'lumen-wp'),
-				__('Relisez les métadonnées générées avant de les publier sur les médias.', 'lumen-wp')
-			);
-			?>
+		<section class="lumen-wp-panel">
+			<p class="description">
+				<?php
+				printf(
+					/* translators: %d: pending count */
+					esc_html(_n('%d média en attente', '%d médias en attente', $total, 'lumen-wp')),
+					$total
+				);
+				?>
+			</p>
 
-			<?php if ($notice === 'approved') : ?>
-				<div class="notice notice-success is-dismissible"><p><?php esc_html_e('Métadonnées approuvées.', 'lumen-wp'); ?></p></div>
-			<?php elseif ($notice === 'rejected') : ?>
-				<div class="notice notice-success is-dismissible"><p><?php esc_html_e('Proposition IA rejetée (média optimisé conservé).', 'lumen-wp'); ?></p></div>
-			<?php elseif ($notice === 'bulk') : ?>
-				<div class="notice notice-success is-dismissible"><p><?php esc_html_e('Action groupée effectuée.', 'lumen-wp'); ?></p></div>
-			<?php endif; ?>
+			<?php if ($ids === []) : ?>
+				<p><?php esc_html_e('Aucune métadonnée en attente de validation. Lancez un traitement avec IA + validation pour remplir cette file.', 'lumen-wp'); ?></p>
+			<?php else : ?>
+				<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-actions-row">
+					<?php wp_nonce_field('lumen_wp_validation_bulk'); ?>
+					<input type="hidden" name="action" value="lumen_wp_validation_bulk" />
+					<input type="hidden" name="ids" value="<?php echo esc_attr(implode(',', $ids)); ?>" />
+					<button type="submit" name="bulk_action" value="approve" class="button button-primary">
+						<?php esc_html_e('Approuver la page', 'lumen-wp'); ?>
+					</button>
+					<button type="submit" name="bulk_action" value="reject" class="button">
+						<?php esc_html_e('Rejeter la page', 'lumen-wp'); ?>
+					</button>
+				</form>
 
-			<section class="lumen-wp-panel">
-				<p class="description">
-					<?php
-					printf(
-						/* translators: %d: pending count */
-						esc_html(_n('%d média en attente', '%d médias en attente', $total, 'lumen-wp')),
-						$total
-					);
-					?>
-				</p>
+				<?php foreach ($ids as $id) : ?>
+					<?php self::render_card($id); ?>
+				<?php endforeach; ?>
 
-				<?php if ($ids === []) : ?>
-					<p><?php esc_html_e('Aucune métadonnée en attente de validation.', 'lumen-wp'); ?></p>
-				<?php else : ?>
-					<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-actions-row">
-						<?php wp_nonce_field('lumen_wp_validation_bulk'); ?>
-						<input type="hidden" name="action" value="lumen_wp_validation_bulk" />
-						<input type="hidden" name="ids" value="<?php echo esc_attr(implode(',', $ids)); ?>" />
-						<button type="submit" name="bulk_action" value="approve" class="button button-primary">
-							<?php esc_html_e('Approuver la page', 'lumen-wp'); ?>
-						</button>
-						<button type="submit" name="bulk_action" value="reject" class="button">
-							<?php esc_html_e('Rejeter la page', 'lumen-wp'); ?>
-						</button>
-					</form>
-
-					<?php foreach ($ids as $id) : ?>
-						<?php $this->render_card($id); ?>
-					<?php endforeach; ?>
-
-					<?php if ($pages > 1) : ?>
-						<p class="lumen-wp-actions-row">
-							<?php if ($page > 1) : ?>
-								<a class="button" href="<?php echo esc_url(add_query_arg('paged', $page - 1)); ?>"><?php esc_html_e('Précédent', 'lumen-wp'); ?></a>
-							<?php endif; ?>
-							<span class="description"><?php echo esc_html($page . ' / ' . $pages); ?></span>
-							<?php if ($page < $pages) : ?>
-								<a class="button" href="<?php echo esc_url(add_query_arg('paged', $page + 1)); ?>"><?php esc_html_e('Suivant', 'lumen-wp'); ?></a>
-							<?php endif; ?>
-						</p>
-					<?php endif; ?>
+				<?php if ($pages > 1) : ?>
+					<p class="lumen-wp-actions-row">
+						<?php if ($page > 1) : ?>
+							<a class="button" href="<?php echo esc_url(add_query_arg('paged', $page - 1, $base)); ?>"><?php esc_html_e('Précédent', 'lumen-wp'); ?></a>
+						<?php endif; ?>
+						<span class="description"><?php echo esc_html($page . ' / ' . $pages); ?></span>
+						<?php if ($page < $pages) : ?>
+							<a class="button" href="<?php echo esc_url(add_query_arg('paged', $page + 1, $base)); ?>"><?php esc_html_e('Suivant', 'lumen-wp'); ?></a>
+						<?php endif; ?>
+					</p>
 				<?php endif; ?>
-			</section>
-		</div>
+			<?php endif; ?>
+		</section>
 		<?php
 	}
 
-	private function render_card(int $id): void
+	private static function render_card(int $id): void
 	{
 		$seo   = Seo::get_pending_seo($id);
 		$title = get_the_title($id) ?: ('#' . $id);
@@ -259,11 +288,11 @@ final class Validation
 
 	private function redirect(string $flag): void
 	{
-		$url = admin_url('admin.php?page=lumen-wp-validation');
+		$args = [];
 		if ($flag !== '') {
-			$url = add_query_arg('lumen_validated', $flag, $url);
+			$args['lumen_validated'] = $flag;
 		}
-		wp_safe_redirect($url);
+		wp_safe_redirect(self::tab_url($args));
 		exit;
 	}
 }

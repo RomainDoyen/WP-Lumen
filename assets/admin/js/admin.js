@@ -240,17 +240,21 @@
     if (!el) return;
     el.hidden = true;
     el.setAttribute('aria-hidden', 'true');
-    el.classList.remove('is-success', 'is-error', 'is-info', 'is-open');
+    el.classList.remove('is-success', 'is-error', 'is-info', 'is-open', 'is-confirm');
     document.documentElement.classList.remove('lumen-wp-modal-open');
     var action = el.querySelector('#lumen-wp-modal-action');
     if (action) {
       hideModalAction(action);
     }
+    resetModalConfirmUi(el);
     if (lastFocus && typeof lastFocus.focus === 'function') {
       lastFocus.focus();
     }
     lastFocus = null;
+    confirmCallback = null;
   }
+
+  var confirmCallback = null;
 
   function hideModalAction(action) {
     if (!action) return;
@@ -275,6 +279,21 @@
     action.textContent = label || '';
   }
 
+  function resetModalConfirmUi(el) {
+    var cancel = el.querySelector('#lumen-wp-modal-cancel');
+    var ok = el.querySelector('#lumen-wp-modal-ok');
+    var i18n = lumenWp.i18n || {};
+    if (cancel) {
+      cancel.hidden = true;
+      cancel.setAttribute('aria-hidden', 'true');
+    }
+    if (ok) {
+      ok.textContent = i18n.okLabel || 'OK';
+      ok.setAttribute('data-lumen-modal-close', '');
+      ok.classList.remove('lumen-wp-modal__confirm');
+    }
+  }
+
   function openModal(type, title, message, opts) {
     opts = opts || {};
     var el = ensureModal();
@@ -284,19 +303,22 @@
     }
 
     lastFocus = document.activeElement;
-    var kind = type === 'error' ? 'error' : type === 'info' ? 'info' : 'success';
+    var kind = type === 'error' ? 'error' : type === 'info' ? 'info' : type === 'confirm' ? 'info' : 'success';
     var i18n = lumenWp.i18n || {};
     var defaultTitle =
       kind === 'error' ? i18n.errorTitle : kind === 'info' ? i18n.infoTitle : i18n.successTitle;
 
-    el.classList.remove('is-success', 'is-error', 'is-info');
+    resetModalConfirmUi(el);
+    el.classList.remove('is-success', 'is-error', 'is-info', 'is-confirm');
     el.classList.add('is-' + kind, 'is-open');
+    if (type === 'confirm') {
+      el.classList.add('is-confirm');
+    }
     el.querySelector('#lumen-wp-modal-title').textContent = title || defaultTitle || '';
     el.querySelector('#lumen-wp-modal-message').textContent = message || '';
 
     var action = el.querySelector('#lumen-wp-modal-action');
     if (action) {
-      // Lien « Ouvrir les réglages » uniquement pour la modale IA non configurée.
       if (opts.actionUrl) {
         showModalAction(action, opts.actionUrl, opts.actionLabel || i18n.openSettings || '');
       } else {
@@ -304,12 +326,30 @@
       }
     }
 
+    if (type === 'confirm') {
+      var cancel = el.querySelector('#lumen-wp-modal-cancel');
+      var ok = el.querySelector('#lumen-wp-modal-ok');
+      if (cancel) {
+        cancel.hidden = false;
+        cancel.setAttribute('aria-hidden', 'false');
+        cancel.textContent = opts.cancelLabel || i18n.cancelLabel || 'Annuler';
+      }
+      if (ok) {
+        ok.textContent = opts.confirmLabel || i18n.confirmLabel || 'Confirmer';
+        ok.removeAttribute('data-lumen-modal-close');
+        ok.classList.add('lumen-wp-modal__confirm');
+      }
+      confirmCallback = typeof opts.onConfirm === 'function' ? opts.onConfirm : null;
+    }
+
     el.hidden = false;
     el.setAttribute('aria-hidden', 'false');
     document.documentElement.classList.add('lumen-wp-modal-open');
 
     var btn = el.querySelector(
-      '#lumen-wp-modal-action.is-visible, [data-lumen-modal-close].button-primary, .lumen-wp-modal__actions .button-primary'
+      type === 'confirm'
+        ? '#lumen-wp-modal-ok'
+        : '#lumen-wp-modal-action.is-visible, #lumen-wp-modal-ok, [data-lumen-modal-close].button-primary, .lumen-wp-modal__actions .button-primary'
     );
     if (btn) {
       setTimeout(function () {
@@ -337,8 +377,21 @@
         opts || {}
       );
     },
+    confirm: function (opts) {
+      opts = opts || {};
+      openModal('confirm', opts.title || (lumenWp.i18n && lumenWp.i18n.confirmTitle) || 'Confirmer', opts.message || '', opts);
+    },
     close: closeModal
   };
+
+  $(document).on('click', '#lumen-wp-modal-ok.lumen-wp-modal__confirm', function (e) {
+    e.preventDefault();
+    var cb = confirmCallback;
+    closeModal();
+    if (cb) {
+      cb();
+    }
+  });
 
   $(document).on('click', '[data-lumen-modal-close]', function (e) {
     e.preventDefault();
@@ -355,6 +408,41 @@
     if (lumenWp.flash && lumenWp.flash.message) {
       openModal(lumenWp.flash.type || 'success', lumenWp.flash.title || '', lumenWp.flash.message);
     }
+  });
+
+  // Audit / forms: replace native confirm()
+  $(document).on('submit', 'form[data-lumen-confirm]', function (e) {
+    var form = this;
+    if (form.getAttribute('data-lumen-confirmed') === '1') {
+      form.removeAttribute('data-lumen-confirmed');
+      return true;
+    }
+    e.preventDefault();
+    var msg = form.getAttribute('data-lumen-confirm') || '';
+    var title = form.getAttribute('data-lumen-confirm-title') || '';
+    if (!window.lumenWpModal || typeof window.lumenWpModal.confirm !== 'function') {
+      if (window.confirm(msg)) {
+        form.setAttribute('data-lumen-confirmed', '1');
+        form.submit();
+      }
+      return false;
+    }
+    window.lumenWpModal.confirm({
+      type: 'confirm',
+      title: title || (lumenWp.i18n && lumenWp.i18n.confirmTitle) || 'Confirmer',
+      message: msg,
+      confirmLabel: (lumenWp.i18n && lumenWp.i18n.confirmLabel) || 'Confirmer',
+      cancelLabel: (lumenWp.i18n && lumenWp.i18n.cancelLabel) || 'Annuler',
+      onConfirm: function () {
+        form.setAttribute('data-lumen-confirmed', '1');
+        if (typeof form.requestSubmit === 'function') {
+          form.requestSubmit();
+        } else {
+          form.submit();
+        }
+      }
+    });
+    return false;
   });
 
   function copyText(text) {
@@ -1881,6 +1969,148 @@
       .fail(function () {
         form.submit();
       });
+  });
+
+  // —— Historique : modale détails ——
+  var historyModal = document.getElementById('lumen-wp-history-modal');
+  var historyFocus = null;
+
+  function closeHistoryModal() {
+    if (!historyModal) return;
+    historyModal.hidden = true;
+    historyModal.setAttribute('aria-hidden', 'true');
+    historyModal.classList.remove('is-open');
+    document.documentElement.classList.remove('lumen-wp-modal-open');
+    if (historyFocus && typeof historyFocus.focus === 'function') {
+      historyFocus.focus();
+    }
+    historyFocus = null;
+  }
+
+  function openHistoryModal() {
+    if (!historyModal) return;
+    historyFocus = document.activeElement;
+    historyModal.hidden = false;
+    historyModal.setAttribute('aria-hidden', 'false');
+    historyModal.classList.add('is-open', 'is-info');
+    document.documentElement.classList.add('lumen-wp-modal-open');
+  }
+
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderHistoryDetail(d) {
+    var body = document.getElementById('lumen-wp-history-modal-body');
+    var edit = document.getElementById('lumen-wp-history-modal-edit');
+    if (!body) return;
+    if (edit) {
+      edit.href = d.edit_url || '#';
+    }
+
+    function row(label, value) {
+      return (
+        '<div class="lumen-wp-history-fact">' +
+        '<span class="lumen-wp-history-fact__k">' +
+        escHtml(label) +
+        '</span>' +
+        '<span class="lumen-wp-history-fact__v">' +
+        escHtml(value || '—') +
+        '</span>' +
+        '</div>'
+      );
+    }
+
+    var formats = Array.isArray(d.formats) && d.formats.length ? d.formats.join(', ') : '—';
+    var thumb = d.large_url
+      ? '<img class="lumen-wp-history-detail__thumb" src="' +
+        escHtml(d.large_url) +
+        '" alt="" width="88" height="88" />'
+      : '<span class="lumen-wp-history-detail__ph" aria-hidden="true"></span>';
+
+    var facts =
+      row('Statut', d.status_label) +
+      row('Compression', d.compression_label) +
+      row('Formats', formats) +
+      row('IA / SEO', d.ai_label) +
+      row('Texte alternatif', d.alt) +
+      row('Titre SEO', d.title_seo) +
+      row('Date', d.date);
+    if (d.error) {
+      facts += row('Erreur', d.error);
+    }
+
+    var validation = d.validation_url
+      ? '<p class="lumen-wp-history-detail__extra"><a class="button" href="' +
+        escHtml(d.validation_url) +
+        '">Ouvrir À valider</a></p>'
+      : '';
+
+    body.innerHTML =
+      '<div class="lumen-wp-history-detail">' +
+      '<header class="lumen-wp-history-detail__head">' +
+      thumb +
+      '<div class="lumen-wp-history-detail__intro">' +
+      '<h2 id="lumen-wp-history-modal-title" class="lumen-wp-history-detail__title">' +
+      escHtml(d.title || '#' + d.id) +
+      '</h2>' +
+      '<p class="lumen-wp-history-detail__sub">#' +
+      escHtml(String(d.id || '')) +
+      (d.kind_label ? ' · ' + escHtml(d.kind_label) : '') +
+      '</p>' +
+      '</div></header>' +
+      '<div class="lumen-wp-history-facts">' +
+      facts +
+      '</div>' +
+      validation +
+      '</div>';
+  }
+
+  $(document).on('click', '.lumen-wp-history-detail', function (e) {
+    e.preventDefault();
+    if (!historyModal) {
+      historyModal = document.getElementById('lumen-wp-history-modal');
+    }
+    var id = $(this).data('id');
+    if (!id) return;
+    var body = document.getElementById('lumen-wp-history-modal-body');
+    if (body) {
+      body.innerHTML = '<p class="description">Chargement…</p>';
+    }
+    openHistoryModal();
+    ajax('lumen_wp_history_detail', { id: id })
+      .done(function (res) {
+        if (res && res.success && res.data) {
+          renderHistoryDetail(res.data);
+        } else {
+          if (body) {
+            body.innerHTML =
+              '<p class="description">' +
+              escHtml((res && res.data && res.data.message) || 'Impossible de charger les détails.') +
+              '</p>';
+          }
+        }
+      })
+      .fail(function () {
+        if (body) {
+          body.innerHTML = '<p class="description">Erreur réseau.</p>';
+        }
+      });
+  });
+
+  $(document).on('click', '[data-lumen-history-close]', function (e) {
+    e.preventDefault();
+    closeHistoryModal();
+  });
+
+  $(document).on('keydown', function (e) {
+    if (e.key === 'Escape' && historyModal && !historyModal.hidden) {
+      closeHistoryModal();
+    }
   });
 
 })(jQuery);

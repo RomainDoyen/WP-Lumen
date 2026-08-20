@@ -32,10 +32,20 @@ final class Brand
 	/**
 	 * In-app navigation (évite la sensation de rechargement WP « nu »).
 	 *
-	 * @param 'dashboard'|'bulk'|'validation'|'audit'|'tools'|'icons'|'settings' $current
+	 * @param 'dashboard'|'bulk'|'history'|'audit'|'tools'|'icons'|'settings' $current
 	 */
 	public static function render_nav(string $current): void
 	{
+		$pending = Validation::pending_count();
+		$bulk_label = __('Traitement', 'lumen-wp');
+		if ($pending > 0) {
+			$bulk_label = sprintf(
+				/* translators: %d: pending validation count */
+				__('Traitement (%d)', 'lumen-wp'),
+				$pending
+			);
+		}
+
 		$items = [
 			'dashboard' => [
 				'label' => __('Dashboard', 'lumen-wp'),
@@ -43,13 +53,13 @@ final class Brand
 				'cap'   => 'upload_files',
 			],
 			'bulk'      => [
-				'label' => __('Traitement', 'lumen-wp'),
+				'label' => $bulk_label,
 				'url'   => admin_url('admin.php?page=lumen-wp-bulk'),
 				'cap'   => 'upload_files',
 			],
-			'validation' => [
-				'label' => __('Validation', 'lumen-wp'),
-				'url'   => admin_url('admin.php?page=lumen-wp-validation'),
+			'history'   => [
+				'label' => __('Historique', 'lumen-wp'),
+				'url'   => admin_url('admin.php?page=lumen-wp-history'),
 				'cap'   => 'upload_files',
 			],
 			'audit'     => [
@@ -121,7 +131,10 @@ final class Brand
 				<p id="lumen-wp-modal-message" class="lumen-wp-modal__message"></p>
 				<div class="lumen-wp-modal__actions">
 					<a id="lumen-wp-modal-action" class="button" hidden href="#"></a>
-					<button type="button" class="button button-primary" data-lumen-modal-close>
+					<button type="button" class="button" id="lumen-wp-modal-cancel" data-lumen-modal-close hidden>
+						<?php esc_html_e('Annuler', 'lumen-wp'); ?>
+					</button>
+					<button type="button" class="button button-primary" id="lumen-wp-modal-ok" data-lumen-modal-close>
 						<?php esc_html_e('OK', 'lumen-wp'); ?>
 					</button>
 				</div>

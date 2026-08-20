@@ -114,7 +114,7 @@ final class Audit_Fixer
 			'message' => $has_work
 				? sprintf(
 					/* translators: 1: queued 2: fixed */
-					__('%1$d planifiée(s), %2$d appliquée(s). Suivi via Traitement / Validation.', 'lumen-wp'),
+					__('%1$d planifiée(s), %2$d appliquée(s). Suivi via Traitement / Historique.', 'lumen-wp'),
 					$total_queued,
 					$total_fixed
 				)
