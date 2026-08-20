@@ -58,11 +58,14 @@ final class Plugin
 		(new Bulk_Queue())->register();
 		(new Url_Queue())->register();
 		(new Reports())->register();
+		(new Llms_Txt())->register();
+		(new Audit_Fixer())->register();
 
 		if (is_admin()) {
 			(new Admin\Dashboard())->register();
 			(new Admin\Bulk())->register();
 			(new Admin\Validation())->register();
+			(new Admin\Audit())->register();
 			(new Admin\Tools())->register();
 			(new Admin\Icons())->register();
 			(new Admin\Settings())->register();
@@ -75,6 +78,7 @@ final class Plugin
 		$files = [
 			'Optimizer.php',
 			'Seo.php',
+			'Seo_Plugin_Bridge.php',
 			'Media_Types.php',
 			'Vision_Ai.php',
 			'As_Bridge.php',
@@ -87,12 +91,16 @@ final class Plugin
 			'Cleanup.php',
 			'Pack.php',
 			'Icon_Kit.php',
+			'Llms_Txt.php',
+			'Seo_Geo_Auditor.php',
+			'Audit_Fixer.php',
 			'Hooks.php',
 			'Admin/Brand.php',
 			'Admin/Dashboard.php',
 			'Admin/Settings.php',
 			'Admin/Bulk.php',
 			'Admin/Validation.php',
+			'Admin/Audit.php',
 			'Admin/Tools.php',
 			'Admin/Icons.php',
 			'Admin/Media_Meta_Box.php',
@@ -128,6 +136,7 @@ final class Plugin
 			'ai_model'              => '',
 			'ai_budget_month'       => 0,
 			'ai_require_validation' => false,
+			'llms_txt_enabled'      => true,
 			'site_url'              => '',
 			'site_favicons'         => false,
 			'ui_theme'              => 'light',

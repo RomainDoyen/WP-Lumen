@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Construit le zip installable Lumen pour GitHub Releases / WordPress.
-# Modèle inspiré de Nimbus : staging rsync + .distignore (pas seulement git archive).
+# Staging rsync + .distignore (pas seulement git archive).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -32,7 +32,7 @@ final class Brand
 	/**
 	 * In-app navigation (évite la sensation de rechargement WP « nu »).
 	 *
-	 * @param 'dashboard'|'bulk'|'icons'|'settings' $current
+	 * @param 'dashboard'|'bulk'|'validation'|'audit'|'tools'|'icons'|'settings' $current
 	 */
 	public static function render_nav(string $current): void
 	{
@@ -51,6 +51,11 @@ final class Brand
 				'label' => __('Validation', 'lumen-wp'),
 				'url'   => admin_url('admin.php?page=lumen-wp-validation'),
 				'cap'   => 'upload_files',
+			],
+			'audit'     => [
+				'label' => __('Audit', 'lumen-wp'),
+				'url'   => admin_url('admin.php?page=lumen-wp-audit'),
+				'cap'   => 'manage_options',
 			],
 			'tools'     => [
 				'label' => __('Outils', 'lumen-wp'),

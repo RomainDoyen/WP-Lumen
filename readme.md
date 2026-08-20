@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.5.0-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.6.0-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -149,6 +149,13 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.6.0
+
+- Audit SEO/GEO (Lumen → Audit) : alt manquants, images/vidéos non traités, meta SEO, extraits, FAQ détectée, slogan, llms.txt
+- Correctifs assistés (médias via Action Scheduler / Hooks, meta SEO Yoast/Rank Math/SEOPress, llms.txt)
+- `llms.txt` servi dynamiquement via rewrite (réglage GEO)
+- Export CSV du dernier audit
 
 ### 1.5.0
 

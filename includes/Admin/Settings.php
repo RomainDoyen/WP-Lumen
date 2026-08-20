@@ -98,6 +98,7 @@ final class Settings
 			})(),
 			'ai_budget_month'       => max(0, (int) ($input['ai_budget_month'] ?? 0)),
 			'ai_require_validation' => ! empty($input['ai_require_validation']),
+			'llms_txt_enabled'      => ! empty($input['llms_txt_enabled']),
 			'site_url'              => esc_url_raw((string) ($input['site_url'] ?? '')),
 			// Géré depuis la page Icônes — ne pas écraser ici.
 			'site_favicons'         => ! empty($current['site_favicons']),
@@ -509,6 +510,34 @@ final class Settings
 										/* translators: %s: Validation page link */
 										__('Si coché, l’optimisation fichier s’applique tout de suite ; alt / titre / légende attendent Lumen → Validation. %s', 'lumen-wp'),
 										'<a href="' . esc_url(admin_url('admin.php?page=lumen-wp-validation')) . '">' . esc_html__('Ouvrir la file', 'lumen-wp') . '</a>'
+									),
+									['a' => ['href' => true]]
+								);
+								?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e('GEO — llms.txt', 'lumen-wp'); ?></th>
+						<td>
+							<label class="lumen-wp-choice" for="lumen-wp-llms-enabled">
+								<input
+									type="checkbox"
+									name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[llms_txt_enabled]"
+									id="lumen-wp-llms-enabled"
+									value="1"
+									<?php checked(! empty($settings['llms_txt_enabled'])); ?>
+								/>
+								<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
+								<span class="lumen-wp-choice__label"><?php esc_html_e('Activer /llms.txt (servi dynamiquement)', 'lumen-wp'); ?></span>
+							</label>
+							<p class="description">
+								<?php
+								echo wp_kses(
+									sprintf(
+										/* translators: %s: Audit page */
+										__('Convention communautaire pour agents IA. Génération depuis %s.', 'lumen-wp'),
+										'<a href="' . esc_url(admin_url('admin.php?page=lumen-wp-audit')) . '">' . esc_html__('Lumen → Audit', 'lumen-wp') . '</a>'
 									),
 									['a' => ['href' => true]]
 								);
