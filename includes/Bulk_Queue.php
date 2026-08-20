@@ -22,6 +22,7 @@ final class Bulk_Queue
 		add_action('wp_ajax_lumen_wp_bulk_stop', [$this, 'ajax_stop']);
 		add_action('wp_ajax_lumen_wp_bulk_status', [$this, 'ajax_status']);
 		add_action('wp_ajax_lumen_wp_bulk_force_tick', [$this, 'ajax_force_tick']);
+		add_action('wp_ajax_lumen_wp_bulk_estimate', [$this, 'ajax_estimate']);
 	}
 
 	/**
@@ -234,6 +235,88 @@ final class Bulk_Queue
 	{
 		$job['updated_at'] = gmdate('c');
 		update_option(self::OPTION, $job, false);
+	}
+
+	public function ajax_estimate(): void
+	{
+		$this->guard();
+
+		$force  = ! empty($_POST['force']); // phpcs:ignore WordPress.Security.NonceVerification
+		$use_ai = ! empty($_POST['use_ai']) || ! empty($_POST['use_mistral']); // phpcs:ignore WordPress.Security.NonceVerification
+		// phpcs:ignore WordPress.Security.NonceVerification
+		$raw_types = isset($_POST['types']) ? wp_unslash($_POST['types']) : Media_Types::all_types();
+		if (is_string($raw_types)) {
+			$raw_types = array_filter(array_map('trim', explode(',', $raw_types)));
+		}
+		$types = Media_Types::normalize_types($raw_types);
+		if ($types === []) {
+			wp_send_json_error(['message' => __('Sélectionnez au moins un type de média.', 'lumen-wp')], 400);
+		}
+
+		$pending = $this->count_pending($force, $types);
+		$ai_types = array_values(
+			array_filter(
+				$types,
+				static function (string $t): bool {
+					return in_array(
+						$t,
+						[Media_Types::KIND_IMAGE, Media_Types::KIND_PDF, Media_Types::KIND_VIDEO],
+						true
+					);
+				}
+			)
+		);
+		$calls = 0;
+		if ($use_ai && Vision_Ai::is_configured() && $ai_types !== []) {
+			$calls = $this->count_pending($force, $ai_types);
+		}
+
+		$usage    = Vision_Ai::usage();
+		$used     = (int) ($usage['calls_month'] ?? 0);
+		$budget   = (int) (Plugin::instance()->settings()['ai_budget_month'] ?? 0);
+		$remaining = $budget > 0 ? max(0, $budget - $used) : -1; // -1 = unlimited
+		$within   = $budget <= 0 || $calls <= $remaining;
+
+		if (! $use_ai) {
+			$message = sprintf(
+				/* translators: %d: pending media */
+				__('Sans IA — ~%d média(s) à traiter.', 'lumen-wp'),
+				$pending
+			);
+		} elseif (! Vision_Ai::is_configured()) {
+			$message = __('IA cochée mais non configurée — aucun appel estimé.', 'lumen-wp');
+		} elseif ($budget > 0) {
+			$message = sprintf(
+				/* translators: 1: estimated calls 2: remaining 3: budget */
+				__('~%1$d appel(s) IA estimé(s) · reste %2$d / %3$d ce mois.', 'lumen-wp'),
+				$calls,
+				$remaining,
+				$budget
+			);
+			if (! $within) {
+				$message .= ' ' . __('Attention : au-delà du budget Lumen (fallback local).', 'lumen-wp');
+			}
+		} else {
+			$message = sprintf(
+				/* translators: %d: estimated calls */
+				__('~%d appel(s) IA estimé(s) · budget Lumen illimité.', 'lumen-wp'),
+				$calls
+			);
+		}
+
+		wp_send_json_success(
+			[
+				'pending'        => $pending,
+				'calls'          => $calls,
+				'used_month'     => $used,
+				'budget'         => $budget,
+				'remaining'      => $remaining,
+				'within_budget'  => $within,
+				'budget_reached' => Vision_Ai::budget_reached(),
+				'message'        => $message,
+				'require_validation' => ! empty(Plugin::instance()->settings()['ai_require_validation']),
+			]
+		);
 	}
 
 	public function ajax_start(): void
@@ -653,7 +736,7 @@ final class Bulk_Queue
 		$sql = 'SELECT ' . ($next_only ? 'p.ID' : 'COUNT(DISTINCT p.ID)') . "
 			FROM {$wpdb->posts} p
 			LEFT JOIN {$wpdb->postmeta} s
-				ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value = 'ok'
+				ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value IN ('ok', 'awaiting_validation')
 			LEFT JOIN {$wpdb->postmeta} v
 				ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value != '' AND v.meta_value != 'a:0:{}'
 			WHERE p.post_type = 'attachment'

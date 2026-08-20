@@ -96,10 +96,11 @@ final class Settings
 
 				return in_array($model, $allowed, true) ? $model : '';
 			})(),
-			'ai_budget_month'    => max(0, (int) ($input['ai_budget_month'] ?? 0)),
-			'site_url'           => esc_url_raw((string) ($input['site_url'] ?? '')),
+			'ai_budget_month'       => max(0, (int) ($input['ai_budget_month'] ?? 0)),
+			'ai_require_validation' => ! empty($input['ai_require_validation']),
+			'site_url'              => esc_url_raw((string) ($input['site_url'] ?? '')),
 			// Géré depuis la page Icônes — ne pas écraser ici.
-			'site_favicons'      => ! empty($current['site_favicons']),
+			'site_favicons'         => ! empty($current['site_favicons']),
 			'ui_theme'           => (static function () use ($input): string {
 				$theme = strtolower(sanitize_key((string) ($input['ui_theme'] ?? 'light')));
 
@@ -485,6 +486,34 @@ final class Settings
 						<td>
 							<input type="number" min="0" step="1" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[ai_budget_month]" value="<?php echo esc_attr((string) (int) ($settings['ai_budget_month'] ?? 0)); ?>" />
 							<p class="description"><?php esc_html_e('0 = illimité (côté Lumen). Au-delà, fallback SEO local. Le solde réel se consulte chez le fournisseur.', 'lumen-wp'); ?></p>
+						</td>
+					</tr>
+					<tr id="lumen-wp-ai-validation-row" <?php echo $provider === 'none' ? 'hidden' : ''; ?>>
+						<th scope="row"><?php esc_html_e('Validation IA', 'lumen-wp'); ?></th>
+						<td>
+							<label class="lumen-wp-choice" for="lumen-wp-ai-require-validation">
+								<input
+									type="checkbox"
+									name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[ai_require_validation]"
+									id="lumen-wp-ai-require-validation"
+									value="1"
+									<?php checked(! empty($settings['ai_require_validation'])); ?>
+								/>
+								<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
+								<span class="lumen-wp-choice__label"><?php esc_html_e('Faire valider les métadonnées IA avant application', 'lumen-wp'); ?></span>
+							</label>
+							<p class="description">
+								<?php
+								echo wp_kses(
+									sprintf(
+										/* translators: %s: Validation page link */
+										__('Si coché, l’optimisation fichier s’applique tout de suite ; alt / titre / légende attendent Lumen → Validation. %s', 'lumen-wp'),
+										'<a href="' . esc_url(admin_url('admin.php?page=lumen-wp-validation')) . '">' . esc_html__('Ouvrir la file', 'lumen-wp') . '</a>'
+									),
+									['a' => ['href' => true]]
+								);
+								?>
+							</p>
 						</td>
 					</tr>
 				</table>

@@ -18,12 +18,30 @@ jobs:
       - name: Build plugin ZIP
         run: |
           chmod +x bin/build-zip.sh
-          ./bin/build-zip.sh HEAD
+          ./bin/build-zip.sh
+
+      - name: Extract version
+        id: ver
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/lumen-wp.zip
+          files: |
+            dist/lumen-wp.zip
+            dist/lumen-wp-${{ steps.ver.outputs.version }}.zip
           generate_release_notes: true
+          body: |
+            ## Lumen ${{ steps.ver.outputs.version }}
+
+            Zip installable WordPress (`lumen-wp/`).
+
+            1. Extensions → Ajouter → Téléverser → `lumen-wp.zip`
+            2. Activer **Lumen**
+            3. Vérifier `Version: ${{ steps.ver.outputs.version }}` dans `lumen.php`
+
+            Alias versionné aussi joint : `lumen-wp-${{ steps.ver.outputs.version }}.zip`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

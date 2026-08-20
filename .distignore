@@ -1,0 +1,36 @@
+# Exclusions du zip de distribution WordPress
+# Utilisé par bin/build-zip.sh
+
+.git
+.gitignore
+.gitattributes
+.github
+.distignore
+.editorconfig
+.eslintrc*
+.phpcs.xml*
+.phpunit*
+phpunit.xml
+phpunit.xml.dist
+tests
+Tests
+bin
+node_modules
+package.json
+package-lock.json
+composer.json
+composer.lock
+*.map
+*.log
+.DS_Store
+Thumbs.db
+.phpunit.result.cache
+docs
+.cursor
+.idea
+*.md
+!readme.md
+dist
+*.zip
+.env
+.env.*

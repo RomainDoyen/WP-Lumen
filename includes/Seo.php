@@ -87,6 +87,73 @@ final class Seo
 	}
 
 	/**
+	 * @return array<string, string>
+	 */
+	public static function get_pending_seo(int $attachment_id): array
+	{
+		$pending = get_post_meta($attachment_id, Plugin::META_SEO_PENDING, true);
+		if (! is_array($pending)) {
+			$pending = get_post_meta($attachment_id, Plugin::META_SEO, true);
+		}
+		if (! is_array($pending)) {
+			return [];
+		}
+
+		$out = [];
+		foreach ($pending as $k => $v) {
+			$out[(string) $k] = is_scalar($v) ? (string) $v : '';
+		}
+
+		return $out;
+	}
+
+	/**
+	 * @param array<string, string> $overrides
+	 */
+	public function approve_pending(int $attachment_id, array $overrides = []): bool
+	{
+		$seo = self::get_pending_seo($attachment_id);
+		if ($seo === []) {
+			return false;
+		}
+
+		foreach (['title', 'alt_text', 'alt_text_seo', 'alt_text_wcag', 'alt_text_short', 'caption', 'description'] as $key) {
+			if (array_key_exists($key, $overrides) && is_string($overrides[$key])) {
+				$seo[$key] = $overrides[$key];
+			}
+		}
+		if (isset($overrides['alt']) && is_string($overrides['alt'])) {
+			$seo['alt_text']      = $overrides['alt'];
+			$seo['alt_text_wcag'] = $overrides['alt'];
+			$seo['alt_text_seo']  = $overrides['alt'];
+		}
+
+		$this->apply_to_attachment($attachment_id, $seo, false);
+		delete_post_meta($attachment_id, Plugin::META_SEO_PENDING);
+		update_post_meta($attachment_id, Plugin::META_STATUS, 'ok');
+
+		$variants = get_post_meta($attachment_id, Plugin::META_VARIANTS, true);
+		if (is_array($variants) && $variants !== []) {
+			(new Pack())->build_and_store($attachment_id, $variants, $seo);
+		}
+
+		return true;
+	}
+
+	public function reject_pending(int $attachment_id): bool
+	{
+		$status = (string) get_post_meta($attachment_id, Plugin::META_STATUS, true);
+		if ($status !== 'awaiting_validation' && get_post_meta($attachment_id, Plugin::META_SEO_PENDING, true) === '') {
+			return false;
+		}
+
+		delete_post_meta($attachment_id, Plugin::META_SEO_PENDING);
+		update_post_meta($attachment_id, Plugin::META_STATUS, 'ok');
+
+		return true;
+	}
+
+	/**
 	 * Enrich SEO via le fournisseur Vision configuré.
 	 *
 	 * @param array<string, string> $fallback

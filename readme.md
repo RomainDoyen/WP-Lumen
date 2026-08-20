@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.4.0-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.5.0-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -32,7 +32,7 @@
 | **Restauration** | Sauvegarde de l’original avant remplacement + bouton fiche média                      |
 | **Outils**       | Nettoyage, URLs cassées (diagnostic / réécriture), rapports (CSV, Excel, PDF)         |
 | **Icônes**       | Kit PNG 16→512, ZIP, favicons injectés dans le `<head>`                               |
-| **IA**           | Vision multi-fournisseur : Mistral, OpenAI, Anthropic, Gemini + compteur local        |
+| **IA**           | Vision multi-fournisseur + validation optionnelle des métadonnées + estimateur d’appels bulk |
 | **Apparence**    | Thème admin clair ou sombre                                                           |
 | **Admin**        | Dashboard, navigation, modales succès/échec, UI responsive                            |
 
@@ -78,15 +78,18 @@ cp -r lumen-wp /chemin/vers/wp-content/plugins/lumen-wp
 
 Le ZIP / le dossier doit s’appeler `lumen-wp` et contenir `lumen.php` à la racine du plugin.
 
-### Build du ZIP (sans `.git`)
+### Build du ZIP
 
 ```bash
-# Depuis la racine du repo (fichiers commités uniquement)
+# Depuis la racine du repo (staging rsync + .distignore)
 ./bin/build-zip.sh
 # → dist/lumen-wp.zip
+# → dist/lumen-wp-X.Y.Z.zip
 ```
 
-À chaque tag `v*` poussé sur GitHub, le workflow **Release ZIP** publie automatiquement `lumen-wp.zip` sur la release.
+Le script exclut `.git`, `docs/`, `.github/`, etc. via [`.distignore`](.distignore), vérifie la version dans le ZIP, et n’exige plus un arbre git propre (utile en local).
+
+À chaque tag `v*` poussé sur GitHub, le workflow **Release ZIP** publie les deux archives sur la release.
 
 ---
 
@@ -146,6 +149,12 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.5.0
+
+- Validation IA optionnelle : file Lumen → Validation (approuver / rejeter)
+- Estimateur d’appels IA avant traitement bulk (vs budget mensuel)
+- Statut `awaiting_validation` + meta `_lumen_seo_pending`
 
 ### 1.4.0
 

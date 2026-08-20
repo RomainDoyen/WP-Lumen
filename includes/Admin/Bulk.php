@@ -146,6 +146,7 @@ final class Bulk
 								);
 								?>
 							</p>
+							<p class="description" id="lumen-wp-bulk-estimate" hidden></p>
 						</td>
 					</tr>
 				</table>

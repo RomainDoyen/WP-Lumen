@@ -337,6 +337,29 @@ final class Hooks
 				$rate_limited = ! empty($ai['rate_limited']);
 			}
 
+			$require_validation = $want_ai
+				&& ! empty($settings['ai_require_validation'])
+				&& ! $rate_limited;
+
+			if ($require_validation) {
+				update_post_meta($attachment_id, Plugin::META_SEO_PENDING, $seo);
+				update_post_meta($attachment_id, Plugin::META_SEO, $seo);
+				if (Media_Types::supports_optimize($kind)) {
+					(new Pack())->build_and_store($attachment_id, $variants, $seo);
+				}
+				update_post_meta($attachment_id, Plugin::META_STATUS, 'awaiting_validation');
+
+				return [
+					'ok'           => true,
+					'status'       => 'awaiting_validation',
+					'message'      => __('En attente de validation IA.', 'lumen-wp'),
+					'rate_limited' => $rate_limited,
+					'kind'         => $kind,
+				];
+			}
+
+			delete_post_meta($attachment_id, Plugin::META_SEO_PENDING);
+
 			if (! empty($settings['auto_seo_on_upload']) || $use_mistral || $force || $kind !== Media_Types::KIND_IMAGE) {
 				$seo_service->apply_to_attachment($attachment_id, $seo, false);
 			} else {

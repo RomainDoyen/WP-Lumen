@@ -813,6 +813,7 @@
   $(function () {
     if ($('#lumen-wp-bulk-start').length) {
       pollBulkStatus();
+      refreshBulkEstimate();
     }
   });
 
@@ -825,6 +826,52 @@
       actionLabel: i18n.openSettings || ''
     });
   });
+
+  function bulkEstimatePayload() {
+    var types = $('.lumen-wp-bulk-type:checked')
+      .map(function () {
+        return $(this).val();
+      })
+      .get();
+    return {
+      force: $('#lumen-wp-force').is(':checked') ? 1 : 0,
+      use_ai: $('#lumen-wp-use-ai').is(':checked') ? 1 : 0,
+      types: types,
+    };
+  }
+
+  var bulkEstimateTimer = null;
+  function refreshBulkEstimate() {
+    if (!$('#lumen-wp-bulk-estimate').length) return;
+    clearTimeout(bulkEstimateTimer);
+    bulkEstimateTimer = setTimeout(function () {
+      var payload = bulkEstimatePayload();
+      if (!payload.types.length) {
+        $('#lumen-wp-bulk-estimate')
+          .prop('hidden', false)
+          .removeClass('lumen-wp-urls-error')
+          .text('Sélectionnez au moins un type.');
+        return;
+      }
+      ajax('lumen_wp_bulk_estimate', payload)
+        .done(function (res) {
+          if (!res || !res.success || !res.data) return;
+          $('#lumen-wp-bulk-estimate')
+            .prop('hidden', false)
+            .toggleClass('lumen-wp-urls-error', res.data.within_budget === false)
+            .text(res.data.message || '');
+        })
+        .fail(function () {
+          $('#lumen-wp-bulk-estimate').prop('hidden', true).text('');
+        });
+    }, 250);
+  }
+
+  $(document).on(
+    'change',
+    '#lumen-wp-force, #lumen-wp-use-ai, .lumen-wp-bulk-type',
+    refreshBulkEstimate
+  );
 
   $(document).on('click', '#lumen-wp-bulk-start', function (e) {
     e.preventDefault();
@@ -950,6 +997,7 @@
     $('#lumen-wp-api-key-row').prop('hidden', hideAiFields);
     $('#lumen-wp-ai-model-row').prop('hidden', hideAiFields);
     $('#lumen-wp-ai-budget-row').prop('hidden', hideAiFields);
+    $('#lumen-wp-ai-validation-row').prop('hidden', hideAiFields);
     $('.lumen-wp-api-key').each(function () {
       var match = $(this).data('provider') === provider;
       $(this).prop('hidden', !match);
