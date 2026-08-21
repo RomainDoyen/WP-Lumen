@@ -180,7 +180,7 @@ final class Plugin
 		// Migration : ancienne clé Mistral seule → provider mistral.
 		if (
 			($merged['ai_provider'] ?? 'none') === 'none'
-			&& Vision_Ai::has_stored_key('mistral')
+			&& Api_Key_Encryption::has_stored_key((string) ($merged['mistral_api_key'] ?? ''))
 		) {
 			$merged['ai_provider'] = 'mistral';
 		}
