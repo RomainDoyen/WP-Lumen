@@ -419,15 +419,15 @@ final class Seo_Geo_Auditor
 				'id'           => 'missing_faq_schema',
 				'severity'     => 'info',
 				'priority'     => 45,
-				'fixable'      => false,
+				'fixable'      => true,
 				'title'        => __('Schema FAQPage absent', 'lumen-wp'),
 				'description'  => sprintf(
 					/* translators: %d: count */
-					__('%d contenu(s) avec structure FAQ sans JSON-LD FAQPage (génération prévue en 1.9).', 'lumen-wp'),
+					__('%d contenu(s) avec structure FAQ sans JSON-LD FAQPage.', 'lumen-wp'),
 					count($affected)
 				),
-				'action'       => __('Ajouter manuellement le schema ou attendre Lumen 1.9.', 'lumen-wp'),
-				'fix_preview'  => '',
+				'action'       => __('Générer le schema FAQPage Lumen.', 'lumen-wp'),
+				'fix_preview'  => __('Extraction Q/R locale (+ IA si réglage).', 'lumen-wp'),
 				'affected'     => $affected,
 				'affected_ids' => array_column($affected, 'id'),
 			],
@@ -515,8 +515,8 @@ final class Seo_Geo_Auditor
 		if (stripos($content, 'FAQPage') !== false) {
 			return true;
 		}
-		$jsonld = (string) get_post_meta($post_id, Plugin::META_JSONLD, true);
-		if (stripos($jsonld, 'FAQPage') !== false) {
+		$faq = get_post_meta($post_id, Plugin::META_FAQ, true);
+		if (is_array($faq) && ! empty($faq['mainEntity'])) {
 			return true;
 		}
 

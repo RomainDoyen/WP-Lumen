@@ -57,6 +57,8 @@ final class Audit_Fixer
 				return $this->fix_missing_seo_meta($entity_ids);
 			case 'missing_llms_txt':
 				return $this->fix_missing_llms_txt();
+			case 'missing_faq_schema':
+				return $this->fix_missing_faq_schema($entity_ids);
 			default:
 				return [
 					'success' => false,
@@ -306,6 +308,50 @@ final class Audit_Fixer
 			'fixed'   => $fixed,
 			'queued'  => 0,
 			'skipped' => max(0, count($entity_ids) - $fixed),
+			'details' => $details,
+		];
+	}
+
+	/**
+	 * @param list<int> $entity_ids
+	 * @return array{success: bool, message: string, fixed: int, queued: int, skipped: int, details: list<string>}
+	 */
+	private function fix_missing_faq_schema(array $entity_ids): array
+	{
+		$fixed   = 0;
+		$skipped = 0;
+		$details = [];
+
+		foreach ($entity_ids as $id) {
+			$items = Faq_Generator::generate_and_store($id);
+			if ($items === []) {
+				++$skipped;
+				$details[] = sprintf(
+					/* translators: %d: post ID */
+					__('FAQ impossible pour #%d', 'lumen-wp'),
+					$id
+				);
+				continue;
+			}
+			++$fixed;
+			$details[] = sprintf(
+				/* translators: 1: question count 2: post ID */
+				__('FAQPage · %d questions · #%d', 'lumen-wp'),
+				count($items),
+				$id
+			);
+		}
+
+		return [
+			'success' => $fixed > 0,
+			'message' => sprintf(
+				/* translators: %d: count */
+				__('%d schema FAQPage généré(s).', 'lumen-wp'),
+				$fixed
+			),
+			'fixed'   => $fixed,
+			'queued'  => 0,
+			'skipped' => $skipped,
 			'details' => $details,
 		];
 	}

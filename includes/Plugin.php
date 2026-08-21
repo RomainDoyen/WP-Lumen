@@ -64,6 +64,7 @@ final class Plugin
 		(new Url_Queue())->register();
 		(new Reports())->register();
 		(new Llms_Txt())->register();
+		(new Schema_Front())->register();
 		(new Audit_Fixer())->register();
 
 		if (is_admin()) {
@@ -102,6 +103,7 @@ final class Plugin
 			'Llms_Txt.php',
 			'Faq_Schema.php',
 			'Faq_Generator.php',
+			'Schema_Front.php',
 			'Seo_Geo_Auditor.php',
 			'Audit_Fixer.php',
 			'History_Query.php',

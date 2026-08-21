@@ -54,6 +54,8 @@ final class Faq_Generator
 			$items = self::enrich_with_ai($items, $post); // fail → keep $items
 		}
 		if (count($items) < self::MIN_ITEMS) {
+			delete_post_meta($post_id, Plugin::META_FAQ);
+
 			return [];
 		}
 		$schema = Faq_Schema::build($items, get_permalink($post_id) ?: '');
