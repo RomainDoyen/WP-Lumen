@@ -55,6 +55,7 @@ final class Plugin
 	public function boot(): void
 	{
 		add_action('admin_init', [Installer::class, 'maybe_upgrade']);
+		add_action('admin_init', [Api_Key_Encryption::class, 'migrate_settings_keys']);
 
 		(new As_Bridge())->register();
 		(new Hooks())->register();
@@ -84,6 +85,7 @@ final class Plugin
 			'Seo.php',
 			'Seo_Plugin_Bridge.php',
 			'Media_Types.php',
+			'Api_Key_Encryption.php',
 			'Vision_Ai.php',
 			'As_Bridge.php',
 			'Bulk_Queue.php',
@@ -178,7 +180,7 @@ final class Plugin
 		// Migration : ancienne clé Mistral seule → provider mistral.
 		if (
 			($merged['ai_provider'] ?? 'none') === 'none'
-			&& trim((string) ($merged['mistral_api_key'] ?? '')) !== ''
+			&& Vision_Ai::has_stored_key('mistral')
 		) {
 			$merged['ai_provider'] = 'mistral';
 		}

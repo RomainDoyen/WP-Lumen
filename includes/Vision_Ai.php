@@ -698,7 +698,7 @@ final class Vision_Ai
 		}
 
 		// Migration douce.
-		if ($provider === 'none' && trim((string) ($settings['mistral_api_key'] ?? '')) !== '') {
+		if ($provider === 'none' && self::has_stored_key('mistral')) {
 			return 'mistral';
 		}
 
@@ -728,8 +728,25 @@ final class Vision_Ai
 			'gemini'    => 'gemini_api_key',
 		];
 		$field = $key_map[$provider] ?? '';
+		if ($field === '') {
+			return '';
+		}
 
-		return $field !== '' ? trim((string) ($settings[$field] ?? '')) : '';
+		return Api_Key_Encryption::decrypt((string) ($settings[$field] ?? ''));
+	}
+
+	public static function has_stored_key(string $provider): bool
+	{
+		$settings = Plugin::instance()->settings();
+		$key_map  = [
+			'mistral'   => 'mistral_api_key',
+			'openai'    => 'openai_api_key',
+			'anthropic' => 'anthropic_api_key',
+			'gemini'    => 'gemini_api_key',
+		];
+		$field = $key_map[$provider] ?? '';
+
+		return $field !== '' && Api_Key_Encryption::has_stored_key((string) ($settings[$field] ?? ''));
 	}
 
 	public static function model_for(string $provider): string
