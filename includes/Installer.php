@@ -37,6 +37,13 @@ final class Installer
 		) {$charset};";
 
 		dbDelta($sql);
+
+		$exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+		if ($exists !== $table) {
+			error_log('[Lumen] install failed: table ' . $table . ' missing after dbDelta');
+			return;
+		}
+
 		update_option(self::OPTION, self::SCHEMA_VERSION, false);
 	}
 

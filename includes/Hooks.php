@@ -342,6 +342,9 @@ final class Hooks
 				$seo          = $ai['seo'];
 				$rate_limited = ! empty($ai['rate_limited']);
 				$tokens       = $ai['tokens'] ?? Vision_Ai::empty_tokens(Vision_Ai::active_provider());
+				if (! empty($ai['error'])) {
+					$job_message = (string) $ai['error'];
+				}
 			}
 
 			$require_validation = $want_ai
@@ -401,14 +404,18 @@ final class Hooks
 				'message' => $job_message,
 			];
 		} finally {
-			if ($should_record) {
-				Job_Repository::record($attachment_id, 'process', [
-					'status'  => $job_status,
-					'message' => $job_message,
-					'tokens'  => $tokens,
-				]);
-			}
 			unset(self::$processing[$attachment_id]);
+			if ($should_record) {
+				try {
+					Job_Repository::record($attachment_id, 'process', [
+						'status'  => $job_status,
+						'message' => $job_message,
+						'tokens'  => $tokens,
+					]);
+				} catch (\Throwable $e) {
+					error_log('[Lumen] job record failed: ' . $e->getMessage());
+				}
+			}
 		}
 	}
 

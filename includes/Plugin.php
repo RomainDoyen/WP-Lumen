@@ -54,7 +54,7 @@ final class Plugin
 
 	public function boot(): void
 	{
-		Installer::maybe_upgrade();
+		add_action('admin_init', [Installer::class, 'maybe_upgrade']);
 
 		(new As_Bridge())->register();
 		(new Hooks())->register();
