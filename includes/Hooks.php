@@ -309,8 +309,14 @@ final class Hooks
 		delete_post_meta($attachment_id, Plugin::META_ERROR);
 		Content_Url_Rewriter::clear_urls_clean($attachment_id);
 
+		$should_record = false;
+		$job_status    = 'ok';
+		$job_message   = null;
+		$tokens        = Vision_Ai::empty_tokens();
+
 		try {
-			$variants = [];
+			$should_record = true;
+			$variants      = [];
 			if (Media_Types::supports_optimize($kind)) {
 				$optimizer = new Optimizer();
 				$result    = $optimizer->process_attachment($attachment_id);
@@ -335,6 +341,7 @@ final class Hooks
 				$ai           = $seo_service->enrich_with_ai($attachment_id, $seo);
 				$seo          = $ai['seo'];
 				$rate_limited = ! empty($ai['rate_limited']);
+				$tokens       = $ai['tokens'] ?? Vision_Ai::empty_tokens(Vision_Ai::active_provider());
 			}
 
 			$require_validation = $want_ai
@@ -348,11 +355,13 @@ final class Hooks
 					(new Pack())->build_and_store($attachment_id, $variants, $seo);
 				}
 				update_post_meta($attachment_id, Plugin::META_STATUS, 'awaiting_validation');
+				$job_status  = 'awaiting_validation';
+				$job_message = __('En attente de validation IA.', 'lumen-wp');
 
 				return [
 					'ok'           => true,
 					'status'       => 'awaiting_validation',
-					'message'      => __('En attente de validation IA.', 'lumen-wp'),
+					'message'      => $job_message,
 					'rate_limited' => $rate_limited,
 					'kind'         => $kind,
 				];
@@ -371,6 +380,7 @@ final class Hooks
 			}
 
 			update_post_meta($attachment_id, Plugin::META_STATUS, 'ok');
+			$job_status = 'ok';
 
 			return [
 				'ok'           => true,
@@ -379,15 +389,25 @@ final class Hooks
 				'kind'         => $kind,
 			];
 		} catch (\Throwable $e) {
+			$should_record = true;
+			$job_status    = 'error';
+			$job_message   = $e->getMessage();
 			update_post_meta($attachment_id, Plugin::META_STATUS, 'error');
-			update_post_meta($attachment_id, Plugin::META_ERROR, $e->getMessage());
+			update_post_meta($attachment_id, Plugin::META_ERROR, $job_message);
 
 			return [
 				'ok'      => false,
 				'status'  => 'error',
-				'message' => $e->getMessage(),
+				'message' => $job_message,
 			];
 		} finally {
+			if ($should_record) {
+				Job_Repository::record($attachment_id, 'process', [
+					'status'  => $job_status,
+					'message' => $job_message,
+					'tokens'  => $tokens,
+				]);
+			}
 			unset(self::$processing[$attachment_id]);
 		}
 	}

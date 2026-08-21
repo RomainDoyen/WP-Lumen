@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace LumenWp\Admin;
 
 use LumenWp\Hooks;
+use LumenWp\Job_Repository;
 use LumenWp\Media_Types;
 use LumenWp\Original_Backup;
 use LumenWp\Pack;
 use LumenWp\Plugin;
 use LumenWp\Seo;
+use LumenWp\Vision_Ai;
 
 final class Media_Meta_Box
 {
@@ -229,7 +231,13 @@ final class Media_Meta_Box
 		}
 
 		$result = $seo_service->enrich_with_ai($id, $fallback);
+		$tokens = $result['tokens'] ?? Vision_Ai::empty_tokens(Vision_Ai::active_provider());
 		if (! empty($result['error'])) {
+			Job_Repository::record($id, 'suggest', [
+				'status'  => 'error',
+				'message' => $result['error'] ?? null,
+				'tokens'  => $tokens,
+			]);
 			wp_send_json_error(
 				[
 					'message'      => (string) $result['error'],
@@ -248,6 +256,12 @@ final class Media_Meta_Box
 		}
 
 		$jsonld = get_post_meta($id, Plugin::META_JSONLD, true);
+
+		Job_Repository::record($id, 'suggest', [
+			'status'  => 'ok',
+			'message' => $result['error'] ?? null,
+			'tokens'  => $tokens,
+		]);
 
 		wp_send_json_success(
 			[

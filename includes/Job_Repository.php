@@ -72,6 +72,26 @@ final class Job_Repository
 	}
 
 	/**
+	 * @param array{status: string, message?: string, tokens?: array, provider?: ?string} $ctx
+	 */
+	public static function record(int $attachment_id, string $type, array $ctx): int
+	{
+		$tokens = is_array($ctx['tokens'] ?? null) ? $ctx['tokens'] : null;
+
+		return self::insert([
+			'attachment_id'     => $attachment_id,
+			'type'              => $type,
+			'status'            => (string) $ctx['status'],
+			'provider_used'     => $tokens['provider'] ?? ($ctx['provider'] ?? null),
+			'tokens_prompt'     => $tokens['prompt'] ?? null,
+			'tokens_completion' => $tokens['completion'] ?? null,
+			'tokens_total'      => $tokens['total'] ?? null,
+			'tokens_source'     => $tokens['source'] ?? 'none',
+			'error_message'     => isset($ctx['message']) ? (string) $ctx['message'] : null,
+		]);
+	}
+
+	/**
 	 * @param array<string, mixed> $job_row
 	 */
 	public static function mirror_last_job(int $attachment_id, array $job_row): void
