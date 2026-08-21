@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.8.0-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.9.0-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -149,6 +149,13 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.9.0
+
+- Schema FAQPage : extraction locale, enrichissement IA optionnel, injection front, correctif Audit
+- Schema VideoObject pour les médias vidéo traités par Lumen
+- Réglages : émettre FAQ / enrichir FAQ via IA
+- Validation IA : reconstruction VideoObject à l’approbation
 
 ### 1.8.0
 
