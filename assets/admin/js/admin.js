@@ -2193,7 +2193,9 @@
       row('IA / SEO', d.ai_label) +
       row('Texte alternatif', d.alt) +
       row('Titre SEO', d.title_seo) +
-      row('Date', d.date);
+      row('Date', d.date) +
+      row('Tokens', d.tokens_label) +
+      row('Source tokens', d.last_job && d.last_job.tokens_source);
     if (d.error) {
       facts += row('Erreur', d.error);
     }
@@ -2203,6 +2205,29 @@
         escHtml(d.validation_url) +
         '">Ouvrir À valider</a></p>'
       : '';
+
+    var jobsHtml = '';
+    if (Array.isArray(d.jobs) && d.jobs.length) {
+      jobsHtml =
+        '<h3>Derniers runs</h3>' +
+        '<ul class="lumen-wp-history-jobs">' +
+        d.jobs
+          .map(function (job) {
+            var parts = [
+              job.date_label || job.completed_at || job.created_at || '—',
+              job.type || '—',
+              job.status || '—',
+              job.tokens_label ||
+                (job.tokens_total != null && job.tokens_total !== ''
+                  ? String(job.tokens_total)
+                  : '—'),
+              job.provider_used || job.provider || '—'
+            ];
+            return '<li>' + escHtml(parts.join(' · ')) + '</li>';
+          })
+          .join('') +
+        '</ul>';
+    }
 
     body.innerHTML =
       '<div class="lumen-wp-history-detail">' +
@@ -2220,6 +2245,7 @@
       '<div class="lumen-wp-history-facts">' +
       facts +
       '</div>' +
+      jobsHtml +
       validation +
       '</div>';
   }

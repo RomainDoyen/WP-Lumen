@@ -152,6 +152,12 @@ final class History_Query
 			? mysql2date('d/m/Y H:i', $mod)
 			: '';
 
+		$last         = get_post_meta($id, Plugin::META_LAST_JOB, true);
+		$tokens_label = '—';
+		if (is_array($last) && isset($last['tokens_total']) && $last['tokens_total'] !== null && $last['tokens_total'] !== '') {
+			$tokens_label = number_format_i18n((int) $last['tokens_total']);
+		}
+
 		return [
 			'id'                => $id,
 			'title'             => $title,
@@ -161,6 +167,7 @@ final class History_Query
 			'status_label'      => self::status_label($status),
 			'compression_label' => self::compression_label($id, $kind),
 			'ai_label'          => self::ai_label($id, $status),
+			'tokens_label'      => $tokens_label,
 			'date'              => $date,
 			'thumb_url'         => is_string($thumb) ? $thumb : '',
 			'edit_url'          => get_edit_post_link($id, 'raw') ?: admin_url('upload.php?item=' . $id),
@@ -204,16 +211,21 @@ final class History_Query
 			}
 		}
 
+		$last = get_post_meta($id, Plugin::META_LAST_JOB, true);
+
 		return array_merge(
 			$row,
 			[
-				'error'       => $error,
-				'alt'         => $alt,
-				'title_seo'   => (string) ($seo['title'] ?? $pending['title'] ?? ''),
-				'caption'     => (string) ($seo['caption'] ?? $pending['caption'] ?? ''),
-				'description' => (string) ($seo['description'] ?? $pending['description'] ?? ''),
-				'formats'     => array_values(array_unique($formats)),
-				'large_url'   => (string) (wp_get_attachment_image_url($id, 'medium') ?: $row['thumb_url']),
+				'error'         => $error,
+				'alt'           => $alt,
+				'title_seo'     => (string) ($seo['title'] ?? $pending['title'] ?? ''),
+				'caption'       => (string) ($seo['caption'] ?? $pending['caption'] ?? ''),
+				'description'   => (string) ($seo['description'] ?? $pending['description'] ?? ''),
+				'formats'       => array_values(array_unique($formats)),
+				'large_url'     => (string) (wp_get_attachment_image_url($id, 'medium') ?: $row['thumb_url']),
+				'jobs'          => self::normalize_jobs(Job_Repository::list_by_attachment($id, 10)),
+				'tokens_label'  => $row['tokens_label'],
+				'last_job'      => is_array($last) ? $last : null,
 			]
 		);
 	}
@@ -255,6 +267,51 @@ final class History_Query
 		$filter = sanitize_key($filter);
 
 		return in_array($filter, self::FILTERS, true) ? $filter : 'all';
+	}
+
+	/**
+	 * @param list<array<string, mixed>> $jobs
+	 * @return list<array<string, mixed>>
+	 */
+	private static function normalize_jobs(array $jobs): array
+	{
+		$out = [];
+		foreach ($jobs as $job) {
+			if (! is_array($job)) {
+				continue;
+			}
+			foreach (['id', 'attachment_id', 'tokens_prompt', 'tokens_completion', 'tokens_total'] as $field) {
+				if (array_key_exists($field, $job) && $job[$field] !== null && $job[$field] !== '') {
+					$job[$field] = (int) $job[$field];
+				} elseif (array_key_exists($field, $job) && ($job[$field] === '' || $job[$field] === null)) {
+					$job[$field] = null;
+				}
+			}
+			$job['date_label']    = self::job_date_label($job);
+			$job['tokens_label']  = isset($job['tokens_total']) && $job['tokens_total'] !== null
+				? number_format_i18n((int) $job['tokens_total'])
+				: '—';
+			$out[] = $job;
+		}
+
+		return $out;
+	}
+
+	/**
+	 * @param array<string, mixed> $job
+	 */
+	private static function job_date_label(array $job): string
+	{
+		$raw = (string) ($job['completed_at'] ?? $job['created_at'] ?? '');
+		if ($raw === '' || $raw === '0000-00-00 00:00:00') {
+			return '';
+		}
+
+		$local = get_date_from_gmt($raw);
+		$src   = is_string($local) && $local !== '' ? $local : $raw;
+		$fmt   = mysql2date('d/m/Y H:i', $src);
+
+		return is_string($fmt) && $fmt !== '' ? $fmt : $raw;
 	}
 
 	private static function compression_label(int $id, string $kind): string

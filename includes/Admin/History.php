@@ -118,6 +118,11 @@ final class History
 									<?php if ((string) $row['ai_label'] !== '' && (string) $row['ai_label'] !== '—') : ?>
 										<span class="lumen-wp-chip lumen-wp-chip--muted"><?php echo esc_html((string) $row['ai_label']); ?></span>
 									<?php endif; ?>
+									<?php if ((string) $row['tokens_label'] !== '' && (string) $row['tokens_label'] !== '—') : ?>
+										<span class="lumen-wp-chip lumen-wp-chip--muted" title="<?php esc_attr_e('Tokens (dernier run)', 'lumen-wp'); ?>">
+											<?php echo esc_html(sprintf(/* translators: %s: token count */ __('Tokens %s', 'lumen-wp'), (string) $row['tokens_label'])); ?>
+										</span>
+									<?php endif; ?>
 								</div>
 								<time class="lumen-wp-timeline__date"><?php echo esc_html((string) $row['date']); ?></time>
 								<div class="lumen-wp-timeline__actions">
