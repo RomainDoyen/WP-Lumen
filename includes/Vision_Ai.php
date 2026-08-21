@@ -19,6 +19,9 @@ final class Vision_Ai
 		'gemini'    => 'gemini-2.0-flash',
 	];
 
+	/** @var array<string, mixed>|null Decoded provider body (usage / usageMetadata). */
+	private ?array $last_usage_raw = null;
+
 	/**
 	 * Catalogue modèles Vision par fournisseur (value => label).
 	 * La clé vide = défaut Lumen pour ce provider.
@@ -429,10 +432,24 @@ final class Vision_Ai
 	}
 
 	/**
-	 * @return array{seo: array<string, string>, rate_limited: bool, error?: string, warning?: string}
+	 * @return array{
+	 *   seo: array<string, string>,
+	 *   rate_limited: bool,
+	 *   error?: string,
+	 *   warning?: string,
+	 *   tokens?: array{
+	 *     prompt: ?int,
+	 *     completion: ?int,
+	 *     total: ?int,
+	 *     source: 'api'|'estimate'|'none',
+	 *     provider: ?string
+	 *   }
+	 * }
 	 */
 	public function enrich(int $attachment_id, array $fallback = []): array
 	{
+		$this->last_usage_raw = null;
+
 		$seo = new Seo();
 		if ($fallback === []) {
 			$fallback = $seo->build_from_filename($attachment_id);
@@ -444,6 +461,7 @@ final class Vision_Ai
 				'seo'          => $fallback,
 				'rate_limited' => false,
 				'error'        => __('Aucun fournisseur IA configuré.', 'lumen-wp'),
+				'tokens'       => self::empty_tokens(null),
 			];
 		}
 
@@ -457,6 +475,7 @@ final class Vision_Ai
 					__('Clé API %s manquante.', 'lumen-wp'),
 					self::provider_label($provider)
 				),
+				'tokens'       => self::empty_tokens(null),
 			];
 		}
 
@@ -465,6 +484,7 @@ final class Vision_Ai
 				'seo'          => $fallback,
 				'rate_limited' => false,
 				'error'        => __('Budget mensuel d’appels IA atteint (réglages Lumen).', 'lumen-wp'),
+				'tokens'       => self::empty_tokens(null),
 			];
 		}
 
@@ -475,6 +495,7 @@ final class Vision_Ai
 					'seo'          => $fallback,
 					'rate_limited' => false,
 					'error'        => __('L’IA Vision n’est pas disponible pour ce type de média.', 'lumen-wp'),
+					'tokens'       => self::empty_tokens(null),
 				];
 			}
 
@@ -503,9 +524,22 @@ final class Vision_Ai
 
 			self::record_usage($provider, false, '');
 
+			$tokens = self::tokens_from_response($this->last_usage_raw ?? []);
+			if (($tokens['source'] ?? 'none') === 'none' || empty($tokens['total'])) {
+				$prompt_approx = $this->system_prompt($slug, $kind);
+				if ($text_only) {
+					$file     = get_attached_file($attachment_id);
+					$filename = is_string($file) ? basename($file) : $slug . '.pdf';
+					$prompt_approx = $this->system_prompt_filename($slug, $filename);
+				}
+				$tokens = self::estimate_tokens($prompt_approx, (string) $raw);
+			}
+			$tokens['provider'] = $provider;
+
 			$out = [
 				'seo'          => $merged,
 				'rate_limited' => false,
+				'tokens'       => $tokens,
 			];
 			if ($text_only) {
 				$out['warning'] = $this->pdf_preview_failure_message($attachment_id)
@@ -521,6 +555,7 @@ final class Vision_Ai
 				'seo'          => $fallback,
 				'rate_limited' => true,
 				'error'        => $e->getMessage(),
+				'tokens'       => $this->tokens_best_effort($provider),
 			];
 		} catch (\Throwable $e) {
 			self::record_usage($provider, false, $e->getMessage());
@@ -529,8 +564,128 @@ final class Vision_Ai
 				'seo'          => $fallback,
 				'rate_limited' => false,
 				'error'        => $e->getMessage(),
+				'tokens'       => $this->tokens_best_effort($provider),
 			];
 		}
+	}
+
+	/**
+	 * @param array<string, mixed> $data Decoded API body
+	 * @return array{prompt: ?int, completion: ?int, total: ?int, source: 'api'|'estimate'|'none'}
+	 */
+	private static function tokens_from_response(array $data): array
+	{
+		$none = [
+			'prompt'     => null,
+			'completion' => null,
+			'total'      => null,
+			'source'     => 'none',
+		];
+
+		$to_int = static function ($value): ?int {
+			if (is_int($value)) {
+				return $value;
+			}
+			if (is_float($value) || (is_string($value) && is_numeric($value))) {
+				return (int) $value;
+			}
+
+			return null;
+		};
+
+		$pack = static function (?int $prompt, ?int $completion, ?int $total) use ($none): array {
+			if ($prompt === null && $completion === null && $total === null) {
+				return $none;
+			}
+			if ($total === null && $prompt !== null && $completion !== null) {
+				$total = $prompt + $completion;
+			}
+
+			return [
+				'prompt'     => $prompt,
+				'completion' => $completion,
+				'total'      => $total,
+				'source'     => 'api',
+			];
+		};
+
+		$usage = is_array($data['usage'] ?? null) ? $data['usage'] : null;
+		if ($usage !== null) {
+			// OpenAI / Mistral chat: usage.prompt_tokens, completion_tokens, total_tokens
+			$prompt     = $to_int($usage['prompt_tokens'] ?? null);
+			$completion = $to_int($usage['completion_tokens'] ?? null);
+			$total      = $to_int($usage['total_tokens'] ?? null);
+			$packed     = $pack($prompt, $completion, $total);
+			if ($packed['source'] === 'api') {
+				return $packed;
+			}
+
+			// Anthropic: usage.input_tokens, output_tokens
+			$prompt     = $to_int($usage['input_tokens'] ?? null);
+			$completion = $to_int($usage['output_tokens'] ?? null);
+			$packed     = $pack($prompt, $completion, null);
+			if ($packed['source'] === 'api') {
+				return $packed;
+			}
+		}
+
+		// Gemini: usageMetadata.promptTokenCount, candidatesTokenCount, totalTokenCount
+		$meta = is_array($data['usageMetadata'] ?? null) ? $data['usageMetadata'] : null;
+		if ($meta !== null) {
+			$prompt     = $to_int($meta['promptTokenCount'] ?? null);
+			$completion = $to_int($meta['candidatesTokenCount'] ?? null);
+			$total      = $to_int($meta['totalTokenCount'] ?? null);
+			$packed     = $pack($prompt, $completion, $total);
+			if ($packed['source'] === 'api') {
+				return $packed;
+			}
+		}
+
+		return $none;
+	}
+
+	/**
+	 * @return array{prompt: ?int, completion: ?int, total: ?int, source: 'estimate'}
+	 */
+	private static function estimate_tokens(string $prompt, string $completion): array
+	{
+		$p = (int) max(1, (int) ceil(strlen($prompt) / 4));
+		$c = (int) max(1, (int) ceil(strlen($completion) / 4));
+
+		return [
+			'prompt'     => $p,
+			'completion' => $c,
+			'total'      => $p + $c,
+			'source'     => 'estimate',
+		];
+	}
+
+	/**
+	 * @return array{prompt: ?int, completion: ?int, total: ?int, source: 'none', provider: ?string}
+	 */
+	public static function empty_tokens(?string $provider = null): array
+	{
+		return [
+			'prompt'     => null,
+			'completion' => null,
+			'total'      => null,
+			'source'     => 'none',
+			'provider'   => $provider,
+		];
+	}
+
+	/**
+	 * @return array{prompt: ?int, completion: ?int, total: ?int, source: 'api'|'estimate'|'none', provider: ?string}
+	 */
+	private function tokens_best_effort(string $provider): array
+	{
+		$tokens = self::tokens_from_response($this->last_usage_raw ?? []);
+		if (($tokens['source'] ?? 'none') === 'none' || empty($tokens['total'])) {
+			return self::empty_tokens($provider);
+		}
+		$tokens['provider'] = $provider;
+
+		return $tokens;
 	}
 
 	public static function active_provider(): string
@@ -1425,6 +1580,7 @@ Slug : "' . $slug_hint . '". Fichier : "' . $filename . '".';
 		if (! is_array($data)) {
 			$data = [];
 		}
+		$this->last_usage_raw = $data;
 
 		if ($this->is_rate_limit($code, $data)) {
 			throw new Vision_Rate_Limit_Exception(
