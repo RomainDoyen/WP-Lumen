@@ -28,6 +28,8 @@ Thumbs.db
 docs
 .cursor
 .idea
+.worktrees
+.superpowers
 *.md
 !readme.md
 dist

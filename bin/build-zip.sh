@@ -58,6 +58,8 @@ RSYNC_EXCLUDES=(
 	--exclude 'tests'
 	--exclude 'Tests'
 	--exclude '.phpunit.result.cache'
+	--exclude '.worktrees'
+	--exclude '.superpowers'
 )
 
 if [[ -f "$DISTIGNORE" ]]; then
@@ -115,10 +117,10 @@ if [[ "$ZIP_VER" != "$VERSION" ]]; then
 	exit 1
 fi
 
-# Pas de docs / superpowers dans le zip
-if unzip -Z1 "$ZIP_STABLE_PATH" 2>/dev/null | grep -E -q '(^|/ )docs/|\.github/|bin/build-zip'; then
-	echo "❌ ZIP contient des chemins exclus (docs/.github/bin)" >&2
-	unzip -Z1 "$ZIP_STABLE_PATH" | grep -E 'docs/|\.github/|bin/' || true
+# Pas de docs / tooling / worktrees / SDD dans le zip
+if unzip -Z1 "$ZIP_STABLE_PATH" 2>/dev/null | grep -E -q '(^|/ )docs/|\.github/|bin/build-zip|\.worktrees/|\.superpowers/'; then
+	echo "❌ ZIP contient des chemins exclus (docs/.github/bin/.worktrees/.superpowers)" >&2
+	unzip -Z1 "$ZIP_STABLE_PATH" | grep -E 'docs/|\.github/|bin/|\.worktrees/|\.superpowers/' || true
 	exit 1
 fi
 
