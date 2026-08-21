@@ -1204,6 +1204,11 @@
     return $input.length ? String($input.val() || '').trim() : '';
   }
 
+  function hasStoredApiKey(provider) {
+    var $wrap = $('.lumen-wp-api-key[data-provider="' + provider + '"]');
+    return $wrap.attr('data-has-key') === '1';
+  }
+
   function fillAiModelSelect(models, keepValue) {
     var $model = $('#lumen-wp-ai-model');
     if (!$model.length) return;
@@ -1269,7 +1274,7 @@
     if (hideAiFields || opts.skipFetch) return;
 
     var apiKey = getVisibleApiKey(provider);
-    if (!apiKey) {
+    if (!apiKey && !hasStoredApiKey(provider)) {
       setAiModelsMeta(
         'Catalogue Lumen uniquement — renseignez la clé API puis actualisez pour charger les modèles Vision du fournisseur.'
       );
@@ -1314,7 +1319,7 @@
     var apiKey = getVisibleApiKey(provider);
     $btn.text(lumenWp.i18n.processing || 'Traitement…');
 
-    if (!apiKey) {
+    if (!apiKey && !hasStoredApiKey(provider)) {
       window.lumenWpModal.error('Renseignez d’abord la clé API du fournisseur.');
       $btn.prop('disabled', false).text(label);
       return;

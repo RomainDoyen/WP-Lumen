@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace LumenWp\Admin;
 
+use LumenWp\Api_Key_Encryption;
 use LumenWp\Plugin;
 use LumenWp\Vision_Ai;
 
@@ -83,10 +84,6 @@ final class Settings
 			'auto_on_upload'       => ! empty($input['auto_on_upload']),
 			'auto_seo_on_upload' => ! empty($input['auto_seo_on_upload']),
 			'ai_provider'        => $provider,
-			'mistral_api_key'    => sanitize_text_field((string) ($input['mistral_api_key'] ?? '')),
-			'openai_api_key'     => sanitize_text_field((string) ($input['openai_api_key'] ?? '')),
-			'anthropic_api_key'  => sanitize_text_field((string) ($input['anthropic_api_key'] ?? '')),
-			'gemini_api_key'     => sanitize_text_field((string) ($input['gemini_api_key'] ?? '')),
 			'ai_model'           => (static function () use ($input, $provider): string {
 				$model = sanitize_text_field((string) ($input['ai_model'] ?? ''));
 				if ($model === '') {
@@ -108,6 +105,20 @@ final class Settings
 				return $theme === 'dark' ? 'dark' : 'light';
 			})(),
 		];
+
+		foreach (Api_Key_Encryption::KEY_FIELDS as $field) {
+			$clear = ! empty($input[$field . '_clear']);
+			$raw   = sanitize_text_field((string) ($input[$field] ?? ''));
+			if ($clear) {
+				$out[$field] = '';
+				continue;
+			}
+			if (trim($raw) === '') {
+				$out[$field] = (string) ($current[$field] ?? '');
+				continue;
+			}
+			$out[$field] = Api_Key_Encryption::encrypt($raw);
+		}
 
 		Plugin::instance()->clear_settings_cache();
 
@@ -372,32 +383,30 @@ final class Settings
 							$api_keys = [
 								'mistral'   => [
 									'label' => 'Mistral',
-									'value' => (string) $settings['mistral_api_key'],
 									'name'  => 'mistral_api_key',
 								],
 								'openai'    => [
 									'label' => 'OpenAI',
-									'value' => (string) ($settings['openai_api_key'] ?? ''),
 									'name'  => 'openai_api_key',
 								],
 								'anthropic' => [
 									'label' => 'Anthropic',
-									'value' => (string) ($settings['anthropic_api_key'] ?? ''),
 									'name'  => 'anthropic_api_key',
 								],
 								'gemini'    => [
 									'label' => 'Gemini',
-									'value' => (string) ($settings['gemini_api_key'] ?? ''),
 									'name'  => 'gemini_api_key',
 								],
 							];
 							foreach ($api_keys as $key_provider => $key_meta) :
-								$field_id = 'lumen-wp-key-' . $key_provider;
-								$visible  = $provider === $key_provider;
+								$field_id     = 'lumen-wp-key-' . $key_provider;
+								$visible      = $provider === $key_provider;
+								$has_stored   = Vision_Ai::has_stored_key($key_provider);
 								?>
 								<div
 									class="lumen-wp-api-key"
 									data-provider="<?php echo esc_attr($key_provider); ?>"
+									data-has-key="<?php echo $has_stored ? '1' : '0'; ?>"
 									<?php echo $visible ? '' : 'hidden'; ?>
 								>
 									<label class="screen-reader-text" for="<?php echo esc_attr($field_id); ?>">
@@ -415,7 +424,7 @@ final class Settings
 											class="regular-text lumen-wp-api-key__input"
 											id="<?php echo esc_attr($field_id); ?>"
 											name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[<?php echo esc_attr($key_meta['name']); ?>]"
-											value="<?php echo esc_attr($key_meta['value']); ?>"
+											placeholder=""
 											autocomplete="off"
 											spellcheck="false"
 										/>
@@ -430,6 +439,19 @@ final class Settings
 											<?php esc_html_e('Afficher', 'lumen-wp'); ?>
 										</button>
 									</div>
+									<?php if ($has_stored) : ?>
+										<p class="description">
+											<?php esc_html_e('Une clé est enregistrée. Laissez vide pour la conserver.', 'lumen-wp'); ?>
+										</p>
+									<?php endif; ?>
+									<label class="lumen-wp-api-key__clear">
+										<input
+											type="checkbox"
+											name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[<?php echo esc_attr($key_meta['name']); ?>_clear]"
+											value="1"
+										/>
+										<?php esc_html_e('Effacer la clé', 'lumen-wp'); ?>
+									</label>
 								</div>
 							<?php endforeach; ?>
 						</td>

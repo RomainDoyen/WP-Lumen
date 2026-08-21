@@ -846,6 +846,14 @@ body.lumen-wp-admin #wpfooter {
 	flex: 0 0 auto;
 }
 
+.lumen-wp-api-key__clear {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	margin-top: 0.45rem;
+	font-size: 0.85rem;
+}
+
 .lumen-wp-wrap .form-table td {
 	color: var(--lumen-text-secondary);
 }

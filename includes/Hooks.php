@@ -435,6 +435,12 @@ final class Hooks
 			}
 		}
 
+		if (! Api_Key_Encryption::available()) {
+			echo '<div class="notice notice-warning"><p>'
+				. esc_html__('Lumen : OpenSSL est indisponible. Les clés API Vision restent stockées en clair.', 'lumen-wp')
+				. '</p></div>';
+		}
+
 		$caps = Plugin::capabilities();
 		if (! $caps['imagick'] && ! $caps['gd']) {
 			echo '<div class="notice notice-error"><p>'
