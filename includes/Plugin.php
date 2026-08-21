@@ -21,6 +21,7 @@ final class Plugin
 	public const META_ORIGINAL_BACKUP = '_lumen_original_backup';
 	/** Set when diagnose/rewrite found no stale URL work left for this attachment. */
 	public const META_URLS_CLEAN = '_lumen_urls_clean';
+	public const META_LAST_JOB = '_lumen_last_job';
 
 	/** @var array<string, mixed>|null */
 	private ?array $settings_cache = null;
@@ -53,6 +54,8 @@ final class Plugin
 
 	public function boot(): void
 	{
+		Installer::maybe_upgrade();
+
 		(new As_Bridge())->register();
 		(new Hooks())->register();
 		(new Bulk_Queue())->register();
@@ -96,6 +99,8 @@ final class Plugin
 			'Seo_Geo_Auditor.php',
 			'Audit_Fixer.php',
 			'History_Query.php',
+			'Installer.php',
+			'Job_Repository.php',
 			'Hooks.php',
 			'Admin/Brand.php',
 			'Admin/Dashboard.php',
