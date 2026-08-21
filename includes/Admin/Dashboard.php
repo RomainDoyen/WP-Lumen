@@ -9,6 +9,7 @@ use LumenWp\Icon_Kit;
 use LumenWp\Job_Repository;
 use LumenWp\Media_Types;
 use LumenWp\Plugin;
+use LumenWp\Server_Caps;
 use LumenWp\Vision_Ai;
 
 final class Dashboard
@@ -48,7 +49,7 @@ final class Dashboard
 
 		$stats    = $this->collect_stats();
 		$failed   = $stats['error'] > 0 ? $this->failed_attachments(50) : [];
-		$caps     = Plugin::capabilities();
+		$caps     = Server_Caps::detect();
 		$settings = Plugin::instance()->settings();
 		$icons    = Icon_Kit::stored();
 		$usage    = Vision_Ai::usage();
@@ -347,10 +348,21 @@ final class Dashboard
 				<section class="lumen-wp-panel">
 					<h2 class="lumen-wp-panel__title"><?php esc_html_e('État serveur', 'lumen-wp'); ?></h2>
 					<div class="lumen-wp-dash-caps">
-						<span class="<?php echo $caps['imagick'] ? 'is-ok' : 'is-no'; ?>">Imagick</span>
-						<span class="<?php echo $caps['gd'] ? 'is-ok' : 'is-no'; ?>">GD</span>
-						<span class="<?php echo $caps['webp'] ? 'is-ok' : 'is-no'; ?>">WebP</span>
-						<span class="<?php echo $caps['avif'] ? 'is-ok' : 'is-no'; ?>">AVIF</span>
+						<span class="<?php echo ! empty($caps['imagick']) ? 'is-ok' : 'is-no'; ?>">Imagick</span>
+						<span class="<?php echo ! empty($caps['gd']) ? 'is-ok' : 'is-no'; ?>">GD</span>
+						<span class="<?php echo ! empty($caps['webp']) ? 'is-ok' : 'is-no'; ?>">WebP</span>
+						<span class="<?php echo ! empty($caps['avif']) ? 'is-ok' : 'is-no'; ?>">AVIF</span>
+						<span class="<?php echo ! empty($caps['ghostscript']) ? 'is-ok' : 'is-no'; ?>">Ghostscript</span>
+						<span class="<?php echo ! empty($caps['ffmpeg']) ? 'is-ok' : 'is-no'; ?>">FFmpeg</span>
+						<span class="<?php echo ! empty($caps['exec']) ? 'is-ok' : 'is-no'; ?>">exec</span>
+						<span class="<?php echo ! empty($caps['shell_exec']) ? 'is-ok' : 'is-no'; ?>">shell_exec</span>
+						<span class="<?php echo ! empty($caps['openssl']) ? 'is-ok' : 'is-no'; ?>">OpenSSL</span>
+						<span class="<?php echo ! empty($caps['action_scheduler']) ? 'is-ok' : 'is-no'; ?>">Action Scheduler</span>
+						<span><?php echo esc_html(sprintf(
+							/* translators: %s: memory limit */
+							__('Mémoire PHP %s', 'lumen-wp'),
+							(string) $caps['memory_limit']
+						)); ?></span>
 						<span class="<?php echo ! empty($settings['site_favicons']) ? 'is-ok' : 'is-no'; ?>">
 							<?php esc_html_e('Favicons site', 'lumen-wp'); ?>
 						</span>

@@ -88,6 +88,7 @@ final class Plugin
 			'Api_Key_Encryption.php',
 			'Vision_Ai.php',
 			'As_Bridge.php',
+			'Server_Caps.php',
 			'Bulk_Queue.php',
 			'Url_Queue.php',
 			'Original_Backup.php',
@@ -200,36 +201,13 @@ final class Plugin
 	 */
 	public static function capabilities(): array
 	{
-		$imagick = extension_loaded('imagick') && class_exists('\Imagick');
-		$gd      = extension_loaded('gd') && function_exists('imagecreatetruecolor');
-
-		$webp = false;
-		$avif = false;
-
-		if ($imagick) {
-			try {
-				$formats = array_map('strtoupper', \Imagick::queryFormats());
-				$webp    = in_array('WEBP', $formats, true);
-				$avif    = in_array('AVIF', $formats, true);
-			} catch (\Throwable $e) {
-				// Keep defaults.
-			}
-		}
-
-		if ($gd) {
-			if (function_exists('imagewebp')) {
-				$webp = true;
-			}
-			if (function_exists('imageavif')) {
-				$avif = true;
-			}
-		}
+		$all = Server_Caps::detect();
 
 		return [
-			'imagick' => $imagick,
-			'gd'      => $gd,
-			'webp'    => $webp,
-			'avif'    => $avif,
+			'imagick' => ! empty($all['imagick']),
+			'gd'      => ! empty($all['gd']),
+			'webp'    => ! empty($all['webp']),
+			'avif'    => ! empty($all['avif']),
 		];
 	}
 
