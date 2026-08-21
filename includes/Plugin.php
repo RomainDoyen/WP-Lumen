@@ -103,6 +103,7 @@ final class Plugin
 			'Llms_Txt.php',
 			'Faq_Schema.php',
 			'Faq_Generator.php',
+			'Video_Schema.php',
 			'Schema_Front.php',
 			'Seo_Geo_Auditor.php',
 			'Audit_Fixer.php',

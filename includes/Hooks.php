@@ -324,7 +324,9 @@ final class Hooks
 			} else {
 				delete_post_meta($attachment_id, Plugin::META_VARIANTS);
 				delete_post_meta($attachment_id, Plugin::META_GUTENBERG);
-				delete_post_meta($attachment_id, Plugin::META_JSONLD);
+				if ($kind !== Media_Types::KIND_VIDEO) {
+					delete_post_meta($attachment_id, Plugin::META_JSONLD);
+				}
 			}
 
 			$seo_service  = new Seo();
@@ -357,6 +359,9 @@ final class Hooks
 				if (Media_Types::supports_optimize($kind)) {
 					(new Pack())->build_and_store($attachment_id, $variants, $seo);
 				}
+				if ($kind === Media_Types::KIND_VIDEO) {
+					Video_Schema::build_and_store($attachment_id, $seo);
+				}
 				update_post_meta($attachment_id, Plugin::META_STATUS, 'awaiting_validation');
 				$job_status  = 'awaiting_validation';
 				$job_message = __('En attente de validation IA.', 'lumen-wp');
@@ -380,6 +385,9 @@ final class Hooks
 
 			if (Media_Types::supports_optimize($kind)) {
 				(new Pack())->build_and_store($attachment_id, $variants, $seo);
+			}
+			if ($kind === Media_Types::KIND_VIDEO) {
+				Video_Schema::build_and_store($attachment_id, $seo);
 			}
 
 			update_post_meta($attachment_id, Plugin::META_STATUS, 'ok');

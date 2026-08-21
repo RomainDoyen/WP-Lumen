@@ -11,6 +11,7 @@ use LumenWp\Original_Backup;
 use LumenWp\Pack;
 use LumenWp\Plugin;
 use LumenWp\Seo;
+use LumenWp\Video_Schema;
 use LumenWp\Vision_Ai;
 
 final class Media_Meta_Box
@@ -163,8 +164,10 @@ final class Media_Meta_Box
 					<?php esc_html_e('Copier Gutenberg', 'lumen-wp'); ?>
 				</button>
 			</p>
+			<?php endif; ?>
+			<?php if ($is_image || $kind === Media_Types::KIND_VIDEO) : ?>
 			<p>
-				<label><?php esc_html_e('JSON-LD ImageObject', 'lumen-wp'); ?></label>
+				<label><?php echo esc_html($kind === Media_Types::KIND_VIDEO ? __('JSON-LD VideoObject', 'lumen-wp') : __('JSON-LD ImageObject', 'lumen-wp')); ?></label>
 				<textarea id="lumen-wp-jsonld" class="widefat code" rows="10" readonly><?php echo esc_textarea((string) $json_text); ?></textarea>
 				<button type="button" class="button lumen-wp-copy" data-target="lumen-wp-jsonld">
 					<?php esc_html_e('Copier JSON-LD', 'lumen-wp'); ?>
@@ -209,9 +212,13 @@ final class Media_Meta_Box
 
 		(new Seo())->apply_to_attachment($attachment_id, $seo, false);
 
+		$kind     = Media_Types::kind($attachment_id);
 		$variants = get_post_meta($attachment_id, Plugin::META_VARIANTS, true);
 		if (is_array($variants) && $variants !== []) {
 			(new Pack())->build_and_store($attachment_id, $variants, $seo);
+		}
+		if ($kind === Media_Types::KIND_VIDEO) {
+			Video_Schema::build_and_store($attachment_id, $seo);
 		}
 	}
 
@@ -250,9 +257,13 @@ final class Media_Meta_Box
 		delete_post_meta($id, Plugin::META_ERROR);
 		update_post_meta($id, Plugin::META_STATUS, 'ok');
 
+		$kind     = Media_Types::kind($id);
 		$variants = get_post_meta($id, Plugin::META_VARIANTS, true);
 		if (is_array($variants) && $variants !== []) {
 			(new Pack())->build_and_store($id, $variants, $result['seo']);
+		}
+		if ($kind === Media_Types::KIND_VIDEO) {
+			Video_Schema::build_and_store($id, $result['seo']);
 		}
 
 		$jsonld = get_post_meta($id, Plugin::META_JSONLD, true);
@@ -408,6 +419,9 @@ final class Media_Meta_Box
 		$variants = get_post_meta($id, Plugin::META_VARIANTS, true);
 		if (is_array($variants) && $variants !== []) {
 			(new Pack())->build_and_store($id, $variants, $existing);
+		}
+		if (Media_Types::kind($id) === Media_Types::KIND_VIDEO) {
+			Video_Schema::build_and_store($id, $existing);
 		}
 
 		return $post;
