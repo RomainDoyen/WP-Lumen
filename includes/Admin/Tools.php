@@ -6,6 +6,7 @@ namespace LumenWp\Admin;
 
 use LumenWp\Bulk_Queue;
 use LumenWp\Cleanup;
+use LumenWp\Job_Repository;
 use LumenWp\Reports;
 use LumenWp\Url_Queue;
 
@@ -17,6 +18,7 @@ final class Tools
 		add_action('wp_ajax_lumen_wp_cleanup_preview', [$this, 'ajax_cleanup_preview']);
 		add_action('wp_ajax_lumen_wp_cleanup_run', [$this, 'ajax_cleanup_run']);
 		add_action('wp_ajax_lumen_wp_cron_health', [$this, 'ajax_cron_health']);
+		add_action('wp_ajax_lumen_wp_jobs_purge', [$this, 'ajax_jobs_purge']);
 	}
 
 	public function add_menu(): void
@@ -190,6 +192,16 @@ final class Tools
 				</p>
 				<p class="description" id="lumen-wp-cleanup-result" hidden></p>
 			</section>
+
+			<?php if (current_user_can('manage_options')) : ?>
+			<section class="lumen-wp-panel">
+				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Journal jobs', 'lumen-wp'); ?></h2>
+				<p class="description"><?php esc_html_e('Supprime l’historique tokens/jobs Lumen (table + cache médias). Ne touche pas aux fichiers.', 'lumen-wp'); ?></p>
+				<p class="lumen-wp-actions-row">
+					<button type="button" class="button" id="lumen-wp-jobs-purge"><?php esc_html_e('Vider le journal jobs', 'lumen-wp'); ?></button>
+				</p>
+			</section>
+			<?php endif; ?>
 
 			<section class="lumen-wp-panel">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Restaurer un original', 'lumen-wp'); ?></h2>
@@ -384,6 +396,16 @@ final class Tools
 				),
 			]
 		);
+	}
+
+	public function ajax_jobs_purge(): void
+	{
+		if (! current_user_can('manage_options')) {
+			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
+		}
+		check_ajax_referer('lumen_wp_admin', 'nonce');
+		$result = Job_Repository::purge_all();
+		wp_send_json_success($result);
 	}
 
 	public function ajax_cron_health(): void

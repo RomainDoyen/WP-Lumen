@@ -1775,6 +1775,54 @@
       });
   });
 
+  $(document).on('click', '#lumen-wp-jobs-purge', function (e) {
+    e.preventDefault();
+    var btn = $(this);
+    var msg =
+      (lumenWp.i18n && lumenWp.i18n.jobsPurgeConfirm) ||
+      'Supprimer l’historique tokens/jobs Lumen (table + cache médias) ? Cette action est irréversible. Les fichiers ne sont pas touchés.';
+
+    var run = function () {
+      btn.prop('disabled', true);
+      ajax('lumen_wp_jobs_purge')
+        .done(function (res) {
+          if (!res || !res.success) {
+            window.lumenWpModal.error(
+              (res && res.data && res.data.message) || lumenWp.i18n.error
+            );
+            return;
+          }
+          var jobs = (res.data && res.data.jobs) || 0;
+          var metas = (res.data && res.data.metas) || 0;
+          window.lumenWpModal.success(
+            'Journal vidé — ' + jobs + ' job(s), ' + metas + ' cache(s) médias.'
+          );
+        })
+        .fail(function (xhr) {
+          window.lumenWpModal.error(ajaxErrorMessage(xhr, lumenWp.i18n.error));
+        })
+        .always(function () {
+          btn.prop('disabled', false);
+        });
+    };
+
+    if (
+      window.lumenWpModal &&
+      typeof window.lumenWpModal.confirm === 'function' &&
+      document.getElementById('lumen-wp-modal')
+    ) {
+      window.lumenWpModal.confirm({
+        message: msg,
+        onConfirm: run
+      });
+      return;
+    }
+    if (!window.confirm(msg)) {
+      return;
+    }
+    run();
+  });
+
   /* —— URLs cassées (file prod-hardened) —— */
   var urlsPollTimer = null;
   var urlsLastStatus = '';

@@ -6,6 +6,7 @@ namespace LumenWp\Admin;
 
 use LumenWp\Bulk_Queue;
 use LumenWp\Icon_Kit;
+use LumenWp\Job_Repository;
 use LumenWp\Media_Types;
 use LumenWp\Plugin;
 use LumenWp\Vision_Ai;
@@ -51,6 +52,7 @@ final class Dashboard
 		$settings = Plugin::instance()->settings();
 		$icons    = Icon_Kit::stored();
 		$usage    = Vision_Ai::usage();
+		$tokens_month = Job_Repository::sum_tokens_month();
 		$ai_prov  = Vision_Ai::active_provider();
 		$budget   = (int) ($settings['ai_budget_month'] ?? 0);
 		$pending_validation = Validation::pending_count();
@@ -304,6 +306,10 @@ final class Dashboard
 						<div>
 							<span class="lumen-wp-stat__label"><?php esc_html_e('Ce mois', 'lumen-wp'); ?></span>
 							<strong><?php echo esc_html(number_format_i18n((int) $usage['calls_month'])); ?></strong>
+						</div>
+						<div>
+							<span class="lumen-wp-stat__label"><?php esc_html_e('Tokens (mois)', 'lumen-wp'); ?></span>
+							<strong><?php echo esc_html(number_format_i18n($tokens_month)); ?></strong>
 						</div>
 						<div>
 							<span class="lumen-wp-stat__label"><?php esc_html_e('Total', 'lumen-wp'); ?></span>
