@@ -154,7 +154,7 @@ final class Validation
 			<?php if ($ids === []) : ?>
 				<p><?php esc_html_e('Aucune métadonnée en attente de validation. Lancez un traitement avec IA + validation pour remplir cette file.', 'lumen-wp'); ?></p>
 			<?php else : ?>
-				<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-actions-row">
+				<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-actions-row lumen-wp-validation-bulk">
 					<?php wp_nonce_field('lumen_wp_validation_bulk'); ?>
 					<input type="hidden" name="action" value="lumen_wp_validation_bulk" />
 					<input type="hidden" name="ids" value="<?php echo esc_attr(implode(',', $ids)); ?>" />
@@ -190,44 +190,90 @@ final class Validation
 	{
 		$seo   = Seo::get_pending_seo($id);
 		$title = get_the_title($id) ?: ('#' . $id);
-		$thumb = wp_get_attachment_image($id, 'medium');
+		$thumb = wp_get_attachment_image($id, 'medium', false, ['class' => 'lumen-wp-validation-card__thumb']);
 		$alt   = (string) ($seo['alt_text'] ?? $seo['alt_text_wcag'] ?? $seo['alt_text_seo'] ?? '');
 		?>
-		<div class="lumen-wp-panel lumen-wp-validation-card">
-			<h2 class="lumen-wp-panel__title"><?php echo esc_html($title); ?> <span class="description">#<?php echo esc_html((string) $id); ?></span></h2>
-			<div class="lumen-wp-validation-grid" style="display:grid;grid-template-columns:minmax(140px,220px) 1fr;gap:1.25rem;align-items:start;">
-				<div>
-					<?php echo $thumb ? wp_kses_post($thumb) : '<p class="description">' . esc_html__('Aperçu indisponible', 'lumen-wp') . '</p>'; ?>
-				</div>
-				<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+		<article class="lumen-wp-validation-card">
+			<header class="lumen-wp-validation-card__head">
+				<h2 class="lumen-wp-validation-card__title">
+					<?php echo esc_html($title); ?>
+					<span class="lumen-wp-validation-card__id">#<?php echo esc_html((string) $id); ?></span>
+				</h2>
+			</header>
+			<div class="lumen-wp-validation-card__body">
+				<figure class="lumen-wp-validation-card__media">
+					<?php
+					echo $thumb
+						? wp_kses_post($thumb)
+						: '<p class="description">' . esc_html__('Aperçu indisponible', 'lumen-wp') . '</p>';
+					?>
+				</figure>
+				<form class="lumen-wp-validation-card__form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
 					<?php wp_nonce_field('lumen_wp_validation_item'); ?>
 					<input type="hidden" name="action" value="lumen_wp_validation_item" />
 					<input type="hidden" name="attachment_id" value="<?php echo esc_attr((string) $id); ?>" />
 
-					<p>
-						<label for="lumen-alt-<?php echo esc_attr((string) $id); ?>"><?php esc_html_e('Texte alternatif', 'lumen-wp'); ?></label><br />
-						<input class="large-text" type="text" name="alt" id="lumen-alt-<?php echo esc_attr((string) $id); ?>" value="<?php echo esc_attr($alt); ?>" maxlength="125" />
-					</p>
-					<p>
-						<label for="lumen-title-<?php echo esc_attr((string) $id); ?>"><?php esc_html_e('Titre', 'lumen-wp'); ?></label><br />
-						<input class="large-text" type="text" name="title" id="lumen-title-<?php echo esc_attr((string) $id); ?>" value="<?php echo esc_attr((string) ($seo['title'] ?? '')); ?>" />
-					</p>
-					<p>
-						<label for="lumen-caption-<?php echo esc_attr((string) $id); ?>"><?php esc_html_e('Légende', 'lumen-wp'); ?></label><br />
-						<textarea class="large-text" name="caption" id="lumen-caption-<?php echo esc_attr((string) $id); ?>" rows="2"><?php echo esc_textarea((string) ($seo['caption'] ?? '')); ?></textarea>
-					</p>
-					<p>
-						<label for="lumen-desc-<?php echo esc_attr((string) $id); ?>"><?php esc_html_e('Description', 'lumen-wp'); ?></label><br />
-						<textarea class="large-text" name="description" id="lumen-desc-<?php echo esc_attr((string) $id); ?>" rows="3"><?php echo esc_textarea((string) ($seo['description'] ?? '')); ?></textarea>
-					</p>
-					<p class="lumen-wp-actions-row">
-						<button type="submit" name="item_action" value="approve" class="button button-primary"><?php esc_html_e('Approuver', 'lumen-wp'); ?></button>
-						<button type="submit" name="item_action" value="reject" class="button"><?php esc_html_e('Rejeter', 'lumen-wp'); ?></button>
-						<a class="button" href="<?php echo esc_url(get_edit_post_link($id, 'raw') ?: '#'); ?>"><?php esc_html_e('Fiche média', 'lumen-wp'); ?></a>
-					</p>
+					<div class="lumen-wp-field">
+						<label class="lumen-wp-field__label" for="lumen-alt-<?php echo esc_attr((string) $id); ?>">
+							<?php esc_html_e('Texte alternatif', 'lumen-wp'); ?>
+						</label>
+						<input
+							class="lumen-wp-field__control"
+							type="text"
+							name="alt"
+							id="lumen-alt-<?php echo esc_attr((string) $id); ?>"
+							value="<?php echo esc_attr($alt); ?>"
+							maxlength="125"
+						/>
+					</div>
+					<div class="lumen-wp-field">
+						<label class="lumen-wp-field__label" for="lumen-title-<?php echo esc_attr((string) $id); ?>">
+							<?php esc_html_e('Titre', 'lumen-wp'); ?>
+						</label>
+						<input
+							class="lumen-wp-field__control"
+							type="text"
+							name="title"
+							id="lumen-title-<?php echo esc_attr((string) $id); ?>"
+							value="<?php echo esc_attr((string) ($seo['title'] ?? '')); ?>"
+						/>
+					</div>
+					<div class="lumen-wp-field">
+						<label class="lumen-wp-field__label" for="lumen-caption-<?php echo esc_attr((string) $id); ?>">
+							<?php esc_html_e('Légende', 'lumen-wp'); ?>
+						</label>
+						<textarea
+							class="lumen-wp-field__control"
+							name="caption"
+							id="lumen-caption-<?php echo esc_attr((string) $id); ?>"
+							rows="2"
+						><?php echo esc_textarea((string) ($seo['caption'] ?? '')); ?></textarea>
+					</div>
+					<div class="lumen-wp-field">
+						<label class="lumen-wp-field__label" for="lumen-desc-<?php echo esc_attr((string) $id); ?>">
+							<?php esc_html_e('Description', 'lumen-wp'); ?>
+						</label>
+						<textarea
+							class="lumen-wp-field__control"
+							name="description"
+							id="lumen-desc-<?php echo esc_attr((string) $id); ?>"
+							rows="3"
+						><?php echo esc_textarea((string) ($seo['description'] ?? '')); ?></textarea>
+					</div>
+					<div class="lumen-wp-validation-card__actions">
+						<button type="submit" name="item_action" value="approve" class="button button-primary">
+							<?php esc_html_e('Approuver', 'lumen-wp'); ?>
+						</button>
+						<button type="submit" name="item_action" value="reject" class="button">
+							<?php esc_html_e('Rejeter', 'lumen-wp'); ?>
+						</button>
+						<a class="button" href="<?php echo esc_url(get_edit_post_link($id, 'raw') ?: '#'); ?>">
+							<?php esc_html_e('Fiche média', 'lumen-wp'); ?>
+						</a>
+					</div>
 				</form>
 			</div>
-		</div>
+		</article>
 		<?php
 	}
 

@@ -429,7 +429,7 @@ final class Vision_Ai
 	}
 
 	/**
-	 * @return array{seo: array<string, string>, rate_limited: bool, error?: string}
+	 * @return array{seo: array<string, string>, rate_limited: bool, error?: string, warning?: string}
 	 */
 	public function enrich(int $attachment_id, array $fallback = []): array
 	{
@@ -478,20 +478,42 @@ final class Vision_Ai
 				];
 			}
 
-			$thumb = $this->build_thumb($attachment_id);
 			$slug  = (string) ($fallback['slug'] ?? 'media');
 			$model = self::model_for($provider);
-			$raw   = $this->dispatch($provider, $api_key, $model, $thumb, $slug, $kind);
+			$thumb = $this->build_thumb($attachment_id);
+			$text_only = false;
+
+			if ($thumb === null) {
+				if ($kind === Media_Types::KIND_PDF) {
+					// Sans aperçu (Imagick/GS/PDF protégé) : SEO via le nom de fichier.
+					$text_only = true;
+					$raw       = $this->dispatch_text_only($provider, $api_key, $model, $slug, $attachment_id);
+				} elseif ($kind === Media_Types::KIND_VIDEO) {
+					throw new \RuntimeException(__('Impossible d’obtenir une vignette vidéo pour l’IA.', 'lumen-wp'));
+				} else {
+					throw new \RuntimeException(__('Impossible de préparer l’aperçu pour l’IA.', 'lumen-wp'));
+				}
+			} else {
+				$raw = $this->dispatch($provider, $api_key, $model, $thumb, $slug, $kind);
+			}
+
 			$parsed = $this->parse_metadata($raw);
 			$merged = $seo->merge_seo_fields($fallback, $parsed);
-			$merged['metadata_source'] = $provider;
+			$merged['metadata_source'] = $text_only ? ($provider . '_filename') : $provider;
 
 			self::record_usage($provider, false, '');
 
-			return [
+			$out = [
 				'seo'          => $merged,
 				'rate_limited' => false,
 			];
+			if ($text_only) {
+				$out['warning'] = $this->pdf_preview_failure_message($attachment_id)
+					. ' '
+					. __('Suggestion basée sur le nom de fichier (sans Vision).', 'lumen-wp');
+			}
+
+			return $out;
 		} catch (Vision_Rate_Limit_Exception $e) {
 			self::record_usage($provider, true, $e->getMessage());
 
@@ -652,20 +674,16 @@ final class Vision_Ai
 	}
 
 	/**
-	 * @return array{data_url: string, mime: string, base64: string}
+	 * @return array{data_url: string, mime: string, base64: string}|null
 	 */
-	private function build_thumb(int $attachment_id): array
+	private function build_thumb(int $attachment_id): ?array
 	{
 		$kind = Media_Types::kind($attachment_id);
 
 		if ($kind === Media_Types::KIND_PDF || $kind === Media_Types::KIND_VIDEO) {
 			$preview = $this->resolve_document_preview($attachment_id, $kind);
 			if ($preview === null) {
-				throw new \RuntimeException(
-					$kind === Media_Types::KIND_PDF
-						? __('Impossible de générer un aperçu PDF pour l’IA (Imagick requis).', 'lumen-wp')
-						: __('Impossible d’obtenir une vignette vidéo pour l’IA.', 'lumen-wp')
-				);
+				return null;
 			}
 
 			return $this->thumb_from_image_file($preview['path'], $preview['mime'], ! empty($preview['temp']));
@@ -679,6 +697,23 @@ final class Vision_Ai
 		$mime = (string) get_post_mime_type($attachment_id) ?: 'image/jpeg';
 
 		return $this->thumb_from_image_file($file, $mime, false);
+	}
+
+	private function pdf_preview_failure_message(int $attachment_id): string
+	{
+		$file = get_attached_file($attachment_id);
+		$has_imagick = class_exists('\Imagick');
+		$has_gs      = $this->find_ghostscript() !== null;
+
+		if (! is_string($file) || ! is_readable($file)) {
+			return __('Impossible de lire le fichier PDF.', 'lumen-wp');
+		}
+
+		if (! $has_imagick && ! $has_gs) {
+			return __('Impossible de générer un aperçu PDF pour l’IA (Imagick ou Ghostscript requis).', 'lumen-wp');
+		}
+
+		return __('Impossible de générer un aperçu PDF pour l’IA (PDF illisible, protégé, ou moteur d’aperçu en échec).', 'lumen-wp');
 	}
 
 	/**
@@ -697,7 +732,12 @@ final class Vision_Ai
 		}
 
 		if ($kind === Media_Types::KIND_PDF) {
-			return $this->imagick_pdf_preview($file);
+			$imagick = $this->imagick_pdf_preview($file);
+			if ($imagick !== null) {
+				return $imagick;
+			}
+
+			return $this->ghostscript_pdf_preview($file);
 		}
 
 		if ($kind === Media_Types::KIND_VIDEO) {
@@ -789,7 +829,9 @@ final class Vision_Ai
 			$imagick->clear();
 			$imagick->destroy();
 
-			if (! is_readable($out)) {
+			if (! is_readable($out) || (int) filesize($out) < 32) {
+				@unlink($out);
+
 				return null;
 			}
 
@@ -800,10 +842,86 @@ final class Vision_Ai
 	}
 
 	/**
+	 * Fallback LocalWP / serveurs sans extension Imagick.
+	 *
+	 * @return array{path: string, mime: string, temp: bool}|null
+	 */
+	private function ghostscript_pdf_preview(string $pdf_path): ?array
+	{
+		if (! function_exists('exec')) {
+			return null;
+		}
+
+		$gs = $this->find_ghostscript();
+		if ($gs === null) {
+			return null;
+		}
+
+		$tmp = tempnam(\get_temp_dir(), 'lumen-pdf-gs');
+		if ($tmp === false) {
+			return null;
+		}
+		$out = $tmp . '.jpg';
+		@unlink($tmp);
+
+		$cmd = sprintf(
+			'%s -dNOPAUSE -dBATCH -dSAFER -sDEVICE=jpeg -dFirstPage=1 -dLastPage=1 -r144 -dJPEGQ=85 -sOutputFile=%s %s 2>/dev/null',
+			escapeshellarg($gs),
+			escapeshellarg($out),
+			escapeshellarg($pdf_path)
+		);
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_exec
+		exec($cmd, $output, $code);
+
+		if ($code !== 0 || ! is_readable($out) || (int) filesize($out) < 32) {
+			@unlink($out);
+
+			return null;
+		}
+
+		return ['path' => $out, 'mime' => 'image/jpeg', 'temp' => true];
+	}
+
+	private function find_ghostscript(): ?string
+	{
+		$found = $this->find_binary(['gs']);
+		if ($found !== null) {
+			return $found;
+		}
+
+		$candidates = [
+			'/usr/bin/gs',
+			'/usr/local/bin/gs',
+			'/opt/homebrew/bin/gs',
+		];
+
+		$home = getenv('HOME');
+		if (is_string($home) && $home !== '') {
+			$globs = glob($home . '/.config/Local/lightning-services/php-*/bin/linux/ghostscript/bin/gs') ?: [];
+			rsort($globs);
+			foreach ($globs as $path) {
+				$candidates[] = $path;
+			}
+		}
+
+		foreach ($candidates as $path) {
+			if (is_string($path) && $path !== '' && is_executable($path)) {
+				return $path;
+			}
+		}
+
+		return null;
+	}
+
+	/**
 	 * @return array{path: string, mime: string, temp: bool}|null
 	 */
 	private function ffmpeg_video_frame(string $video_path): ?array
 	{
+		if (! function_exists('exec')) {
+			return null;
+		}
+
 		$ffmpeg = $this->find_binary(['ffmpeg']);
 		if ($ffmpeg === null) {
 			return null;
@@ -851,7 +969,12 @@ final class Vision_Ai
 	 */
 	private function find_binary(array $names): ?string
 	{
+		if (! function_exists('shell_exec')) {
+			return null;
+		}
+
 		foreach ($names as $name) {
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_shell_exec
 			$path = trim((string) shell_exec('command -v ' . escapeshellarg($name) . ' 2>/dev/null'));
 			if ($path !== '' && is_executable($path)) {
 				return $path;
@@ -945,6 +1068,18 @@ Important : ne préfixe PAS le nom du site WordPress dans ces champs — Lumen l
 Contexte slug fichier : "' . $slug_hint . '".';
 	}
 
+	private function system_prompt_filename(string $slug_hint, string $filename): string
+	{
+		return 'Tu es expert SEO et rédaction WordPress en français.
+Aucun aperçu visuel n’est disponible. Propose des métadonnées à partir du nom de fichier PDF uniquement.
+Réponds UNIQUEMENT avec un objet JSON valide (sans markdown), clés exactes :
+- "title", "alt_text_seo", "alt_text_wcag", "alt_text_short", "caption", "description"
+(mêmes contraintes de longueur que pour une image : SEO ≤125, WCAG ≤150, court ≤60).
+Nettoie le nom (tirets, underscores, extensions, domaines) en titre humain.
+Ne préfixe PAS le nom du site WordPress.
+Slug : "' . $slug_hint . '". Fichier : "' . $filename . '".';
+	}
+
 	/**
 	 * @param array{data_url: string, mime: string, base64: string} $thumb
 	 */
@@ -961,6 +1096,129 @@ Contexte slug fichier : "' . $slug_hint . '".';
 			default:
 				return $this->call_mistral($api_key, $model, $thumb, $slug, $kind);
 		}
+	}
+
+	private function dispatch_text_only(
+		string $provider,
+		string $api_key,
+		string $model,
+		string $slug,
+		int $attachment_id
+	): string {
+		$file = get_attached_file($attachment_id);
+		$filename = is_string($file) ? basename($file) : $slug . '.pdf';
+		$system = $this->system_prompt_filename($slug, $filename);
+		$user   = 'Génère le JSON SEO pour ce document PDF WordPress francophone.';
+
+		switch ($provider) {
+			case 'openai':
+				$data = $this->http_json(
+					'https://api.openai.com/v1/chat/completions',
+					[
+						'Content-Type'  => 'application/json',
+						'Authorization' => 'Bearer ' . $api_key,
+					],
+					[
+						'model'           => $model,
+						'temperature'     => 0.35,
+						'max_tokens'      => 700,
+						'response_format' => ['type' => 'json_object'],
+						'messages'        => [
+							['role' => 'system', 'content' => $system],
+							['role' => 'user', 'content' => $user],
+						],
+					],
+					'OpenAI'
+				);
+				$content = $data['choices'][0]['message']['content'] ?? null;
+				break;
+			case 'anthropic':
+				$data = $this->http_json(
+					'https://api.anthropic.com/v1/messages',
+					[
+						'Content-Type'      => 'application/json',
+						'x-api-key'         => $api_key,
+						'anthropic-version' => '2023-06-01',
+					],
+					[
+						'model'      => $model,
+						'max_tokens' => 700,
+						'system'     => $system,
+						'messages'   => [
+							['role' => 'user', 'content' => $user],
+						],
+					],
+					'Anthropic'
+				);
+				$blocks  = $data['content'] ?? [];
+				$content = '';
+				if (is_array($blocks)) {
+					foreach ($blocks as $block) {
+						if (is_array($block) && ($block['type'] ?? '') === 'text' && is_string($block['text'] ?? null)) {
+							$content .= $block['text'];
+						}
+					}
+				}
+				break;
+			case 'gemini':
+				$data = $this->http_json(
+					'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($api_key),
+					['Content-Type' => 'application/json'],
+					[
+						'system_instruction' => [
+							'parts' => [['text' => $system]],
+						],
+						'contents' => [
+							[
+								'role'  => 'user',
+								'parts' => [['text' => $user]],
+							],
+						],
+						'generationConfig' => [
+							'temperature'      => 0.35,
+							'maxOutputTokens'  => 700,
+							'responseMimeType' => 'application/json',
+						],
+					],
+					'Gemini'
+				);
+				$content = $data['candidates'][0]['content']['parts'][0]['text'] ?? null;
+				break;
+			case 'mistral':
+			default:
+				$data = $this->http_json(
+					'https://api.mistral.ai/v1/chat/completions',
+					[
+						'Content-Type'  => 'application/json',
+						'Authorization' => 'Bearer ' . $api_key,
+					],
+					[
+						'model'           => $model,
+						'temperature'     => 0.35,
+						'max_tokens'      => 700,
+						'response_format' => ['type' => 'json_object'],
+						'messages'        => [
+							['role' => 'system', 'content' => $system],
+							['role' => 'user', 'content' => $user],
+						],
+					],
+					'Mistral'
+				);
+				$content = $data['choices'][0]['message']['content'] ?? null;
+				break;
+		}
+
+		if (! is_string($content) || $content === '') {
+			throw new \RuntimeException(
+				sprintf(
+					/* translators: %s: provider label */
+					__('Réponse %s vide', 'lumen-wp'),
+					self::provider_label($provider)
+				)
+			);
+		}
+
+		return $content;
 	}
 
 	/**

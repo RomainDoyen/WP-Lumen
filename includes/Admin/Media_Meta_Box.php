@@ -21,6 +21,7 @@ final class Media_Meta_Box
 		add_action('wp_ajax_lumen_wp_reprocess', [$this, 'ajax_reprocess']);
 		add_action('wp_ajax_lumen_wp_restore_original', [$this, 'ajax_restore']);
 		add_filter('attachment_fields_to_edit', [$this, 'attachment_fields'], 10, 2);
+		add_filter('attachment_fields_to_save', [$this, 'save_attachment_fields'], 10, 2);
 	}
 
 	public function add_meta_box(): void
@@ -86,52 +87,52 @@ final class Media_Meta_Box
 				<?php endif; ?>
 			</p>
 
-			<div id="lumen-wp-mistral-banner" class="notice notice-warning inline" hidden></div>
+			<div id="lumen-wp-mistral-banner" class="lumen-wp-mistral-banner notice notice-warning inline" hidden></div>
 
 			<p>
 				<label>
 					<?php esc_html_e('Titre', 'lumen-wp'); ?><br />
-					<input type="text" class="widefat" name="lumen_seo[title]" value="<?php echo esc_attr((string) ($seo['title'] ?? '')); ?>" />
+					<input type="text" class="widefat" name="lumen_seo[title]" data-lumen-seo="title" value="<?php echo esc_attr((string) ($seo['title'] ?? '')); ?>" />
 				</label>
 			</p>
 			<p>
 				<label>
 					<?php esc_html_e('Alt SEO (≤125)', 'lumen-wp'); ?><br />
-					<input type="text" class="widefat" name="lumen_seo[alt_text_seo]" value="<?php echo esc_attr((string) ($seo['alt_text_seo'] ?? '')); ?>" maxlength="125" />
+					<input type="text" class="widefat" name="lumen_seo[alt_text_seo]" data-lumen-seo="alt_text_seo" value="<?php echo esc_attr((string) ($seo['alt_text_seo'] ?? '')); ?>" maxlength="125" />
 				</label>
 			</p>
 			<p>
 				<label>
 					<?php esc_html_e('Alt WCAG (≤150)', 'lumen-wp'); ?><br />
-					<input type="text" class="widefat" name="lumen_seo[alt_text_wcag]" value="<?php echo esc_attr((string) ($seo['alt_text_wcag'] ?? '')); ?>" maxlength="150" />
+					<input type="text" class="widefat" name="lumen_seo[alt_text_wcag]" data-lumen-seo="alt_text_wcag" value="<?php echo esc_attr((string) ($seo['alt_text_wcag'] ?? '')); ?>" maxlength="150" />
 				</label>
 			</p>
 			<p>
 				<label>
 					<?php esc_html_e('Alt court (≤60)', 'lumen-wp'); ?><br />
-					<input type="text" class="widefat" name="lumen_seo[alt_text_short]" value="<?php echo esc_attr((string) ($seo['alt_text_short'] ?? '')); ?>" maxlength="60" />
+					<input type="text" class="widefat" name="lumen_seo[alt_text_short]" data-lumen-seo="alt_text_short" value="<?php echo esc_attr((string) ($seo['alt_text_short'] ?? '')); ?>" maxlength="60" />
 				</label>
 			</p>
 			<p>
 				<label>
 					<?php esc_html_e('Légende', 'lumen-wp'); ?><br />
-					<textarea class="widefat" rows="2" name="lumen_seo[caption]"><?php echo esc_textarea((string) ($seo['caption'] ?? '')); ?></textarea>
+					<textarea class="widefat" rows="2" name="lumen_seo[caption]" data-lumen-seo="caption"><?php echo esc_textarea((string) ($seo['caption'] ?? '')); ?></textarea>
 				</label>
 			</p>
 			<p>
 				<label>
 					<?php esc_html_e('Description', 'lumen-wp'); ?><br />
-					<textarea class="widefat" rows="3" name="lumen_seo[description]"><?php echo esc_textarea((string) ($seo['description'] ?? '')); ?></textarea>
+					<textarea class="widefat" rows="3" name="lumen_seo[description]" data-lumen-seo="description"><?php echo esc_textarea((string) ($seo['description'] ?? '')); ?></textarea>
 				</label>
 			</p>
 
 			<p class="lumen-wp-actions">
 				<?php if ($can_ai) : ?>
-					<button type="button" class="button" id="lumen-wp-suggest">
+					<button type="button" class="button lumen-wp-suggest" id="lumen-wp-suggest">
 						<?php esc_html_e('Suggérer (IA)', 'lumen-wp'); ?>
 					</button>
 				<?php endif; ?>
-				<button type="button" class="button" id="lumen-wp-reprocess">
+				<button type="button" class="button lumen-wp-reprocess" id="lumen-wp-reprocess">
 					<?php
 					echo esc_html(
 						$is_image
@@ -141,7 +142,7 @@ final class Media_Meta_Box
 					?>
 				</button>
 				<?php if ($is_image) : ?>
-					<button type="button" class="button" id="lumen-wp-restore" <?php echo $has_bak ? '' : 'hidden'; ?>>
+					<button type="button" class="button lumen-wp-restore" id="lumen-wp-restore" <?php echo $has_bak ? '' : 'hidden'; ?>>
 						<?php esc_html_e('Restaurer l’original', 'lumen-wp'); ?>
 					</button>
 				<?php endif; ?>
@@ -228,7 +229,18 @@ final class Media_Meta_Box
 		}
 
 		$result = $seo_service->enrich_with_ai($id, $fallback);
+		if (! empty($result['error'])) {
+			wp_send_json_error(
+				[
+					'message'      => (string) $result['error'],
+					'rate_limited' => ! empty($result['rate_limited']),
+				]
+			);
+		}
+
 		$seo_service->apply_to_attachment($id, $result['seo'], false);
+		delete_post_meta($id, Plugin::META_ERROR);
+		update_post_meta($id, Plugin::META_STATUS, 'ok');
 
 		$variants = get_post_meta($id, Plugin::META_VARIANTS, true);
 		if (is_array($variants) && $variants !== []) {
@@ -239,11 +251,10 @@ final class Media_Meta_Box
 
 		wp_send_json_success(
 			[
-				'seo'          => $result['seo'],
-				'rate_limited' => ! empty($result['rate_limited']),
-				'error'        => $result['error'] ?? '',
-				'gutenberg'    => (string) get_post_meta($id, Plugin::META_GUTENBERG, true),
-				'jsonld'       => is_array($jsonld)
+				'seo'       => $result['seo'],
+				'warning'   => (string) ($result['warning'] ?? ''),
+				'gutenberg' => (string) get_post_meta($id, Plugin::META_GUTENBERG, true),
+				'jsonld'    => is_array($jsonld)
 					? wp_json_encode($jsonld, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
 					: '',
 			]
@@ -312,8 +323,6 @@ final class Media_Meta_Box
 	}
 
 	/**
-	 * Lightweight status in media modal.
-	 *
 	 * @param array<string, mixed> $form_fields
 	 * @param \WP_Post             $post
 	 * @return array<string, mixed>
@@ -324,15 +333,146 @@ final class Media_Meta_Box
 			return $form_fields;
 		}
 
-		$status = (string) get_post_meta($post->ID, Plugin::META_STATUS, true);
-		$form_fields['lumen_status'] = [
+		$form_fields['lumen_seo_card'] = [
 			'label' => __('Lumen', 'lumen-wp'),
 			'input' => 'html',
-			'html'  => '<span class="lumen-wp-status">' . esc_html($status !== '' ? $status : '—') . '</span>'
-				. ' <a href="' . esc_url(get_edit_post_link($post->ID)) . '">' . esc_html__('Ouvrir le pack SEO', 'lumen-wp') . '</a>',
+			'html'  => $this->render_modal_card((int) $post->ID),
 		];
 
 		return $form_fields;
+	}
+
+	/**
+	 * @param array<string, mixed> $post
+	 * @param array<string, mixed> $attachment
+	 * @return array<string, mixed>
+	 */
+	public function save_attachment_fields(array $post, array $attachment): array
+	{
+		$id = isset($post['ID']) ? (int) $post['ID'] : 0;
+		if ($id <= 0 || ! current_user_can('edit_post', $id) || ! Media_Types::is_supported($id)) {
+			return $post;
+		}
+
+		$raw = $attachment['lumen_seo'] ?? null;
+		if (! is_array($raw)) {
+			return $post;
+		}
+
+		$existing = get_post_meta($id, Plugin::META_SEO, true);
+		if (! is_array($existing)) {
+			$existing = (new Seo())->build_from_filename($id);
+		}
+
+		if (array_key_exists('title', $raw)) {
+			$existing['title'] = sanitize_text_field((string) $raw['title']);
+		}
+		if (array_key_exists('alt_text_wcag', $raw)) {
+			$existing['alt_text_wcag'] = sanitize_text_field((string) $raw['alt_text_wcag']);
+		}
+		if (array_key_exists('description', $raw)) {
+			$existing['description'] = sanitize_textarea_field((string) $raw['description']);
+		}
+
+		$existing['alt_text'] = $existing['alt_text_wcag'] !== ''
+			? $existing['alt_text_wcag']
+			: (string) ($existing['alt_text_seo'] ?? '');
+		$existing['metadata_source'] = 'manual';
+
+		// Meta + alt only — do not wp_update_post here: WP calls it on $post after this filter.
+		update_post_meta($id, Plugin::META_SEO, $existing);
+		$alt = (string) ($existing['alt_text'] ?? ($existing['alt_text_wcag'] ?? $existing['alt_text_seo'] ?? ''));
+		update_post_meta($id, '_wp_attachment_image_alt', $alt);
+
+		if (array_key_exists('title', $raw)) {
+			$post['post_title'] = $existing['title'];
+		}
+		if (array_key_exists('description', $raw)) {
+			$post['post_content'] = $existing['description'];
+		}
+
+		$variants = get_post_meta($id, Plugin::META_VARIANTS, true);
+		if (is_array($variants) && $variants !== []) {
+			(new Pack())->build_and_store($id, $variants, $existing);
+		}
+
+		return $post;
+	}
+
+	private function render_modal_card(int $attachment_id): string
+	{
+		$kind     = Media_Types::kind($attachment_id);
+		$is_image = $kind === Media_Types::KIND_IMAGE;
+		$can_ai   = Media_Types::supports_ai($kind);
+		$seo      = get_post_meta($attachment_id, Plugin::META_SEO, true);
+		if (! is_array($seo)) {
+			$seo = (new Seo())->build_from_filename($attachment_id);
+		}
+		$status = (string) get_post_meta($attachment_id, Plugin::META_STATUS, true);
+		$error  = (string) get_post_meta($attachment_id, Plugin::META_ERROR, true);
+		$edit   = get_edit_post_link($attachment_id, 'raw') ?: '#';
+
+		ob_start();
+		?>
+		<div
+			class="lumen-wp-metabox lumen-wp-metabox--modal lumen-wp-theme-<?php echo esc_attr(Plugin::ui_theme()); ?>"
+			data-attachment-id="<?php echo esc_attr((string) $attachment_id); ?>"
+			data-kind="<?php echo esc_attr($kind); ?>"
+		>
+			<?php
+			Brand::render_header(
+				__('SEO média', 'lumen-wp'),
+				__('Titre, alt et description — édition rapide.', 'lumen-wp')
+			);
+			?>
+			<p class="lumen-wp-metabox__meta">
+				<strong><?php esc_html_e('Type :', 'lumen-wp'); ?></strong>
+				<?php echo esc_html(Media_Types::label($kind)); ?>
+				·
+				<strong><?php esc_html_e('Statut :', 'lumen-wp'); ?></strong>
+				<span class="lumen-wp-status lumen-wp-status--<?php echo esc_attr($status !== '' ? $status : 'none'); ?>">
+					<?php echo esc_html($status !== '' ? $status : '—'); ?>
+				</span>
+				<?php if ($error !== '') : ?>
+					<br /><span class="lumen-wp-error"><?php echo esc_html($error); ?></span>
+				<?php endif; ?>
+			</p>
+			<div class="lumen-wp-mistral-banner notice notice-warning inline" hidden></div>
+			<p>
+				<label><?php esc_html_e('Titre', 'lumen-wp'); ?><br />
+					<input type="text" class="widefat" name="attachments[<?php echo esc_attr((string) $attachment_id); ?>][lumen_seo][title]" data-lumen-seo="title" value="<?php echo esc_attr((string) ($seo['title'] ?? '')); ?>" />
+				</label>
+			</p>
+			<p>
+				<label><?php esc_html_e('Alt WCAG (≤150)', 'lumen-wp'); ?><br />
+					<input type="text" class="widefat" name="attachments[<?php echo esc_attr((string) $attachment_id); ?>][lumen_seo][alt_text_wcag]" data-lumen-seo="alt_text_wcag" value="<?php echo esc_attr((string) ($seo['alt_text_wcag'] ?? '')); ?>" maxlength="150" />
+				</label>
+			</p>
+			<p>
+				<label><?php esc_html_e('Description', 'lumen-wp'); ?><br />
+					<textarea class="widefat" rows="2" name="attachments[<?php echo esc_attr((string) $attachment_id); ?>][lumen_seo][description]" data-lumen-seo="description"><?php echo esc_textarea((string) ($seo['description'] ?? '')); ?></textarea>
+				</label>
+			</p>
+			<p class="lumen-wp-actions">
+				<?php if ($can_ai) : ?>
+					<button type="button" class="button lumen-wp-suggest"><?php esc_html_e('Suggérer (IA)', 'lumen-wp'); ?></button>
+				<?php endif; ?>
+				<button type="button" class="button lumen-wp-reprocess">
+					<?php
+					echo esc_html(
+						$is_image
+							? __('Re-traiter (optimiser + pack)', 'lumen-wp')
+							: __('Re-traiter (SEO)', 'lumen-wp')
+					);
+					?>
+				</button>
+			</p>
+			<p class="lumen-wp-metabox__more">
+				<a href="<?php echo esc_url($edit); ?>"><?php esc_html_e('Pack SEO complet', 'lumen-wp'); ?></a>
+			</p>
+		</div>
+		<?php
+		return (string) ob_get_clean();
 	}
 
 	private function guard_ajax(): void

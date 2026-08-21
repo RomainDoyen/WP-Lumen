@@ -463,22 +463,154 @@
     }
   }
 
-  function fillSeoFields(seo) {
+  function fillSeoFields(seo, root) {
     if (!seo) return;
-    var map = {
-      title: 'lumen_seo[title]',
-      alt_text_seo: 'lumen_seo[alt_text_seo]',
-      alt_text_wcag: 'lumen_seo[alt_text_wcag]',
-      alt_text_short: 'lumen_seo[alt_text_short]',
-      caption: 'lumen_seo[caption]',
-      description: 'lumen_seo[description]'
-    };
-    Object.keys(map).forEach(function (key) {
-      var el = document.querySelector('[name="' + map[key] + '"]');
-      if (el && typeof seo[key] === 'string') {
-        el.value = seo[key];
+
+    var alt =
+      typeof seo.alt_text_wcag === 'string' && seo.alt_text_wcag !== ''
+        ? seo.alt_text_wcag
+        : typeof seo.alt_text === 'string'
+          ? seo.alt_text
+          : typeof seo.alt_text_seo === 'string'
+            ? seo.alt_text_seo
+            : '';
+
+    // 1) Modèle Backbone d’abord → la sidebar WP se re-render avec les nouvelles valeurs.
+    syncWpMediaAttachment(root, seo, alt);
+
+    // 2) Champs Lumen + natifs tout de suite (sans attendre le re-render).
+    applyLumenSeoInputs(seo, root);
+    setNativeMediaField('title', typeof seo.title === 'string' ? seo.title : null);
+    setNativeMediaField('caption', typeof seo.caption === 'string' ? seo.caption : null);
+    setNativeMediaField('description', typeof seo.description === 'string' ? seo.description : null);
+    setNativeMediaField('alt', alt !== '' ? alt : null);
+
+    // 3) Après le re-render WP (compat HTML mis en cache), réappliquer la carte Lumen.
+    var boxEl = resolveMetaboxEl(root);
+    window.setTimeout(function () {
+      var live = boxEl && document.contains(boxEl) ? boxEl : findMetaboxByAttachment(root);
+      applyLumenSeoInputs(seo, live || document);
+      setNativeMediaField('title', typeof seo.title === 'string' ? seo.title : null);
+      setNativeMediaField('caption', typeof seo.caption === 'string' ? seo.caption : null);
+      setNativeMediaField('description', typeof seo.description === 'string' ? seo.description : null);
+      setNativeMediaField('alt', alt !== '' ? alt : null);
+    }, 0);
+    window.setTimeout(function () {
+      var live = boxEl && document.contains(boxEl) ? boxEl : findMetaboxByAttachment(root);
+      applyLumenSeoInputs(seo, live || document);
+    }, 50);
+  }
+
+  function resolveMetaboxEl(root) {
+    if (!root) return null;
+    if (root.classList && root.classList.contains('lumen-wp-metabox')) return root;
+    if (root.closest) return root.closest('.lumen-wp-metabox');
+    return null;
+  }
+
+  function findMetaboxByAttachment(root) {
+    var id = attachmentIdFrom(root);
+    if (!id) return null;
+    return document.querySelector('.lumen-wp-metabox[data-attachment-id="' + id + '"]');
+  }
+
+  function attachmentIdFrom(root) {
+    var box = resolveMetaboxEl(root);
+    if (box) return parseInt(box.getAttribute('data-attachment-id') || '0', 10) || 0;
+    if (root && root.getAttribute) {
+      return parseInt(root.getAttribute('data-attachment-id') || '0', 10) || 0;
+    }
+    return 0;
+  }
+
+  function applyLumenSeoInputs(seo, root) {
+    var scope = root && root.querySelector ? root : document;
+    var keys = [
+      'title',
+      'alt_text_seo',
+      'alt_text_wcag',
+      'alt_text_short',
+      'caption',
+      'description'
+    ];
+    keys.forEach(function (key) {
+      if (typeof seo[key] !== 'string') return;
+      var byData = scope.querySelector('[data-lumen-seo="' + key + '"]');
+      if (byData) {
+        byData.value = seo[key];
+        return;
+      }
+      var byName = document.querySelector('[name="lumen_seo[' + key + ']"]');
+      if (byName) byName.value = seo[key];
+    });
+  }
+
+  function setNativeMediaField(setting, value) {
+    if (value === null || typeof value !== 'string') return;
+    var nodes = document.querySelectorAll(
+      '.attachment-details [data-setting="' +
+        setting +
+        '"], .media-sidebar [data-setting="' +
+        setting +
+        '"], .attachment-details [data-setting="' +
+        setting +
+        '"] input, .attachment-details [data-setting="' +
+        setting +
+        '"] textarea, .media-sidebar [data-setting="' +
+        setting +
+        '"] input, .media-sidebar [data-setting="' +
+        setting +
+        '"] textarea'
+    );
+    var list = Array.prototype.slice.call(nodes);
+    if (!list.length) {
+      var fallback = null;
+      if (setting === 'title') {
+        fallback =
+          document.getElementById('attachment-details-two-column-title') ||
+          document.getElementById('title');
+      } else if (setting === 'caption') {
+        fallback = document.getElementById('attachment_caption');
+      } else if (setting === 'description') {
+        fallback = document.getElementById('attachment_content');
+      } else if (setting === 'alt') {
+        fallback = document.getElementById('attachment_alt');
+      }
+      if (fallback) list = [fallback];
+    }
+    list.forEach(function (el) {
+      if (!el || el.value === undefined) return;
+      if (el.value === value) return;
+      el.value = value;
+      if (window.jQuery) {
+        window.jQuery(el).trigger('input').trigger('change');
+      } else {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
       }
     });
+    if (setting === 'description' && window.tinymce && typeof window.tinymce.get === 'function') {
+      var ed = window.tinymce.get('attachment_content');
+      if (ed) ed.setContent(value);
+    }
+  }
+
+  function syncWpMediaAttachment(root, seo, alt) {
+    if (!window.wp || !wp.media || typeof wp.media.attachment !== 'function') return;
+    var id = attachmentIdFrom(root);
+    if (!id) return;
+    var att = wp.media.attachment(id);
+    if (!att || typeof att.set !== 'function') return;
+    var patch = {};
+    if (typeof seo.title === 'string') patch.title = seo.title;
+    if (typeof seo.caption === 'string') patch.caption = seo.caption;
+    if (typeof seo.description === 'string') patch.description = seo.description;
+    if (typeof alt === 'string' && alt !== '') patch.alt = alt;
+    if (!Object.keys(patch).length) return;
+    att.set(patch);
+    if (typeof att.trigger === 'function') {
+      att.trigger('change', att);
+    }
   }
 
   $(document).on('click', '.lumen-wp-copy', function (e) {
@@ -495,13 +627,13 @@
       });
   });
 
-  $(document).on('click', '#lumen-wp-suggest', function (e) {
+  $(document).on('click', '.lumen-wp-suggest, #lumen-wp-suggest', function (e) {
     e.preventDefault();
     var box = $(this).closest('.lumen-wp-metabox');
     var id = box.data('attachment-id');
-    var banner = $('#lumen-wp-mistral-banner');
+    var banner = box.find('.lumen-wp-mistral-banner, #lumen-wp-mistral-banner').first();
     banner.prop('hidden', true).text('');
-    var btn = $(this).prop('disabled', true).text(lumenWp.i18n.processing);
+    var btn = $(this).data('label', $(this).text()).prop('disabled', true).text(lumenWp.i18n.processing);
 
     ajax('lumen_wp_suggest', { id: id })
       .done(function (res) {
@@ -511,19 +643,18 @@
           );
           return;
         }
-        fillSeoFields(res.data.seo);
+        fillSeoFields(res.data.seo, box.get(0));
+        box.find('.lumen-wp-status').text('ok');
+        box.find('.lumen-wp-error').remove();
         if (res.data.gutenberg) {
           $('#lumen-wp-gutenberg').val(res.data.gutenberg);
         }
         if (res.data.jsonld) {
           $('#lumen-wp-jsonld').val(res.data.jsonld);
         }
-        if (res.data.rate_limited) {
-          banner.text(res.data.error || 'Rate limit Mistral').prop('hidden', false);
-          window.lumenWpModal.error(res.data.error || lumenWp.i18n.error);
-        } else if (res.data.error) {
-          banner.text(res.data.error).prop('hidden', false);
-          window.lumenWpModal.error(res.data.error);
+        if (res.data.warning) {
+          banner.text(res.data.warning).prop('hidden', false);
+          window.lumenWpModal.info(res.data.warning);
         } else {
           window.lumenWpModal.success(lumenWp.i18n.suggestDone);
         }
@@ -536,44 +667,67 @@
         window.lumenWpModal.error(msg);
       })
       .always(function () {
-        btn.prop('disabled', false).text('Suggérer (IA)');
+        btn.prop('disabled', false).text(btn.data('label'));
       });
   });
 
-  $(document).on('click', '#lumen-wp-reprocess', function (e) {
+  $(document).on('click', '.lumen-wp-reprocess, #lumen-wp-reprocess', function (e) {
     e.preventDefault();
-    var box = $(this).closest('.lumen-wp-metabox');
+    var $btn = $(this);
+    var box = $btn.closest('.lumen-wp-metabox');
     var id = box.data('attachment-id');
-    var btn = $(this).prop('disabled', true).text(lumenWp.i18n.processing);
+    var run = function () {
+      var btn = $btn.data('label', $btn.text()).prop('disabled', true).text(lumenWp.i18n.processing);
+      ajax('lumen_wp_reprocess', { id: id, use_mistral: 0 })
+        .done(function (res) {
+          var data = res && res.data ? res.data : {};
+          if (data.seo) fillSeoFields(data.seo, box.get(0));
+          if (data.gutenberg) $('#lumen-wp-gutenberg').val(data.gutenberg);
+          if (data.jsonld) $('#lumen-wp-jsonld').val(data.jsonld);
+          if (data.status) {
+            box.find('.lumen-wp-status').text(data.status);
+          }
+          if (data.has_backup) {
+            box.attr('data-has-backup', '1');
+            box.find('.lumen-wp-restore, #lumen-wp-restore').prop('hidden', false);
+          }
+          if (!res.success) {
+            window.lumenWpModal.error(data.message || data.error || lumenWp.i18n.error);
+          } else {
+            window.lumenWpModal.success(lumenWp.i18n.done);
+          }
+        })
+        .fail(function () {
+          window.lumenWpModal.error(lumenWp.i18n.error);
+        })
+        .always(function () {
+          btn.prop('disabled', false).text(btn.data('label'));
+        });
+    };
 
-    ajax('lumen_wp_reprocess', { id: id, use_mistral: 0 })
-      .done(function (res) {
-        var data = res && res.data ? res.data : {};
-        if (data.seo) fillSeoFields(data.seo);
-        if (data.gutenberg) $('#lumen-wp-gutenberg').val(data.gutenberg);
-        if (data.jsonld) $('#lumen-wp-jsonld').val(data.jsonld);
-        if (data.status) {
-          box.find('.lumen-wp-status').text(data.status);
-        }
-        if (data.has_backup) {
-          box.attr('data-has-backup', '1');
-          $('#lumen-wp-restore').prop('hidden', false);
-        }
-        if (!res.success) {
-          window.lumenWpModal.error(data.message || data.error || lumenWp.i18n.error);
-        } else {
-          window.lumenWpModal.success(lumenWp.i18n.done);
-        }
-      })
-      .fail(function () {
-        window.lumenWpModal.error(lumenWp.i18n.error);
-      })
-      .always(function () {
-        btn.prop('disabled', false).text('Re-traiter (optimiser + pack)');
-      });
+    if (box.hasClass('lumen-wp-metabox--modal')) {
+      var msg =
+        (lumenWp.i18n && lumenWp.i18n.reprocessConfirm) ||
+        'Re-traiter remplacera les métadonnées SEO par une nouvelle génération. Continuer ?';
+      if (
+        window.lumenWpModal &&
+        typeof window.lumenWpModal.confirm === 'function' &&
+        document.getElementById('lumen-wp-modal')
+      ) {
+        window.lumenWpModal.confirm({
+          message: msg,
+          onConfirm: run
+        });
+        return;
+      }
+      if (!window.confirm(msg)) {
+        return;
+      }
+    }
+    run();
   });
 
-  $(document).on('click', '#lumen-wp-restore', function (e) {
+  $(document).on('click', '.lumen-wp-restore, #lumen-wp-restore', function (e) {
     e.preventDefault();
     if (!window.confirm(lumenWp.i18n.restoreConfirm || 'Restaurer l’original ?')) {
       return;

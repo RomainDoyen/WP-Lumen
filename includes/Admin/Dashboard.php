@@ -162,8 +162,8 @@ final class Dashboard
 							<?php
 							echo $audit_score !== null
 								? esc_html(sprintf(
-									/* translators: %d: score */
-									__('Dernier score : %d / 100', 'lumen-wp'),
+									/* translators: %d: score percent */
+									__('Dernier score : %d %%', 'lumen-wp'),
 									$audit_score
 								))
 								: esc_html__('Analyser le site et corriger assisté.', 'lumen-wp');

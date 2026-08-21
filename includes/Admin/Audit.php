@@ -20,6 +20,7 @@ final class Audit
 		add_action('admin_post_lumen_wp_audit_fix', [$this, 'handle_fix']);
 		add_action('admin_post_lumen_wp_audit_fix_all', [$this, 'handle_fix_all']);
 		add_action('admin_post_lumen_wp_llms_generate', [$this, 'handle_llms_generate']);
+		add_action('admin_post_lumen_wp_export_seo_audit', [$this, 'handle_export_pdf']);
 	}
 
 	public function add_menu(): void
@@ -38,10 +39,6 @@ final class Audit
 	{
 		if (! current_user_can('manage_options')) {
 			wp_die(esc_html__('Accès refusé.', 'lumen-wp'));
-		}
-
-		if (isset($_GET['export']) && (string) $_GET['export'] === 'audit' && check_admin_referer('lumen_wp_export_audit')) {
-			$this->export_csv();
 		}
 
 		$report = null;
@@ -91,8 +88,8 @@ final class Audit
 							<?php wp_nonce_field('lumen_wp_run_audit'); ?>
 							<button type="submit" name="lumen_wp_run_audit" value="1" class="button button-primary"><?php esc_html_e('Lancer l’analyse', 'lumen-wp'); ?></button>
 						</form>
-						<?php if ($has_items) : ?>
-							<a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=lumen-wp-audit&export=audit'), 'lumen_wp_export_audit')); ?>"><?php esc_html_e('Exporter CSV', 'lumen-wp'); ?></a>
+						<?php if (is_array($report)) : ?>
+							<a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lumen_wp_export_seo_audit'), 'lumen_wp_export_seo_audit')); ?>"><?php esc_html_e('Exporter PDF', 'lumen-wp'); ?></a>
 						<?php endif; ?>
 					</div>
 				</div>
@@ -133,10 +130,31 @@ final class Audit
 			</section>
 
 			<?php if (is_array($report)) : ?>
+				<?php
+				$score = max(0, min(100, (int) ($report['score'] ?? 0)));
+				$circ  = 2 * M_PI * 15.5;
+				$offset = $circ * (1 - ($score / 100));
+				?>
 				<section class="lumen-wp-audit-scorebar" role="status">
-					<div class="lumen-wp-audit-scorebar__score">
-						<span class="lumen-wp-audit-scorebar__value"><?php echo esc_html((string) ($report['score'] ?? 0)); ?></span>
-						<span class="lumen-wp-audit-scorebar__label"><?php esc_html_e('Score', 'lumen-wp'); ?></span>
+					<div
+						class="lumen-wp-audit-ring"
+						role="img"
+						aria-label="<?php echo esc_attr(sprintf(/* translators: %d: score percent */ __('Score d’audit : %d pour cent', 'lumen-wp'), $score)); ?>"
+					>
+						<svg class="lumen-wp-audit-ring__svg" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+							<circle class="lumen-wp-audit-ring__track" cx="18" cy="18" r="15.5" />
+							<circle
+								class="lumen-wp-audit-ring__progress"
+								cx="18"
+								cy="18"
+								r="15.5"
+								stroke-dasharray="<?php echo esc_attr((string) round($circ, 2)); ?>"
+								stroke-dashoffset="<?php echo esc_attr((string) round($offset, 2)); ?>"
+							/>
+						</svg>
+						<span class="lumen-wp-audit-ring__value">
+							<?php echo esc_html((string) $score); ?><span class="lumen-wp-audit-ring__unit">%</span>
+						</span>
 					</div>
 					<div class="lumen-wp-audit-scorebar__stats">
 						<span><strong><?php echo esc_html((string) (int) ($report['summary']['critical'] ?? 0)); ?></strong> <?php esc_html_e('critiques', 'lumen-wp'); ?></span>
@@ -341,40 +359,85 @@ final class Audit
 		exit;
 	}
 
-	private function export_csv(): void
+	public function handle_export_pdf(): void
 	{
+		if (! current_user_can('manage_options')) {
+			wp_die(esc_html__('Accès refusé.', 'lumen-wp'));
+		}
+		check_admin_referer('lumen_wp_export_seo_audit');
+
 		$report = get_option(Seo_Geo_Auditor::OPTION_LAST);
 		if (! is_array($report)) {
 			wp_die(esc_html__('Aucun audit à exporter.', 'lumen-wp'));
 		}
 
-		$headers = ['severity', 'title', 'description', 'entity_id', 'entity_title', 'issue'];
-		$rows    = [];
+		$score   = max(0, min(100, (int) ($report['score'] ?? 0)));
+		$summary = is_array($report['summary'] ?? null) ? $report['summary'] : [];
+		$stamp   = wp_date('Y-m-d_His');
+		$site    = wp_parse_url(home_url('/'), PHP_URL_HOST);
+		$site    = is_string($site) && $site !== '' ? $site : home_url('/');
+
+		$sev_labels = [
+			'critical' => __('Critique', 'lumen-wp'),
+			'warning'  => __('À améliorer', 'lumen-wp'),
+			'info'     => __('Info', 'lumen-wp'),
+		];
+
+		$table_rows = [];
+		$list_items = [];
 		foreach ((array) ($report['items'] ?? []) as $item) {
-			$affected = (array) ($item['affected'] ?? []);
-			if ($affected === []) {
-				$rows[] = [
-					(string) ($item['severity'] ?? ''),
-					(string) ($item['title'] ?? ''),
-					(string) ($item['description'] ?? ''),
-					'',
-					'',
-					'',
-				];
-				continue;
+			$sev   = (string) ($item['severity'] ?? 'info');
+			$title = (string) ($item['title'] ?? '');
+			$desc  = (string) ($item['description'] ?? '');
+			$count = count((array) ($item['affected'] ?? []));
+			if ($count === 0 && ! empty($item['affected_ids']) && is_array($item['affected_ids'])) {
+				$count = count($item['affected_ids']);
 			}
-			foreach ($affected as $row) {
-				$rows[] = [
-					(string) ($item['severity'] ?? ''),
-					(string) ($item['title'] ?? ''),
-					(string) ($item['description'] ?? ''),
-					(string) ($row['id'] ?? ''),
-					(string) ($row['title'] ?? ''),
-					(string) ($row['issue'] ?? ''),
-				];
-			}
+
+			$table_rows[] = [
+				$sev_labels[$sev] ?? $sev,
+				$title,
+				(string) $count,
+			];
+			$list_items[] = '[' . ($sev_labels[$sev] ?? $sev) . '] ' . $title
+				. ($desc !== '' ? ' — ' . $desc : '')
+				. ($count > 0 ? ' (' . $count . ')' : '');
 		}
 
-		Exporters::send_csv('lumen-audit-' . gmdate('Y-m-d') . '.csv', $headers, $rows);
+		Exporters::send_pdf(
+			'lumen-audit-seo-geo-' . $stamp . '.pdf',
+			[
+				'title'    => __('Audit SEO & GEO', 'lumen-wp'),
+				'subtitle' => (string) $site,
+				'meta'     => [
+					['label' => __('Généré le', 'lumen-wp'), 'value' => wp_date('d/m/Y H:i')],
+					['label' => __('Version', 'lumen-wp'), 'value' => LUMEN_WP_VERSION],
+					['label' => __('Points listés', 'lumen-wp'), 'value' => (string) count($table_rows)],
+				],
+				'kpis'     => [
+					['label' => __('Score', 'lumen-wp'), 'value' => $score . '%', 'tone' => $score >= 80 ? 'ok' : ($score >= 50 ? 'warn' : 'error')],
+					['label' => __('Critiques', 'lumen-wp'), 'value' => (string) (int) ($summary['critical'] ?? 0), 'tone' => 'error'],
+					['label' => __('À améliorer', 'lumen-wp'), 'value' => (string) (int) ($summary['warning'] ?? 0), 'tone' => 'warn'],
+					['label' => __('Infos', 'lumen-wp'), 'value' => (string) (int) ($summary['info'] ?? 0), 'tone' => 'neutral'],
+				],
+				'sections' => [
+					[
+						'title'   => __('Synthèse des points', 'lumen-wp'),
+						'type'    => 'table',
+						'headers' => [
+							__('Sévérité', 'lumen-wp'),
+							__('Titre', 'lumen-wp'),
+							__('Éléments', 'lumen-wp'),
+						],
+						'rows'    => $table_rows,
+					],
+					[
+						'title' => __('Détail', 'lumen-wp'),
+						'type'  => 'list',
+						'items' => $list_items,
+					],
+				],
+			]
+		);
 	}
 }

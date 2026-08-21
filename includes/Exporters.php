@@ -100,6 +100,9 @@ final class Exporters
 
 	private static function headers(string $mime, string $filename): void
 	{
+		while (ob_get_level() > 0) {
+			ob_end_clean();
+		}
 		nocache_headers();
 		header('Content-Type: ' . $mime);
 		header('Content-Disposition: attachment; filename="' . self::safe_filename($filename) . '"');

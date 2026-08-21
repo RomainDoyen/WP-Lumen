@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.6.1-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.6.2-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -149,6 +149,15 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.6.2
+
+- Médiathèque : carte SEO compacte (Titre, Alt WCAG, Description + Suggérer / Re-traiter) dans la modale détail
+- PDF : aperçu IA via Ghostscript si Imagick absent ; fallback SEO IA sur le nom de fichier si aperçu impossible
+- « Suggérer (IA) » : sauvegarde serveur + synchro champs WP / Backbone ; modales Lumen au-dessus de la médiathèque
+- Validation (À valider) : layout carte corrigé
+- Audit : score en anneau % ; export **PDF** (remplace l’export CSV cassé sur cette page)
+- Modale d’erreur : plus de bouton « Annuler » fantôme
 
 ### 1.6.1
 

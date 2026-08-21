@@ -35,6 +35,7 @@ final class Hooks
 		add_filter('wp_generate_attachment_metadata', [$this, 'on_generate_metadata'], 20, 2);
 		add_action('admin_notices', [$this, 'capability_notices']);
 		add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
+		add_action('wp_enqueue_media', [$this, 'enqueue_media_assets']);
 		// Le plus tôt possible : avant le paint du contenu admin.
 		add_action('admin_head', [$this, 'print_critical_admin_css'], 0);
 		add_action('admin_print_styles', [$this, 'print_critical_admin_css'], 0);
@@ -68,8 +69,7 @@ final class Hooks
 			return false;
 		}
 
-		return in_array($screen->base, ['upload', 'media', 'post'], true)
-			&& ($screen->base !== 'post' || $screen->post_type === 'attachment');
+		return in_array($screen->base, ['upload', 'media', 'post'], true);
 	}
 
 	public function print_site_favicons(): void
@@ -427,10 +427,27 @@ final class Hooks
 	public function enqueue_admin_assets(string $hook): void
 	{
 		$on_lumen = $this->is_lumen_admin_page() || strpos($hook, 'lumen-wp') !== false;
-		$on_media = in_array($hook, ['post.php', 'upload.php', 'media.php'], true)
-			|| ($hook === 'post.php' && isset($_GET['post']) && get_post_type((int) $_GET['post']) === 'attachment'); // phpcs:ignore WordPress.Security.NonceVerification
+		$on_media = in_array($hook, ['post.php', 'post-new.php', 'upload.php', 'media.php'], true)
+			|| strpos($hook, 'upload.php') !== false;
 
 		if (! $on_lumen && ! $on_media) {
+			return;
+		}
+
+		$this->enqueue_lumen_admin_assets();
+	}
+
+	/**
+	 * Any screen that loads the WP media modal (block editor, classic, ACF, etc.).
+	 */
+	public function enqueue_media_assets(): void
+	{
+		$this->enqueue_lumen_admin_assets();
+	}
+
+	private function enqueue_lumen_admin_assets(): void
+	{
+		if (wp_script_is('lumen-wp-admin', 'enqueued')) {
 			return;
 		}
 
@@ -499,6 +516,7 @@ final class Hooks
 					'iconsDoneSite'  => __('Kit généré — favicons appliqués au site.', 'lumen-wp'),
 					'suggestDone'    => __('Métadonnées suggérées.', 'lumen-wp'),
 					'restoreConfirm' => __('Restaurer l’original ? Les variantes Lumen seront supprimées.', 'lumen-wp'),
+					'reprocessConfirm' => __('Re-traiter remplacera les métadonnées SEO par une nouvelle génération. Continuer ?', 'lumen-wp'),
 					'restored'       => __('Original restauré.', 'lumen-wp'),
 					'tickForced'     => __('Un média a été traité.', 'lumen-wp'),
 					'cronOk'         => __('Tout va bien. Le traitement avance tout seul en arrière-plan.', 'lumen-wp'),
