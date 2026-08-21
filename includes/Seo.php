@@ -137,6 +137,10 @@ final class Seo
 			(new Pack())->build_and_store($attachment_id, $variants, $seo);
 		}
 
+		if (Media_Types::kind($attachment_id) === Media_Types::KIND_VIDEO) {
+			Video_Schema::build_and_store($attachment_id, $seo);
+		}
+
 		return true;
 	}
 
