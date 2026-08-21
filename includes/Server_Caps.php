@@ -9,6 +9,9 @@ final class Server_Caps
 	private const TRANSIENT_KEY = 'lumen_wp_server_caps';
 	private const TTL = 300;
 
+	/** @var array<string, mixed>|null */
+	private static ?array $memo = null;
+
 	/**
 	 * @return array{
 	 *   imagick: bool,
@@ -27,9 +30,14 @@ final class Server_Caps
 	 */
 	public static function detect(bool $bypass_cache = false): array
 	{
+		if (! $bypass_cache && self::$memo !== null) {
+			return self::$memo;
+		}
 		if (! $bypass_cache) {
 			$cached = get_transient(self::TRANSIENT_KEY);
 			if (is_array($cached) && self::is_complete($cached)) {
+				self::$memo = $cached;
+
 				return $cached;
 			}
 		}
@@ -46,6 +54,7 @@ final class Server_Caps
 			'memory_bytes'     => self::parse_bytes($limit),
 		]);
 
+		self::$memo = $out;
 		set_transient(self::TRANSIENT_KEY, $out, self::TTL);
 
 		return $out;
@@ -53,6 +62,7 @@ final class Server_Caps
 
 	public static function flush(): void
 	{
+		self::$memo = null;
 		delete_transient(self::TRANSIENT_KEY);
 	}
 

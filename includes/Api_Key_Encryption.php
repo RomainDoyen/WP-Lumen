@@ -58,26 +58,40 @@ final class Api_Key_Encryption
 			return $stored; // legacy plain
 		}
 		if (! self::available()) {
+			error_log('[Lumen] API key decrypt failed');
 			return '';
 		}
 		$raw = base64_decode(substr($stored, strlen(self::PREFIX)), true);
 		if ($raw === false) {
+			error_log('[Lumen] API key decrypt failed');
 			return '';
 		}
 		$iv_len = openssl_cipher_iv_length(self::CIPHER);
 		if ($iv_len === false || strlen($raw) <= $iv_len) {
+			error_log('[Lumen] API key decrypt failed');
 			return '';
 		}
 		$iv  = substr($raw, 0, $iv_len);
 		$enc = substr($raw, $iv_len);
 		$out = openssl_decrypt($enc, self::CIPHER, self::material(), OPENSSL_RAW_DATA, $iv);
+		if ($out === false || $out === '') {
+			error_log('[Lumen] API key decrypt failed');
+			return '';
+		}
 
-		return $out === false ? '' : $out;
+		return $out;
 	}
 
 	public static function is_encrypted(string $stored): bool
 	{
 		return strpos($stored, self::PREFIX) === 0;
+	}
+
+	public static function is_corrupt_stored(string $stored): bool
+	{
+		$stored = trim($stored);
+
+		return $stored !== '' && self::is_encrypted($stored) && self::decrypt($stored) === '';
 	}
 
 	public static function has_stored_key(string $stored): bool

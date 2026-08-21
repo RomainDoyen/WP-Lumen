@@ -117,7 +117,9 @@ final class Settings
 				$out[$field] = (string) ($current[$field] ?? '');
 				continue;
 			}
-			$out[$field] = Api_Key_Encryption::encrypt($raw);
+			$out[$field] = Api_Key_Encryption::is_encrypted($raw)
+				? $raw
+				: Api_Key_Encryption::encrypt($raw);
 		}
 
 		Plugin::instance()->clear_settings_cache();
@@ -399,9 +401,11 @@ final class Settings
 								],
 							];
 							foreach ($api_keys as $key_provider => $key_meta) :
-								$field_id     = 'lumen-wp-key-' . $key_provider;
-								$visible      = $provider === $key_provider;
-								$has_stored   = Vision_Ai::has_stored_key($key_provider);
+								$field_id   = 'lumen-wp-key-' . $key_provider;
+								$visible    = $provider === $key_provider;
+								$stored_val = (string) ($settings[$key_meta['name']] ?? '');
+								$is_corrupt = Api_Key_Encryption::is_corrupt_stored($stored_val);
+								$has_stored = ! $is_corrupt && Vision_Ai::has_stored_key($key_provider);
 								?>
 								<div
 									class="lumen-wp-api-key"
@@ -439,11 +443,16 @@ final class Settings
 											<?php esc_html_e('Afficher', 'lumen-wp'); ?>
 										</button>
 									</div>
-									<?php if ($has_stored) : ?>
+									<?php if ($is_corrupt) : ?>
+										<p class="description">
+											<?php esc_html_e('Clé illisible (salts WP modifiés ?). Ressaisissez-la.', 'lumen-wp'); ?>
+										</p>
+									<?php elseif ($has_stored) : ?>
 										<p class="description">
 											<?php esc_html_e('Une clé est enregistrée. Laissez vide pour la conserver.', 'lumen-wp'); ?>
 										</p>
 									<?php endif; ?>
+									<?php if ($has_stored || $is_corrupt) : ?>
 									<label class="lumen-wp-api-key__clear">
 										<input
 											type="checkbox"
@@ -452,6 +461,7 @@ final class Settings
 										/>
 										<?php esc_html_e('Effacer la clé', 'lumen-wp'); ?>
 									</label>
+									<?php endif; ?>
 								</div>
 							<?php endforeach; ?>
 						</td>
