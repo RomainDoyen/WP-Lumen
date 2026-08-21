@@ -96,6 +96,8 @@ final class Settings
 			'ai_budget_month'       => max(0, (int) ($input['ai_budget_month'] ?? 0)),
 			'ai_require_validation' => ! empty($input['ai_require_validation']),
 			'llms_txt_enabled'      => ! empty($input['llms_txt_enabled']),
+			'emit_faq_schema'       => ! empty($input['emit_faq_schema']),
+			'ai_enrich_faq'         => ! empty($input['ai_enrich_faq']),
 			'site_url'              => esc_url_raw((string) ($input['site_url'] ?? '')),
 			// Géré depuis la page Icônes — ne pas écraser ici.
 			'site_favicons'         => ! empty($current['site_favicons']),
@@ -575,6 +577,35 @@ final class Settings
 								);
 								?>
 							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e('SEO — FAQPage', 'lumen-wp'); ?></th>
+						<td>
+							<label class="lumen-wp-choice" for="lumen-wp-emit-faq-schema">
+								<input
+									type="checkbox"
+									name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[emit_faq_schema]"
+									id="lumen-wp-emit-faq-schema"
+									value="1"
+									<?php checked(! empty($settings['emit_faq_schema'])); ?>
+								/>
+								<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
+								<span class="lumen-wp-choice__label"><?php esc_html_e('Émettre le schema FAQPage', 'lumen-wp'); ?></span>
+							</label>
+							<p class="description"><?php esc_html_e('Injection front prévue : JSON-LD FAQPage sur les contenus avec paires Q/R stockées.', 'lumen-wp'); ?></p>
+							<label class="lumen-wp-choice" for="lumen-wp-ai-enrich-faq" style="margin-top: 12px;">
+								<input
+									type="checkbox"
+									name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[ai_enrich_faq]"
+									id="lumen-wp-ai-enrich-faq"
+									value="1"
+									<?php checked(! empty($settings['ai_enrich_faq'])); ?>
+								/>
+								<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
+								<span class="lumen-wp-choice__label"><?php esc_html_e('Enrichir la FAQ via IA (1 appel / contenu)', 'lumen-wp'); ?></span>
+							</label>
+							<p class="description"><?php esc_html_e('Reformule les paires extraites du contenu. Échec IA → extraction locale seule. Compte dans le budget mensuel.', 'lumen-wp'); ?></p>
 						</td>
 					</tr>
 				</table>

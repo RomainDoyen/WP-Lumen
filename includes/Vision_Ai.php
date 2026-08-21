@@ -769,6 +769,39 @@ final class Vision_Ai
 	}
 
 	/**
+	 * Text-only JSON completion (no image). Empty array on failure.
+	 *
+	 * @return array<mixed>
+	 */
+	public static function complete_json_prompt(string $system, string $user): array
+	{
+		if (! self::is_configured() || self::budget_reached()) {
+			return [];
+		}
+
+		$provider = self::active_provider();
+		$ai       = new self();
+		try {
+			$raw = $ai->complete_text($system, $user, 1500);
+			self::record_usage($provider, false, '');
+			$parsed = json_decode($raw, true);
+			if (! is_array($parsed) && preg_match('/(\{[\s\S]*\}|\[[\s\S]*\])/', $raw, $m)) {
+				$parsed = json_decode($m[1], true);
+			}
+
+			return is_array($parsed) ? $parsed : [];
+		} catch (Vision_Rate_Limit_Exception $e) {
+			self::record_usage($provider, true, $e->getMessage());
+
+			return [];
+		} catch (\Throwable $e) {
+			self::record_usage($provider, false, $e->getMessage());
+
+			return [];
+		}
+	}
+
+	/**
 	 * @return array<string, mixed>
 	 */
 	public static function usage(): array
@@ -1282,6 +1315,28 @@ Slug : "' . $slug_hint . '". Fichier : "' . $filename . '".';
 		$system = $this->system_prompt_filename($slug, $filename);
 		$user   = 'Génère le JSON SEO pour ce document PDF WordPress francophone.';
 
+		return $this->complete_text($system, $user, 700, $provider, $api_key, $model);
+	}
+
+	private function complete_text(
+		string $system,
+		string $user,
+		int $max_tokens = 700,
+		string $provider = '',
+		string $api_key = '',
+		string $model = ''
+	): string {
+		if ($provider === '') {
+			$provider = self::active_provider();
+		}
+		if ($api_key === '') {
+			$api_key = self::api_key_for($provider);
+		}
+		if ($model === '') {
+			$model = self::model_for($provider);
+		}
+		$max_tokens = max(1, $max_tokens);
+
 		switch ($provider) {
 			case 'openai':
 				$data = $this->http_json(
@@ -1293,7 +1348,7 @@ Slug : "' . $slug_hint . '". Fichier : "' . $filename . '".';
 					[
 						'model'           => $model,
 						'temperature'     => 0.35,
-						'max_tokens'      => 700,
+						'max_tokens'      => $max_tokens,
 						'response_format' => ['type' => 'json_object'],
 						'messages'        => [
 							['role' => 'system', 'content' => $system],
@@ -1314,7 +1369,7 @@ Slug : "' . $slug_hint . '". Fichier : "' . $filename . '".';
 					],
 					[
 						'model'      => $model,
-						'max_tokens' => 700,
+						'max_tokens' => $max_tokens,
 						'system'     => $system,
 						'messages'   => [
 							['role' => 'user', 'content' => $user],
@@ -1348,7 +1403,7 @@ Slug : "' . $slug_hint . '". Fichier : "' . $filename . '".';
 						],
 						'generationConfig' => [
 							'temperature'      => 0.35,
-							'maxOutputTokens'  => 700,
+							'maxOutputTokens'  => $max_tokens,
 							'responseMimeType' => 'application/json',
 						],
 					],
@@ -1367,7 +1422,7 @@ Slug : "' . $slug_hint . '". Fichier : "' . $filename . '".';
 					[
 						'model'           => $model,
 						'temperature'     => 0.35,
-						'max_tokens'      => 700,
+						'max_tokens'      => $max_tokens,
 						'response_format' => ['type' => 'json_object'],
 						'messages'        => [
 							['role' => 'system', 'content' => $system],
