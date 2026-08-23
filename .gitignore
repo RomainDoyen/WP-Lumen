@@ -4,3 +4,5 @@
 /docs/
 .worktrees/
 .superpowers/
+/vendor/
+.phpunit.result.cache

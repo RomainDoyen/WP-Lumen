@@ -52,10 +52,17 @@ final class Seo
 	 */
 	public function apply_to_attachment(int $attachment_id, array $seo, bool $overwrite_empty_only = false): void
 	{
+		$seo['title']          = sanitize_text_field((string) ($seo['title'] ?? ''));
+		$seo['alt_text_seo']   = sanitize_text_field((string) ($seo['alt_text_seo'] ?? ''));
+		$seo['alt_text_wcag']  = sanitize_text_field((string) ($seo['alt_text_wcag'] ?? ''));
+		$seo['alt_text_short'] = sanitize_text_field((string) ($seo['alt_text_short'] ?? ''));
+		$seo['caption']        = sanitize_textarea_field((string) ($seo['caption'] ?? ''));
+		$seo['description']    = sanitize_textarea_field((string) ($seo['description'] ?? ''));
+
 		$alt = $seo['alt_text'] ?? ($seo['alt_text_wcag'] ?? $seo['alt_text_seo'] ?? '');
 
 		if (! $overwrite_empty_only || get_post_meta($attachment_id, '_wp_attachment_image_alt', true) === '') {
-			update_post_meta($attachment_id, '_wp_attachment_image_alt', $alt);
+			update_post_meta($attachment_id, '_wp_attachment_image_alt', sanitize_text_field($alt));
 		}
 
 		$postarr = ['ID' => $attachment_id];
@@ -277,7 +284,15 @@ final class Seo
 	 */
 	private function apply_site_title_prefix(array $seo): array
 	{
-		foreach (['title', 'alt_text_seo', 'alt_text_wcag', 'alt_text_short', 'caption', 'description'] as $key) {
+		$settings        = Plugin::instance()->settings();
+		$prefix_alt      = ! empty($settings['prefix_alt_accessible']);
+		$prefixed_fields = ['title', 'alt_text_seo', 'caption', 'description'];
+		if ($prefix_alt) {
+			$prefixed_fields[] = 'alt_text_wcag';
+			$prefixed_fields[] = 'alt_text_short';
+		}
+
+		foreach ($prefixed_fields as $key) {
 			if (! isset($seo[$key]) || ! is_string($seo[$key])) {
 				continue;
 			}

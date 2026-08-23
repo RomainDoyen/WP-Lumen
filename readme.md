@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.9.0-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.9.1-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -149,6 +149,16 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.9.1
+
+- Sécurité : `edit_post` sur Suggest / Re-traiter / Restaurer et Validation ; Bulk, Outils, URLs et exports réservés à `manage_options`
+- Sanitize des métadonnées IA avant écriture attachment
+- Chemins backup / sidecars confinés au répertoire uploads
+- Journal jobs : purge auto des lignes > 90 jours
+- Uninstall : options, transients et table `lumen_jobs` nettoyés
+- Réglage : préfixe site sur alts WCAG / court (optionnel)
+- Zip release : exclusion de `vendor/`
 
 ### 1.9.0
 

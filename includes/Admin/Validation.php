@@ -286,6 +286,11 @@ final class Validation
 
 		$id     = (int) ($_POST['attachment_id'] ?? 0); // phpcs:ignore WordPress.Security.NonceVerification
 		$action = sanitize_key((string) ($_POST['item_action'] ?? '')); // phpcs:ignore WordPress.Security.NonceVerification
+
+		if ($id > 0 && ! current_user_can('edit_post', $id)) {
+			wp_die(esc_html__('Permission refusée.', 'lumen-wp'));
+		}
+
 		$seo    = new Seo();
 
 		if ($id > 0 && $action === 'approve') {
@@ -322,6 +327,9 @@ final class Validation
 		$seo    = new Seo();
 
 		foreach ($ids as $id) {
+			if ($id > 0 && ! current_user_can('edit_post', $id)) {
+				continue;
+			}
 			if ($action === 'approve') {
 				$seo->approve_pending($id);
 			} elseif ($action === 'reject') {

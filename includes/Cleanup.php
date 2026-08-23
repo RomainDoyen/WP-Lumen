@@ -25,6 +25,8 @@ final class Cleanup
 		$main_norm = is_string($main) && $main !== '' ? wp_normalize_path($main) : '';
 
 		$paths = [];
+		$uploads = wp_upload_dir();
+		$basedir = wp_normalize_path(trailingslashit(str_replace('\\', '/', $uploads['basedir'])));
 		foreach ($variants as $row) {
 			if (! is_array($row) || empty($row['files']) || ! is_array($row['files'])) {
 				continue;
@@ -37,7 +39,11 @@ final class Cleanup
 				if ($path === '' || ! file_exists($path)) {
 					continue;
 				}
-				if ($main_norm !== '' && wp_normalize_path($path) === $main_norm) {
+				$norm = wp_normalize_path($path);
+				if (strpos($norm, $basedir) !== 0) {
+					continue;
+				}
+				if ($main_norm !== '' && $norm === $main_norm) {
 					continue;
 				}
 				$paths[] = $path;

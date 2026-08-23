@@ -623,7 +623,7 @@ final class Bulk_Queue
 
 	private function guard(): void
 	{
-		if (! current_user_can('upload_files')) {
+		if (! current_user_can('manage_options')) {
 			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
 		}
 		check_ajax_referer('lumen_wp_admin', 'nonce');

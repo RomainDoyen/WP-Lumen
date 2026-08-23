@@ -158,6 +158,7 @@ final class Plugin
 			'ai_enrich_faq'         => false,
 			'site_url'              => '',
 			'site_favicons'         => false,
+			'prefix_alt_accessible' => true,
 			'ui_theme'              => 'light',
 		];
 	}

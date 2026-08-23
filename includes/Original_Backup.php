@@ -220,11 +220,17 @@ final class Original_Backup
 			return '';
 		}
 
+		$uploads = wp_upload_dir();
+		$basedir = wp_normalize_path(trailingslashit(str_replace('\\', '/', $uploads['basedir'])));
+
 		if ($stored[0] === '/' || preg_match('#^[A-Za-z]:/#', $stored)) {
+			$norm = wp_normalize_path($stored);
+			if (strpos($norm, $basedir) !== 0) {
+				return '';
+			}
+
 			return $stored;
 		}
-
-		$uploads = wp_upload_dir();
 
 		return trailingslashit(str_replace('\\', '/', $uploads['basedir'])) . ltrim($stored, '/');
 	}

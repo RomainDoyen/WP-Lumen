@@ -55,7 +55,7 @@ final class Brand
 			'bulk'      => [
 				'label' => $bulk_label,
 				'url'   => admin_url('admin.php?page=lumen-wp-bulk'),
-				'cap'   => 'upload_files',
+				'cap'   => 'manage_options',
 			],
 			'history'   => [
 				'label' => __('Historique', 'lumen-wp'),
@@ -70,7 +70,7 @@ final class Brand
 			'tools'     => [
 				'label' => __('Outils', 'lumen-wp'),
 				'url'   => admin_url('admin.php?page=lumen-wp-tools'),
-				'cap'   => 'upload_files',
+				'cap'   => 'manage_options',
 			],
 			'icons'     => [
 				'label' => __('Icônes', 'lumen-wp'),

@@ -830,7 +830,7 @@ final class Url_Queue
 
 	private function guard_ajax(): void
 	{
-		if (! current_user_can('upload_files')) {
+		if (! current_user_can('manage_options')) {
 			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
 		}
 		check_ajax_referer('lumen_wp_admin', 'nonce');
@@ -838,7 +838,7 @@ final class Url_Queue
 
 	private function guard_post(): void
 	{
-		if (! current_user_can('upload_files')) {
+		if (! current_user_can('manage_options')) {
 			wp_die(esc_html__('Permission refusée.', 'lumen-wp'), 403);
 		}
 		check_admin_referer('lumen_wp_urls');

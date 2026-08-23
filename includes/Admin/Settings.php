@@ -101,6 +101,7 @@ final class Settings
 			'site_url'              => esc_url_raw((string) ($input['site_url'] ?? '')),
 			// Géré depuis la page Icônes — ne pas écraser ici.
 			'site_favicons'         => ! empty($current['site_favicons']),
+			'prefix_alt_accessible' => ! empty($input['prefix_alt_accessible']),
 			'ui_theme'           => (static function () use ($input): string {
 				$theme = strtolower(sanitize_key((string) ($input['ui_theme'] ?? 'light')));
 
@@ -364,6 +365,23 @@ final class Settings
 						<td>
 							<input type="url" class="regular-text" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[site_url]" value="<?php echo esc_attr((string) $settings['site_url']); ?>" placeholder="<?php echo esc_attr(home_url()); ?>" />
 							<p class="description"><?php esc_html_e('Optionnel. Utilisée pour forcer les URLs absolues dans Gutenberg / JSON-LD.', 'lumen-wp'); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e('Accessibilité alt text', 'lumen-wp'); ?></th>
+						<td>
+							<label class="lumen-wp-choice" for="lumen-wp-prefix-alt">
+								<input
+									type="checkbox"
+									name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[prefix_alt_accessible]"
+									id="lumen-wp-prefix-alt"
+									value="1"
+									<?php checked(! empty($settings['prefix_alt_accessible'])); ?>
+								/>
+								<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
+								<span class="lumen-wp-choice__label"><?php esc_html_e('Ajouter le nom du site aux alt text WCAG / court', 'lumen-wp'); ?></span>
+							</label>
+							<p class="description"><?php esc_html_e('Décochez pour que les lecteurs d’écran n’aient pas à lire le nom du site avant chaque description d’image. Recommandé désactivé.', 'lumen-wp'); ?></p>
 						</td>
 					</tr>
 					<tr>

@@ -228,7 +228,10 @@ final class Media_Meta_Box
 
 		$id = isset($_POST['id']) ? (int) $_POST['id'] : 0; // phpcs:ignore WordPress.Security.NonceVerification
 		if ($id <= 0 || ! Media_Types::is_supported($id) || ! Media_Types::supports_ai(Media_Types::kind($id))) {
-			wp_send_json_error(['message' => __('Attachment invalide pour l’IA.', 'lumen-wp')], 400);
+			wp_send_json_error(['message' => __('Attachment invalide pour l\'IA.', 'lumen-wp')], 400);
+		}
+		if (! current_user_can('edit_post', $id)) {
+			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
 		}
 
 		$seo_service = new Seo();
@@ -296,6 +299,9 @@ final class Media_Meta_Box
 		if ($id <= 0) {
 			wp_send_json_error(['message' => __('ID invalide.', 'lumen-wp')], 400);
 		}
+		if (! current_user_can('edit_post', $id)) {
+			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
+		}
 
 		$result = (new Hooks())->process($id, true, $use_mistral);
 		$seo    = get_post_meta($id, Plugin::META_SEO, true);
@@ -329,6 +335,9 @@ final class Media_Meta_Box
 		$id = isset($_POST['id']) ? (int) $_POST['id'] : 0; // phpcs:ignore WordPress.Security.NonceVerification
 		if ($id <= 0 || Media_Types::kind($id) !== Media_Types::KIND_IMAGE) {
 			wp_send_json_error(['message' => __('Attachment invalide.', 'lumen-wp')], 400);
+		}
+		if (! current_user_can('edit_post', $id)) {
+			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
 		}
 
 		$result = Original_Backup::restore($id);

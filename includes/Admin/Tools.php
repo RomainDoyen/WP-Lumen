@@ -27,7 +27,7 @@ final class Tools
 			'lumen-wp',
 			__('Outils Lumen', 'lumen-wp'),
 			__('Outils', 'lumen-wp'),
-			'upload_files',
+			'manage_options',
 			'lumen-wp-tools',
 			[$this, 'render_page']
 		);
@@ -35,7 +35,7 @@ final class Tools
 
 	public function render_page(): void
 	{
-		if (! current_user_can('upload_files')) {
+		if (! current_user_can('manage_options')) {
 			return;
 		}
 
@@ -430,7 +430,7 @@ final class Tools
 
 	private function guard(): void
 	{
-		if (! current_user_can('upload_files')) {
+		if (! current_user_can('manage_options')) {
 			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
 		}
 		check_ajax_referer('lumen_wp_admin', 'nonce');

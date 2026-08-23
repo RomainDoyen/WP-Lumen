@@ -1716,7 +1716,7 @@ Slug : "' . $slug_hint . '". Fichier : "' . $filename . '".';
 		$pick = static function (array $parsed, array $keys): string {
 			foreach ($keys as $k) {
 				if (isset($parsed[$k]) && is_string($parsed[$k]) && trim($parsed[$k]) !== '') {
-					return trim($parsed[$k]);
+					return sanitize_text_field(trim($parsed[$k]));
 				}
 			}
 

@@ -21,7 +21,7 @@ final class Bulk
 			'lumen-wp',
 			__('Traitement Lumen', 'lumen-wp'),
 			__('Traitement', 'lumen-wp'),
-			'upload_files',
+			'manage_options',
 			'lumen-wp-bulk',
 			[$this, 'render_page']
 		);
@@ -29,7 +29,7 @@ final class Bulk
 
 	public function render_page(): void
 	{
-		if (! current_user_can('upload_files')) {
+		if (! current_user_can('manage_options')) {
 			return;
 		}
 

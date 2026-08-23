@@ -6,6 +6,8 @@ namespace LumenWp;
 
 final class Job_Repository
 {
+	public const TTL_DAYS = 90;
+
 	public static function table(): string
 	{
 		global $wpdb;
@@ -67,6 +69,11 @@ final class Job_Repository
 		$job_id  = (int) $wpdb->insert_id;
 		$job_row = array_merge($row, $data, ['id' => $job_id]);
 		self::mirror_last_job($attachment_id, $job_row);
+
+		// Auto-purge rows older than TTL_DAYS (runs roughly once every 100 inserts).
+		if ($job_id > 0 && $job_id % 100 === 0) {
+			self::purge_old();
+		}
 
 		return $job_id;
 	}
@@ -196,5 +203,22 @@ final class Job_Repository
 		}
 
 		return $row;
+	}
+
+	public static function purge_old(): int
+	{
+		global $wpdb;
+
+		$utoff = gmdate('Y-m-d H:i:s', strtotime('-' . self::TTL_DAYS . ' days'));
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$deleted = (int) $wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM " . self::table() . " WHERE created_at < %s",
+				$utoff
+			)
+		);
+
+		return max(0, $deleted);
 	}
 }

@@ -16,7 +16,7 @@ final class Reports
 
 	public function handle_export(): void
 	{
-		if (! current_user_can('upload_files')) {
+		if (! current_user_can('manage_options')) {
 			wp_die(esc_html__('Permission refusée.', 'lumen-wp'), 403);
 		}
 		check_admin_referer('lumen_wp_export');

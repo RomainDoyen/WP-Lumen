@@ -1,0 +1,21 @@
+{
+	"name": "lumen/lumen-wp",
+	"description": "WordPress media optimizer, SEO enricher, and multi-AI Vision processor.",
+	"type": "wordpress-plugin",
+	"license": "proprietary",
+	"require": {
+		"php": ">=7.4"
+	},
+	"require-dev": {
+		"yoast/phpunit-polyfills": "^2.0",
+		"wp-phpunit/wp-phpunit": "^6.0"
+	},
+	"autoload": {
+		"classmap": [
+			"includes/"
+		]
+	},
+	"config": {
+		"allow-plugins": {}
+	}
+}
