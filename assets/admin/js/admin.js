@@ -1057,7 +1057,8 @@
 
   function startBulkPoll() {
     if (bulkPollTimer) return;
-    bulkPollTimer = setInterval(pollBulkStatus, 2000);
+    // 5s : un poll 2s + AS sur Hostinger provoquait des HTTP 503.
+    bulkPollTimer = setInterval(pollBulkStatus, 5000);
   }
 
   function stopBulkPoll() {

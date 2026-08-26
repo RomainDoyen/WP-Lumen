@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.9.4-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.9.5-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -149,6 +149,12 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.9.5
+
+- Bulk : les MIME `unsupported` ne restent plus dans la file (fin de boucle « Déjà traité »)
+- Poll admin : plus de `run_pending` (HTTP 503 Hostinger) ; intervalle 5s
+- Tick : saute rapidement les médias déjà OK
 
 ### 1.9.4
 

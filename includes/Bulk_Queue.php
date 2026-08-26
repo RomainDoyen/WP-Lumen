@@ -451,13 +451,10 @@ final class Bulk_Queue
 		$job = self::job();
 
 		if (($job['status'] ?? '') === 'running') {
-			// Budget court : éviter de bloquer le poll 2s sur un COUNT AS / tick IA.
-			As_Bridge::run_pending(3);
-			$job = self::job();
-			if (($job['status'] ?? '') === 'running') {
-				$this->schedule_soon();
-				$this->spawn();
-			}
+			// Pas de run_pending ici : sur Hostinger ça provoque des HTTP 503 (poll toutes les 2s).
+			self::recover_stale_processing(60);
+			$this->schedule_soon();
+			$this->spawn();
 		}
 
 		wp_send_json_success([
@@ -554,6 +551,7 @@ final class Bulk_Queue
 			$use_ai     = ! empty($job['use_ai']);
 			$types      = Media_Types::normalize_types($job['types'] ?? Media_Types::all_types());
 			$batch_size = (int) ($job['batch_size'] ?? 2);
+			$skips_in_tick = 0;
 
 			for ($i = 0; $i < $batch_size; $i++) {
 				$remaining = $deadline - microtime(true);
@@ -591,11 +589,12 @@ final class Bulk_Queue
 
 				$result = (new Hooks())->process($next, $force, $ai_this);
 				$ok     = ! empty($result['ok']);
-				$msg    = (string) ($result['message'] ?? ($result['status'] ?? ''));
+				$status = (string) ($result['status'] ?? '');
+				$msg    = (string) ($result['message'] ?? ($status !== '' ? $status : ''));
 				if ($msg === '') {
 					$msg = $ok ? 'ok' : 'error';
 				}
-				if ($use_ai && ! $ai_this && $ok) {
+				if ($use_ai && ! $ai_this && $ok && $status !== 'skipped' && $status !== 'unsupported') {
 					$msg .= ' — ' . __('IA reportée (budget tick) — SEO local.', 'lumen-wp');
 				}
 				$entry = self::make_error_entry($next, $msg);
@@ -634,6 +633,14 @@ final class Bulk_Queue
 
 				self::save($job);
 				$processed_in_tick++;
+
+				// Skip rapide (déjà traité / unsupported) : ne consomme presque pas le batch.
+				if (in_array($status, ['skipped', 'unsupported'], true) && $ok) {
+					++$skips_in_tick;
+					if ($skips_in_tick < 40) {
+						--$i;
+					}
+				}
 			}
 
 			$job = self::job();
@@ -819,18 +826,31 @@ final class Bulk_Queue
 		if (in_array(Media_Types::KIND_IMAGE, $types, true)) {
 			$img_mime = Media_Types::mime_where_sql([Media_Types::KIND_IMAGE], 'p');
 			if ($replace) {
+				// JPEG/PNG ok+variantes restent à traiter tant que le fichier n’est pas WebP/AVIF.
+				// « unsupported » ne doit JAMAIS rester dans la file (sinon boucle « Déjà traité »).
 				$pending_parts[] = "(
 					{$img_mime}
-					AND NOT (
-						s.meta_id IS NOT NULL
-						AND v.meta_id IS NOT NULL
-						AND p.post_mime_type IN ('image/webp', 'image/avif')
+					AND (
+						s.meta_id IS NULL
+						OR (
+							s.meta_value IN ('ok', 'awaiting_validation')
+							AND NOT (
+								v.meta_id IS NOT NULL
+								AND p.post_mime_type IN ('image/webp', 'image/avif')
+							)
+						)
 					)
 				)";
 			} else {
 				$pending_parts[] = "(
 					{$img_mime}
-					AND (s.meta_id IS NULL OR v.meta_id IS NULL)
+					AND (
+						s.meta_id IS NULL
+						OR (
+							s.meta_value IN ('ok', 'awaiting_validation')
+							AND v.meta_id IS NULL
+						)
+					)
 				)";
 			}
 		}
@@ -840,6 +860,7 @@ final class Bulk_Queue
 				continue;
 			}
 			$doc_mime = Media_Types::mime_where_sql([$doc_kind], 'p');
+			// Statut ok / awaiting / unsupported ⇒ s.meta_id NOT NULL ⇒ hors file.
 			$pending_parts[] = "({$doc_mime} AND s.meta_id IS NULL)";
 		}
 
