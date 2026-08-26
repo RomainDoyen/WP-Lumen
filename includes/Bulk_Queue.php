@@ -53,6 +53,7 @@ final class Bulk_Queue
 			'user_id'        => 0,
 			'user_name'      => '',
 			'archived'       => false,
+			'pause_reason'   => '',
 			'log'            => [],
 			'errors'         => [],
 		];
@@ -384,6 +385,7 @@ final class Bulk_Queue
 			wp_send_json_error(['message' => __('Aucun traitement en cours.', 'lumen-wp')], 400);
 		}
 		$job['status'] = 'paused';
+		$job['pause_reason'] = 'manual';
 		$job['last_message'] = __('En pause.', 'lumen-wp');
 		$job['log'] = $this->push_log($job['log'] ?? [], $job['last_message'], true);
 		self::save($job);
@@ -400,6 +402,7 @@ final class Bulk_Queue
 			wp_send_json_error(['message' => __('Aucun traitement en pause.', 'lumen-wp')], 400);
 		}
 		$job['status'] = 'running';
+		$job['pause_reason'] = '';
 		$job['last_message'] = __('Repris.', 'lumen-wp');
 		$job['log'] = $this->push_log($job['log'] ?? [], $job['last_message'], true);
 		self::save($job);
@@ -566,6 +569,23 @@ final class Bulk_Queue
 				}
 				$job['last_message'] = $line;
 				$job['log']          = $this->push_log($job['log'] ?? [], $line, $ok);
+
+				// Pause on Vision rate-limit so the queue does not burn the rest silently.
+				if (! empty($result['rate_limited']) && $use_ai) {
+					$job['status']       = 'paused';
+					$job['pause_reason'] = 'rate_limit';
+					$job['last_message'] = __(
+						'Limite API Vision atteinte — file en pause. Reprenez plus tard, ou désactivez l’IA et continuez.',
+						'lumen-wp'
+					);
+					$job['log'] = $this->push_log($job['log'] ?? [], $job['last_message'], false);
+					self::save($job);
+					wp_clear_scheduled_hook(self::CRON_HOOK);
+					As_Bridge::cancel_bulk();
+
+					return;
+				}
+
 				self::save($job);
 				$processed_in_tick++;
 			}
@@ -736,7 +756,7 @@ final class Bulk_Queue
 		$sql = 'SELECT ' . ($next_only ? 'p.ID' : 'COUNT(DISTINCT p.ID)') . "
 			FROM {$wpdb->posts} p
 			LEFT JOIN {$wpdb->postmeta} s
-				ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value IN ('ok', 'awaiting_validation')
+				ON s.post_id = p.ID AND s.meta_key = %s AND s.meta_value IN ('ok', 'awaiting_validation', 'unsupported')
 			LEFT JOIN {$wpdb->postmeta} v
 				ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value != '' AND v.meta_value != 'a:0:{}'
 			WHERE p.post_type = 'attachment'

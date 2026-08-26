@@ -187,6 +187,21 @@ final class Optimizer
 	}
 
 	/**
+	 * Whether Lumen can optimize this attachment (JPEG/PNG/WebP/AVIF only).
+	 * Broader image/* (GIF, HEIC, TIFF, …) are KIND_IMAGE but not processable.
+	 */
+	public static function mime_is_processable(int $attachment_id): bool
+	{
+		$file = get_attached_file($attachment_id);
+		$mime = (string) get_post_mime_type($attachment_id);
+		$self = new self();
+
+		return is_string($file)
+			&& $file !== ''
+			&& $self->is_supported_mime($mime, $file);
+	}
+
+	/**
 	 * Raise Imagick resource ceilings when the host allows it (helps DJI / panoramas).
 	 */
 	public static function boost_imagick_limits(): void

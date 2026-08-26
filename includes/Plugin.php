@@ -240,8 +240,12 @@ final class Plugin
 		}
 
 		$status = (string) get_post_meta($attachment_id, self::META_STATUS, true);
-		if (! in_array($status, ['ok', 'awaiting_validation'], true)) {
+		if (! in_array($status, ['ok', 'awaiting_validation', 'unsupported'], true)) {
 			return false;
+		}
+
+		if ($status === 'unsupported') {
+			return true;
 		}
 
 		if ($kind !== Media_Types::KIND_IMAGE) {

@@ -4,7 +4,7 @@ Tags: images, webp, avif, seo, media
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.1
+Stable tag: 1.9.2
 License: Proprietary
 
 Optimize media library images (WebP/AVIF/JPEG), enrich SEO metadata (alt, JSON-LD, Gutenberg), and process SVG/PDF/video — multi-AI Vision support.
@@ -78,6 +78,10 @@ The plugin is designed for single-site installations. Multisite support is not o
 
 == Changelog ==
 
+= 1.9.2 =
+* Bulk: unsupported image MIME (GIF, HEIC, TIFF…) skipped as unsupported — queue continues
+* Bulk: Vision API rate limit pauses the job with a clear message
+
 = 1.9.1 =
 * Security: edit_post on Suggest / Reprocess / Restore and Validation; Bulk, Tools, URLs, exports require manage_options
 * Sanitize AI metadata before writing to attachments
@@ -132,6 +136,9 @@ The plugin is designed for single-site installations. Multisite support is not o
 * Lazy total estimation (no heavy COUNT at start)
 
 == Upgrade Notice ==
+
+= 1.9.2 =
+Bulk no longer stalls on unsupported MIME types or silent Vision rate limits.
 
 = 1.9.1 =
 Security hardening (capabilities, path confinement, AI sanitize). Bulk and Tools require manage_options.

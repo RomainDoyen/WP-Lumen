@@ -318,6 +318,22 @@ final class Hooks
 			$should_record = true;
 			$variants      = [];
 			if (Media_Types::supports_optimize($kind)) {
+				if (! Optimizer::mime_is_processable($attachment_id)) {
+					$job_status  = 'unsupported';
+					$job_message = __('Type MIME non supporté pour l’optimisation (JPEG, PNG, WebP, AVIF uniquement) — ignoré, la file continue.', 'lumen-wp');
+					update_post_meta($attachment_id, Plugin::META_STATUS, 'unsupported');
+					update_post_meta($attachment_id, Plugin::META_ERROR, $job_message);
+					delete_post_meta($attachment_id, Plugin::META_VARIANTS);
+					delete_post_meta($attachment_id, Plugin::META_GUTENBERG);
+
+					return [
+						'ok'      => true,
+						'status'  => 'unsupported',
+						'message' => $job_message,
+						'skipped' => true,
+						'kind'    => $kind,
+					];
+				}
 				$optimizer = new Optimizer();
 				$result    = $optimizer->process_attachment($attachment_id);
 				$variants  = $result['variants'];
@@ -568,6 +584,7 @@ final class Hooks
 					'statusRunning'  => __('En cours', 'lumen-wp'),
 					'statusPaused'   => __('En pause', 'lumen-wp'),
 					'statusDone'     => __('Terminé', 'lumen-wp'),
+					'bulkRateLimited'=> __('Limite API Vision atteinte — file mise en pause. Reprenez plus tard, ou désactivez l’IA.', 'lumen-wp'),
 				],
 			]
 		);

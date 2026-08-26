@@ -1020,6 +1020,21 @@
         });
       }
     }
+    if (
+      bulkStatusReady &&
+      status === 'paused' &&
+      bulkLastStatus === 'running' &&
+      job.pause_reason === 'rate_limit'
+    ) {
+      window.lumenWpModal.show({
+        type: 'info',
+        title: lumenWp.i18n.statusPaused || 'En pause',
+        message:
+          job.last_message ||
+          lumenWp.i18n.bulkRateLimited ||
+          'Limite API Vision — file en pause.',
+      });
+    }
     bulkLastStatus = status;
     bulkStatusReady = true;
 
