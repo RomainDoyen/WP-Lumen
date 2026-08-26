@@ -20,6 +20,8 @@ final class Plugin
 	public const META_GUTENBERG = '_lumen_gutenberg';
 	public const META_ERROR = '_lumen_error';
 	public const META_ORIGINAL_BACKUP = '_lumen_original_backup';
+	/** Unix timestamp when status became « processing » (stale recovery). */
+	public const META_PROCESSING_AT = '_lumen_processing_at';
 	/** Set when diagnose/rewrite found no stale URL work left for this attachment. */
 	public const META_URLS_CLEAN = '_lumen_urls_clean';
 	public const META_LAST_JOB = '_lumen_last_job';

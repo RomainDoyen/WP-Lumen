@@ -472,6 +472,7 @@ final class Bulk_Queue
 		}
 
 		delete_transient(self::LOCK);
+		self::recover_stale_processing(60);
 		As_Bridge::run_pending(5);
 		$this->tick();
 		if ((self::job()['status'] ?? '') === 'running') {
@@ -488,17 +489,27 @@ final class Bulk_Queue
 
 	public function tick(): void
 	{
+		$job = self::job();
 		if (get_transient(self::LOCK)) {
-			return;
+			// Lock orphelin après un timeout PHP : débloquer si le dernier tick est vieux.
+			$last = (string) ($job['last_tick_at'] ?? '');
+			$ts   = $last !== '' ? strtotime($last) : false;
+			if ($ts !== false && (time() - $ts) > 90) {
+				delete_transient(self::LOCK);
+			} else {
+				return;
+			}
 		}
+
+		self::recover_stale_processing();
+
 		set_transient(self::LOCK, 1, 45);
-		$job          = self::job();
 		$tick_budget  = (int) ($job['tick_budget'] ?? 22);
-		@set_time_limit($tick_budget + 10); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		@set_time_limit($tick_budget + 15); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 		Optimizer::boost_imagick_limits();
 
-		$started_at = microtime(true);
-		$deadline   = $started_at + $tick_budget;
+		$started_at        = microtime(true);
+		$deadline          = $started_at + $tick_budget;
 		$processed_in_tick = 0;
 		$hit_budget        = false;
 
@@ -517,12 +528,13 @@ final class Bulk_Queue
 			$batch_size = (int) ($job['batch_size'] ?? 2);
 
 			for ($i = 0; $i < $batch_size; $i++) {
-				if (microtime(true) >= $deadline) {
+				$remaining = $deadline - microtime(true);
+				if ($remaining < 5) {
 					$hit_budget = true;
 					break;
 				}
 
-				$job  = self::job();
+				$job = self::job();
 				if (($job['status'] ?? '') !== 'running') {
 					return;
 				}
@@ -546,11 +558,17 @@ final class Bulk_Queue
 					return;
 				}
 
-				$result = (new Hooks())->process($next, $force, $use_ai);
+				// L’IA Vision (timeout HTTP) doit tenir dans le budget restant du tick.
+				$ai_this = $use_ai && $remaining >= 18;
+
+				$result = (new Hooks())->process($next, $force, $ai_this);
 				$ok     = ! empty($result['ok']);
 				$msg    = (string) ($result['message'] ?? ($result['status'] ?? ''));
 				if ($msg === '') {
 					$msg = $ok ? 'ok' : 'error';
+				}
+				if ($use_ai && ! $ai_this && $ok) {
+					$msg .= ' — ' . __('IA reportée (budget tick) — SEO local.', 'lumen-wp');
 				}
 				$entry = self::make_error_entry($next, $msg);
 				$line  = '#' . $next . ' — ' . $entry['title'] . ' — ' . $msg;
@@ -600,11 +618,61 @@ final class Bulk_Queue
 					$hit_budget || $elapsed >= ($tick_budget * 0.95)
 				);
 				self::save($job);
-				$this->schedule_soon();
 			}
 		} finally {
 			delete_transient(self::LOCK);
+			// Reprogrammer même si le tick a été coupé (timeout) avant la fin.
+			if ((self::job()['status'] ?? '') === 'running') {
+				$this->schedule_soon();
+			}
 		}
+	}
+
+	/**
+	 * Médias coincés en « processing » après un kill PHP / timeout → repasser en erreur retentable.
+	 */
+	public static function recover_stale_processing(int $max_age_seconds = 120): int
+	{
+		global $wpdb;
+
+		$max_age_seconds = max(60, $max_age_seconds);
+		$now             = time();
+		$status_key      = Plugin::META_STATUS;
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT post_id FROM {$wpdb->postmeta}
+				WHERE meta_key = %s AND meta_value = 'processing'
+				LIMIT 100",
+				$status_key
+			)
+		);
+		// phpcs:enable
+
+		$fixed = 0;
+		$msg   = __('Traitement interrompu (timeout serveur) — sera retenté au prochain passage.', 'lumen-wp');
+
+		foreach ($ids as $raw_id) {
+			$id = (int) $raw_id;
+			if ($id <= 0) {
+				continue;
+			}
+
+			$started = (int) get_post_meta($id, Plugin::META_PROCESSING_AT, true);
+			// Legacy / crash without stamp: treat as stale immediately.
+			$age = $started > 0 ? ($now - $started) : $max_age_seconds + 1;
+			if ($age < $max_age_seconds) {
+				continue;
+			}
+
+			update_post_meta($id, Plugin::META_STATUS, 'error');
+			update_post_meta($id, Plugin::META_ERROR, $msg);
+			delete_post_meta($id, Plugin::META_PROCESSING_AT);
+			++$fixed;
+		}
+
+		return $fixed;
 	}
 
 	/**

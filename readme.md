@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.9.2-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.9.3-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -149,6 +149,13 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.9.3
+
+- Bulk : recovery des médias coincés en « processing » après timeout
+- Bulk : reprogramme toujours le tick suivant si running (évite file morte)
+- Bulk : IA seulement si budget tick suffisant ; timeout Vision 25s
+- Lock orphelin auto-libéré après 90s
 
 ### 1.9.2
 

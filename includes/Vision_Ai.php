@@ -1636,7 +1636,7 @@ Slug : "' . $slug_hint . '". Fichier : "' . $filename . '".';
 		$response = \wp_remote_post(
 			$url,
 			[
-				'timeout' => 60,
+				'timeout' => 25,
 				'headers' => $headers,
 				'body'    => wp_json_encode($body),
 			]
