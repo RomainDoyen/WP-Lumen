@@ -322,59 +322,74 @@ final class Bulk_Queue
 
 	public function ajax_start(): void
 	{
-		$this->guard();
+		try {
+			$this->guard();
 
-		$force  = ! empty($_POST['force']); // phpcs:ignore WordPress.Security.NonceVerification
-		$use_ai = ! empty($_POST['use_ai']) || ! empty($_POST['use_mistral']); // phpcs:ignore WordPress.Security.NonceVerification
-		// phpcs:ignore WordPress.Security.NonceVerification
-		$raw_types = isset($_POST['types']) ? wp_unslash($_POST['types']) : Media_Types::all_types();
-		if (is_string($raw_types)) {
-			$raw_types = array_filter(array_map('trim', explode(',', $raw_types)));
+			$force  = ! empty($_POST['force']); // phpcs:ignore WordPress.Security.NonceVerification
+			$use_ai = ! empty($_POST['use_ai']) || ! empty($_POST['use_mistral']); // phpcs:ignore WordPress.Security.NonceVerification
+			// phpcs:ignore WordPress.Security.NonceVerification
+			$raw_types = isset($_POST['types']) ? wp_unslash($_POST['types']) : Media_Types::all_types();
+			if (is_string($raw_types)) {
+				$raw_types = array_filter(array_map('trim', explode(',', $raw_types)));
+			}
+			$types = Media_Types::normalize_types($raw_types);
+			if ($types === []) {
+				wp_send_json_error(['message' => __('Sélectionnez au moins un type de média.', 'lumen-wp')], 400);
+			}
+
+			$current = self::job();
+			if (($current['status'] ?? '') === 'running') {
+				wp_send_json_error(['message' => __('Un traitement est déjà en cours.', 'lumen-wp')], 409);
+			}
+
+			// Archive un run précédent non encore historisé (ex. terminé non pollé).
+			if (! empty($current['started_at']) && empty($current['archived'])) {
+				self::push_history($current, ($current['status'] ?? '') === 'done' ? 'done' : 'stopped');
+			}
+
+			self::recover_stale_processing(60);
+
+			$user = wp_get_current_user();
+			$job  = self::defaults();
+			$job['status']         = 'running';
+			$job['force']          = $force;
+			$job['use_ai']         = $use_ai;
+			$job['types']          = $types;
+			$job['ai_provider']    = $use_ai ? Vision_Ai::active_provider() : 'none';
+			$job['ai_label']       = $use_ai ? Vision_Ai::provider_label(Vision_Ai::active_provider()) : '';
+			$job['cursor']         = 0;
+			$job['total_estimate'] = 0; // Filled asynchronously (no heavy COUNT at start).
+			$job['batch_size']     = $use_ai ? 1 : 2;
+			$job['started_at']     = gmdate('c');
+			$job['last_tick_at']   = gmdate('c');
+			$job['user_id']        = (int) $user->ID;
+			$job['user_name']      = (string) ($user->display_name !== '' ? $user->display_name : $user->user_login);
+			$job['last_message']   = __('Démarré — estimation du total en arrière-plan…', 'lumen-wp');
+			$job['log']            = [$this->log_line($job['last_message'], true)];
+			self::save($job);
+
+			As_Bridge::enqueue_count_estimate('bulk');
+			$this->schedule_soon();
+			$this->spawn();
+			// Ne pas drainer AS ici : COUNT sur grosse médiathèque + tick IA = timeout admin-ajax.
+
+			wp_send_json_success([
+				'job'     => self::job(),
+				'history' => self::history(),
+				'health'  => self::health(),
+			]);
+		} catch (\Throwable $e) {
+			wp_send_json_error(
+				[
+					'message' => sprintf(
+						/* translators: %s: error message */
+						__('Impossible de démarrer : %s', 'lumen-wp'),
+						$e->getMessage()
+					),
+				],
+				500
+			);
 		}
-		$types = Media_Types::normalize_types($raw_types);
-		if ($types === []) {
-			wp_send_json_error(['message' => __('Sélectionnez au moins un type de média.', 'lumen-wp')], 400);
-		}
-
-		$current = self::job();
-		if (($current['status'] ?? '') === 'running') {
-			wp_send_json_error(['message' => __('Un traitement est déjà en cours.', 'lumen-wp')], 409);
-		}
-
-		// Archive un run précédent non encore historisé (ex. terminé non pollé).
-		if (! empty($current['started_at']) && empty($current['archived'])) {
-			self::push_history($current, ($current['status'] ?? '') === 'done' ? 'done' : 'stopped');
-		}
-
-		$user = wp_get_current_user();
-		$job  = self::defaults();
-		$job['status']         = 'running';
-		$job['force']          = $force;
-		$job['use_ai']         = $use_ai;
-		$job['types']          = $types;
-		$job['ai_provider']    = $use_ai ? Vision_Ai::active_provider() : 'none';
-		$job['ai_label']       = $use_ai ? Vision_Ai::provider_label(Vision_Ai::active_provider()) : '';
-		$job['cursor']         = 0;
-		$job['total_estimate'] = 0; // Filled asynchronously (no heavy COUNT at start).
-		$job['batch_size']     = $use_ai ? 1 : 2;
-		$job['started_at']     = gmdate('c');
-		$job['last_tick_at']   = gmdate('c');
-		$job['user_id']        = (int) $user->ID;
-		$job['user_name']      = (string) ($user->display_name !== '' ? $user->display_name : $user->user_login);
-		$job['last_message']   = __('Démarré — estimation du total en arrière-plan…', 'lumen-wp');
-		$job['log']            = [$this->log_line($job['last_message'], true)];
-		self::save($job);
-
-		As_Bridge::enqueue_count_estimate('bulk');
-		$this->schedule_soon();
-		$this->spawn();
-		As_Bridge::run_pending(8);
-
-		wp_send_json_success([
-			'job'     => self::job(),
-			'history' => self::history(),
-			'health'  => self::health(),
-		]);
 	}
 
 	public function ajax_pause(): void
@@ -408,7 +423,6 @@ final class Bulk_Queue
 		self::save($job);
 		$this->schedule_soon();
 		$this->spawn();
-		As_Bridge::run_pending(8);
 		wp_send_json_success(['job' => self::job()]);
 	}
 
@@ -437,7 +451,8 @@ final class Bulk_Queue
 		$job = self::job();
 
 		if (($job['status'] ?? '') === 'running') {
-			As_Bridge::run_pending(12);
+			// Budget court : éviter de bloquer le poll 2s sur un COUNT AS / tick IA.
+			As_Bridge::run_pending(3);
 			$job = self::job();
 			if (($job['status'] ?? '') === 'running') {
 				$this->schedule_soon();
@@ -466,25 +481,38 @@ final class Bulk_Queue
 	public function ajax_force_tick(): void
 	{
 		$this->guard();
-		$job = self::job();
-		if (($job['status'] ?? '') !== 'running') {
-			wp_send_json_error(['message' => __('Aucun traitement en cours à relancer.', 'lumen-wp')], 400);
-		}
+		try {
+			$job = self::job();
+			if (($job['status'] ?? '') !== 'running') {
+				wp_send_json_error(['message' => __('Aucun traitement en cours à relancer.', 'lumen-wp')], 400);
+			}
 
-		delete_transient(self::LOCK);
-		self::recover_stale_processing(60);
-		As_Bridge::run_pending(5);
-		$this->tick();
-		if ((self::job()['status'] ?? '') === 'running') {
-			$this->schedule_soon();
-			$this->spawn();
-		}
+			delete_transient(self::LOCK);
+			self::recover_stale_processing(60);
+			// Un seul tick synchrone — pas de run_pending avant (évite double travail + timeout).
+			$this->tick();
+			if ((self::job()['status'] ?? '') === 'running') {
+				$this->schedule_soon();
+				$this->spawn();
+			}
 
-		wp_send_json_success([
-			'job'     => self::job(),
-			'health'  => self::health(),
-			'history' => self::history(),
-		]);
+			wp_send_json_success([
+				'job'     => self::job(),
+				'health'  => self::health(),
+				'history' => self::history(),
+			]);
+		} catch (\Throwable $e) {
+			wp_send_json_error(
+				[
+					'message' => sprintf(
+						/* translators: %s: error message */
+						__('Échec du tick : %s', 'lumen-wp'),
+						$e->getMessage()
+					),
+				],
+				500
+			);
+		}
 	}
 
 	public function tick(): void

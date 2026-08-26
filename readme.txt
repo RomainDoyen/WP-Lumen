@@ -4,7 +4,7 @@ Tags: images, webp, avif, seo, media
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.3
+Stable tag: 1.9.4
 License: Proprietary
 
 Optimize media library images (WebP/AVIF/JPEG), enrich SEO metadata (alt, JSON-LD, Gutenberg), and process SVG/PDF/video — multi-AI Vision support.
@@ -78,6 +78,10 @@ The plugin is designed for single-site installations. Multisite support is not o
 
 == Changelog ==
 
+= 1.9.4 =
+* Bulk start/poll no longer blocks on heavy AS COUNT + AI tick (Hostinger timeouts)
+* Clearer AJAX error messages
+
 = 1.9.3 =
 * Bulk: recover stuck « processing » after PHP timeout
 * Bulk: always reschedule next tick while running
@@ -141,6 +145,9 @@ The plugin is designed for single-site installations. Multisite support is not o
 * Lazy total estimation (no heavy COUNT at start)
 
 == Upgrade Notice ==
+
+= 1.9.4 =
+Fixes generic « Une erreur est survenue » on bulk start (admin-ajax timeouts).
 
 = 1.9.3 =
 Fixes bulk stalls after Vision/PHP timeouts (stuck processing + dead queue).

@@ -1157,17 +1157,14 @@
         startBulkPoll();
       })
       .fail(function (xhr) {
-        window.lumenWpModal.error(
-          (xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) ||
-            lumenWp.i18n.error
-        );
+        window.lumenWpModal.error(ajaxErrorMessage(xhr, lumenWp.i18n.error));
       });
   });
 
   $(document).on('click', '#lumen-wp-bulk-force-tick', function (e) {
     e.preventDefault();
     var btn = $(this).prop('disabled', true);
-    ajax('lumen_wp_bulk_force_tick')
+    ajax('lumen_wp_bulk_force_tick', {}, { timeout: 90000 })
       .done(function (res) {
         if (!res || !res.success) {
           window.lumenWpModal.error(
@@ -1179,10 +1176,7 @@
         window.lumenWpModal.success(lumenWp.i18n.tickForced || 'Un média a été traité.');
       })
       .fail(function (xhr) {
-        window.lumenWpModal.error(
-          (xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) ||
-            lumenWp.i18n.error
-        );
+        window.lumenWpModal.error(ajaxErrorMessage(xhr, lumenWp.i18n.error));
       })
       .always(function () {
         btn.prop('disabled', false);
@@ -1733,7 +1727,7 @@
   $(document).on('click', '#lumen-wp-cron-force-tick', function (e) {
     e.preventDefault();
     var btn = $(this).prop('disabled', true);
-    ajax('lumen_wp_bulk_force_tick')
+    ajax('lumen_wp_bulk_force_tick', {}, { timeout: 90000 })
       .done(function (res) {
         if (!res || !res.success) {
           window.lumenWpModal.error(
@@ -1745,10 +1739,7 @@
         window.lumenWpModal.success(lumenWp.i18n.tickForced || 'Un média a été traité.');
       })
       .fail(function (xhr) {
-        window.lumenWpModal.error(
-          (xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) ||
-            lumenWp.i18n.error
-        );
+        window.lumenWpModal.error(ajaxErrorMessage(xhr, lumenWp.i18n.error));
       })
       .always(function () {
         btn.prop('disabled', false);
