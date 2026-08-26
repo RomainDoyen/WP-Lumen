@@ -4,7 +4,7 @@ Tags: images, webp, avif, seo, media
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.5
+Stable tag: 1.9.6
 License: Proprietary
 
 Optimize media library images (WebP/AVIF/JPEG), enrich SEO metadata (alt, JSON-LD, Gutenberg), and process SVG/PDF/video — multi-AI Vision support.
@@ -78,6 +78,11 @@ The plugin is designed for single-site installations. Multisite support is not o
 
 == Changelog ==
 
+= 1.9.6 =
+* Uninstall deletes `_lumen_*` attachment meta (no ghost « processing » after reinstall)
+* Upgrade auto-repairs stuck processing statuses
+* Tools: repair stuck processing button
+
 = 1.9.5 =
 * Bulk: unsupported MIME no longer stuck in queue (« Déjà traité » loop)
 * Admin poll no longer drains Action Scheduler (Hostinger HTTP 503)
@@ -150,6 +155,9 @@ The plugin is designed for single-site installations. Multisite support is not o
 * Lazy total estimation (no heavy COUNT at start)
 
 == Upgrade Notice ==
+
+= 1.9.6 =
+Clears stuck « processing » meta; uninstall now removes Lumen attachment meta.
 
 = 1.9.5 =
 Fixes bulk stuck after « Déjà traité » / HTTP 503 on Hostinger.

@@ -19,6 +19,7 @@ final class Tools
 		add_action('wp_ajax_lumen_wp_cleanup_run', [$this, 'ajax_cleanup_run']);
 		add_action('wp_ajax_lumen_wp_cron_health', [$this, 'ajax_cron_health']);
 		add_action('wp_ajax_lumen_wp_jobs_purge', [$this, 'ajax_jobs_purge']);
+		add_action('wp_ajax_lumen_wp_repair_processing', [$this, 'ajax_repair_processing']);
 	}
 
 	public function add_menu(): void
@@ -200,6 +201,18 @@ final class Tools
 				<p class="lumen-wp-actions-row">
 					<button type="button" class="button" id="lumen-wp-jobs-purge"><?php esc_html_e('Vider le journal jobs', 'lumen-wp'); ?></button>
 				</p>
+			</section>
+			<section class="lumen-wp-panel">
+				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Médias coincés', 'lumen-wp'); ?></h2>
+				<p class="description">
+					<?php esc_html_e('Si un média reste « En cours / processing » dans Historique (même après réinstall), ce bouton efface le statut bloqué. Les fichiers ne sont pas touchés.', 'lumen-wp'); ?>
+				</p>
+				<p class="lumen-wp-actions-row">
+					<button type="button" class="button button-primary" id="lumen-wp-repair-processing">
+						<?php esc_html_e('Réparer les statuts processing', 'lumen-wp'); ?>
+					</button>
+				</p>
+				<p class="description" id="lumen-wp-repair-processing-result" hidden></p>
 			</section>
 			<?php endif; ?>
 
@@ -406,6 +419,25 @@ final class Tools
 		check_ajax_referer('lumen_wp_admin', 'nonce');
 		$result = Job_Repository::purge_all();
 		wp_send_json_success($result);
+	}
+
+	public function ajax_repair_processing(): void
+	{
+		if (! current_user_can('manage_options')) {
+			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
+		}
+		check_ajax_referer('lumen_wp_admin', 'nonce');
+		$fixed = Bulk_Queue::clear_all_processing();
+		wp_send_json_success(
+			[
+				'fixed'   => $fixed,
+				'message' => sprintf(
+					/* translators: %d: number of attachments repaired */
+					_n('%d média réparé.', '%d médias réparés.', $fixed, 'lumen-wp'),
+					$fixed
+				),
+			]
+		);
 	}
 
 	public function ajax_cron_health(): void

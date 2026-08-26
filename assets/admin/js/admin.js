@@ -1835,6 +1835,29 @@
     run();
   });
 
+  $(document).on('click', '#lumen-wp-repair-processing', function (e) {
+    e.preventDefault();
+    var btn = $(this).prop('disabled', true);
+    ajax('lumen_wp_repair_processing')
+      .done(function (res) {
+        if (!res || !res.success) {
+          window.lumenWpModal.error(
+            (res && res.data && res.data.message) || lumenWp.i18n.error
+          );
+          return;
+        }
+        var msg = (res.data && res.data.message) || 'Réparé.';
+        $('#lumen-wp-repair-processing-result').prop('hidden', false).text(msg);
+        window.lumenWpModal.success(msg);
+      })
+      .fail(function (xhr) {
+        window.lumenWpModal.error(ajaxErrorMessage(xhr, lumenWp.i18n.error));
+      })
+      .always(function () {
+        btn.prop('disabled', false);
+      });
+  });
+
   /* —— URLs cassées (file prod-hardened) —— */
   var urlsPollTimer = null;
   var urlsLastStatus = '';

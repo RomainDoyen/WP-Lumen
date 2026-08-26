@@ -711,6 +711,42 @@ final class Bulk_Queue
 	}
 
 	/**
+	 * Force-clear ALL attachments in « processing » (repair / upgrade / Tools).
+	 */
+	public static function clear_all_processing(): int
+	{
+		global $wpdb;
+
+		$status_key = Plugin::META_STATUS;
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT post_id FROM {$wpdb->postmeta}
+				WHERE meta_key = %s AND meta_value = 'processing'
+				LIMIT 500",
+				$status_key
+			)
+		);
+		// phpcs:enable
+
+		$fixed = 0;
+		$msg   = __('Statut « processing » réparé — média remis en file.', 'lumen-wp');
+		foreach ($ids as $raw_id) {
+			$id = (int) $raw_id;
+			if ($id <= 0) {
+				continue;
+			}
+			// Remettre sans statut « done » pour que le bulk les reprenne.
+			delete_post_meta($id, Plugin::META_STATUS);
+			delete_post_meta($id, Plugin::META_PROCESSING_AT);
+			update_post_meta($id, Plugin::META_ERROR, $msg);
+			++$fixed;
+		}
+
+		return $fixed;
+	}
+
+	/**
 	 * @param array<string, mixed> $job
 	 */
 	private function adapt_batch_size(array $job, int $processed_in_tick, float $elapsed, bool $pressure): int

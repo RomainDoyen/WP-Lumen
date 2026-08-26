@@ -1,7 +1,7 @@
 <?php
 /**
- * Uninstall Lumen WP — removes all plugin data.
- * Media files and attachment meta are left intact on purpose.
+ * Uninstall Lumen WP — removes options, jobs table, and attachment meta `_lumen_*`.
+ * Media files on disk are left intact.
  */
 
 declare(strict_types=1);
@@ -9,6 +9,8 @@ declare(strict_types=1);
 if (! defined('WP_UNINSTALL_PLUGIN')) {
 	exit;
 }
+
+global $wpdb;
 
 // --- Options ---
 $options = [
@@ -31,9 +33,8 @@ foreach ($options as $option) {
 	delete_option($option);
 }
 
-// --- Transients (AI models cache, server caps, audit flash) ---
-global $wpdb;
-
+// --- Transients ---
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 $wpdb->query(
 	"DELETE FROM {$wpdb->options}
 	WHERE option_name LIKE '_transient_lumen_wp_%'
@@ -42,7 +43,16 @@ $wpdb->query(
 	   OR option_name LIKE '_site_transient_timeout_lumen_wp_%'"
 );
 
+// --- Attachment meta (incl. stuck « processing ») ---
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+$wpdb->query(
+	$wpdb->prepare(
+		"DELETE FROM {$wpdb->postmeta} WHERE meta_key LIKE %s",
+		$wpdb->esc_like('_lumen_') . '%'
+	)
+);
+
 // --- Custom table ---
 $table = $wpdb->prefix . 'lumen_jobs';
-// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 $wpdb->query("DROP TABLE IF EXISTS {$table}");
