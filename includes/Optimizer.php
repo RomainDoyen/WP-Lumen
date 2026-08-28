@@ -26,7 +26,9 @@ final class Optimizer
 	 */
 	public function process_attachment(int $attachment_id): array
 	{
-		@set_time_limit(180); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		// Ne jamais remonter à 180s : en bulk le lock expire à 45s et Hostinger coupe (503).
+		$bulk_running = (Bulk_Queue::job()['status'] ?? '') === 'running';
+		@set_time_limit($bulk_running ? 25 : 60); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
 		self::boost_imagick_limits();
 
 		$file = get_attached_file($attachment_id);
@@ -213,7 +215,7 @@ final class Optimizer
 		try {
 			// Values are in bytes / seconds / pixels depending on the resource type.
 			if (defined('\Imagick::RESOURCETYPE_TIME')) {
-				\Imagick::setResourceLimit(\Imagick::RESOURCETYPE_TIME, 120);
+				\Imagick::setResourceLimit(\Imagick::RESOURCETYPE_TIME, 25);
 			}
 			if (defined('\Imagick::RESOURCETYPE_MEMORY')) {
 				\Imagick::setResourceLimit(\Imagick::RESOURCETYPE_MEMORY, 512 * 1024 * 1024);
@@ -257,8 +259,51 @@ final class Optimizer
 	{
 		$max_edge = max(1024, $max_edge);
 
+		$size = @filesize($file);
+		if ($size === false || $size < 24) {
+			throw new \RuntimeException(__('Fichier image vide ou illisible.', 'lumen-wp'));
+		}
+		if ($size > 80 * 1024 * 1024) {
+			throw new \RuntimeException(__('Fichier trop volumineux pour un traitement fiable sur cet hébergement.', 'lumen-wp'));
+		}
+
 		if ($caps['imagick']) {
 			$img = new \Imagick();
+			if (method_exists($img, 'pingImage')) {
+				try {
+					$img->pingImage($file);
+					$pw = (int) $img->getImageWidth();
+					$ph = (int) $img->getImageHeight();
+					$img->clear();
+					if ($pw < 1 || $ph < 1) {
+						throw new \RuntimeException(__('Image illisible (dimensions invalides).', 'lumen-wp'));
+					}
+				} catch (\ImagickException $e) {
+					throw new \RuntimeException(
+						sprintf(
+							/* translators: %s: Imagick error */
+							__('Image illisible : %s', 'lumen-wp'),
+							$this->simplify_imagick_error($e->getMessage())
+						),
+						0,
+						$e
+					);
+				} catch (\Throwable $e) {
+					if ($e instanceof \RuntimeException) {
+						throw $e;
+					}
+					throw new \RuntimeException(
+						sprintf(
+							/* translators: %s: Imagick error */
+							__('Image illisible : %s', 'lumen-wp'),
+							$this->simplify_imagick_error($e->getMessage())
+						),
+						0,
+						$e
+					);
+				}
+				$img = new \Imagick();
+			}
 			// Decode JPEG roughly at target size (avoids full 50–100 MP pixel cache).
 			if (preg_match('/\.(jpe?g)$/i', $file)) {
 				$img->setOption('jpeg:size', $max_edge . 'x' . $max_edge);

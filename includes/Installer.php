@@ -8,7 +8,7 @@ final class Installer
 {
 	public const OPTION = 'lumen_wp_db_version';
 	/** Bump to run one-shot meta repairs (clear stuck processing, etc.). */
-	public const SCHEMA_VERSION = '1.9.6';
+	public const SCHEMA_VERSION = '1.9.7';
 
 	public static function install(): void
 	{
@@ -60,34 +60,10 @@ final class Installer
 
 	/**
 	 * Clear every attachment stuck in « processing » (survives crash / incomplete uninstall).
+	 * Marque en erreur (hors file) — ne pas effacer le statut (sinon le média redevient pending).
 	 */
 	public static function clear_stuck_processing_meta(): int
 	{
-		global $wpdb;
-
-		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$ids = $wpdb->get_col(
-			$wpdb->prepare(
-				"SELECT post_id FROM {$wpdb->postmeta}
-				WHERE meta_key = %s AND meta_value = 'processing'
-				LIMIT 500",
-				'_lumen_status'
-			)
-		);
-		// phpcs:enable
-
-		$fixed = 0;
-		foreach ($ids as $raw_id) {
-			$id = (int) $raw_id;
-			if ($id <= 0) {
-				continue;
-			}
-			delete_post_meta($id, '_lumen_status');
-			delete_post_meta($id, '_lumen_processing_at');
-			update_post_meta($id, '_lumen_error', __('Statut « processing » réparé — média remis en file.', 'lumen-wp'));
-			++$fixed;
-		}
-
-		return $fixed;
+		return Bulk_Queue::clear_all_processing();
 	}
 }

@@ -205,7 +205,7 @@ final class Tools
 			<section class="lumen-wp-panel">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Médias coincés', 'lumen-wp'); ?></h2>
 				<p class="description">
-					<?php esc_html_e('Si un média reste « En cours / processing » dans Historique (même après réinstall), ce bouton efface le statut bloqué. Les fichiers ne sont pas touchés.', 'lumen-wp'); ?>
+					<?php esc_html_e('Si un média reste « En cours / processing » dans Historique (même après réinstall), ce bouton le passe en erreur pour le sortir de la file. Relancez-le ensuite depuis la fiche média, ou avec « Reprendre aussi les médias déjà OK ». Les fichiers ne sont pas touchés.', 'lumen-wp'); ?>
 				</p>
 				<p class="lumen-wp-actions-row">
 					<button type="button" class="button button-primary" id="lumen-wp-repair-processing">

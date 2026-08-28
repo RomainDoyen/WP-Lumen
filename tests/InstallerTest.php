@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace LumenWp\Tests;
 
+use LumenWp\Bulk_Queue;
 use LumenWp\Installer;
 use LumenWp\Job_Repository;
+use LumenWp\Plugin;
 use WP_UnitTestCase;
 
 /**
@@ -96,5 +98,24 @@ class InstallerTest extends WP_UnitTestCase
 
 		$jobs = Job_Repository::list_by_attachment($attachment_id);
 		$this->assertCount(0, $jobs);
+	}
+
+	public function test_clear_stuck_processing_marks_error_not_pending(): void
+	{
+		$id = self::factory()->attachment->create(
+			[
+				'post_mime_type' => 'image/jpeg',
+				'post_title'     => 'Stuck processing',
+			]
+		);
+		update_post_meta($id, Plugin::META_STATUS, 'processing');
+		update_post_meta($id, Plugin::META_PROCESSING_AT, (string) time());
+
+		$fixed = Bulk_Queue::clear_all_processing();
+
+		$this->assertGreaterThanOrEqual(1, $fixed);
+		$this->assertSame('error', (string) get_post_meta($id, Plugin::META_STATUS, true));
+		$this->assertSame('', (string) get_post_meta($id, Plugin::META_PROCESSING_AT, true));
+		$this->assertNotSame('', (string) get_post_meta($id, Plugin::META_ERROR, true));
 	}
 }

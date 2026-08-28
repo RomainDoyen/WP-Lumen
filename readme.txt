@@ -4,7 +4,7 @@ Tags: images, webp, avif, seo, media
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.6
+Stable tag: 1.9.7
 License: Proprietary
 
 Optimize media library images (WebP/AVIF/JPEG), enrich SEO metadata (alt, JSON-LD, Gutenberg), and process SVG/PDF/video — multi-AI Vision support.
@@ -77,6 +77,12 @@ The plugin is designed for single-site installations. Multisite support is not o
 5. Icon kit generator
 
 == Changelog ==
+
+= 1.9.7 =
+* Bulk no longer retries a stuck « processing » item as if it had never been processed
+* Queue cursor advances before Imagick so a PHP crash cannot loop the same ID
+* Repair/upgrade marks processing as error (out of queue), not pending
+* Optimizer: no 180s time limit in bulk; Imagick TIME 25s; fail-fast on unreadable files
 
 = 1.9.6 =
 * Uninstall deletes `_lumen_*` attachment meta (no ghost « processing » after reinstall)
@@ -155,6 +161,9 @@ The plugin is designed for single-site installations. Multisite support is not o
 * Lazy total estimation (no heavy COUNT at start)
 
 == Upgrade Notice ==
+
+= 1.9.7 =
+Poison-pill media leave the queue as errors; bulk continues instead of hanging forever.
 
 = 1.9.6 =
 Clears stuck « processing » meta; uninstall now removes Lumen attachment meta.

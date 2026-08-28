@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.9.6-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.9.7-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -149,6 +149,13 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.9.7
+
+- Bulk : un média « processing » n’est plus vu comme « jamais traité » (file qui s’entête)
+- Curseur avancé avant Imagick : un crash PHP ne rebloque plus le même ID
+- Repair / upgrade : processing → **erreur** (hors file), plus de remise en pending
+- Optimizer : plus de `set_time_limit(180)` en bulk ; Imagick TIME 25s ; fail-fast fichier illisible
 
 ### 1.9.6
 

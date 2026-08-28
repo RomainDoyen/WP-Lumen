@@ -10,6 +10,7 @@ final class Bulk_Queue
 	public const HISTORY_OPTION = 'lumen_wp_bulk_history';
 	public const HISTORY_MAX = 50;
 	public const ERRORS_MAX = 200;
+	public const SKIP_IDS_MAX = 500;
 	public const CRON_HOOK = 'lumen_wp_bulk_tick';
 	public const LOCK = 'lumen_wp_bulk_lock';
 
@@ -56,7 +57,33 @@ final class Bulk_Queue
 			'pause_reason'   => '',
 			'log'            => [],
 			'errors'         => [],
+			'skip_ids'       => [],
 		];
+	}
+
+	/**
+	 * @param mixed $ids
+	 * @return list<int>
+	 */
+	public static function normalize_skip_ids($ids): array
+	{
+		if (! is_array($ids)) {
+			return [];
+		}
+
+		$out = [];
+		foreach ($ids as $id) {
+			$id = (int) $id;
+			if ($id > 0) {
+				$out[$id] = $id;
+			}
+		}
+		$out = array_values($out);
+		if (count($out) > self::SKIP_IDS_MAX) {
+			$out = array_slice($out, -self::SKIP_IDS_MAX);
+		}
+
+		return $out;
 	}
 
 	/**
@@ -221,6 +248,7 @@ final class Bulk_Queue
 		}
 		$job['types']       = Media_Types::normalize_types($job['types'] ?? Media_Types::all_types());
 		$job['errors']      = self::normalize_errors($job['errors'] ?? []);
+		$job['skip_ids']    = self::normalize_skip_ids($job['skip_ids'] ?? []);
 		$job['batch_min']   = max(1, (int) ($job['batch_min'] ?? 1));
 		$job['batch_max']   = max($job['batch_min'], (int) ($job['batch_max'] ?? 10));
 		$job['batch_size']  = max($job['batch_min'], min($job['batch_max'], (int) ($job['batch_size'] ?? 2)));
@@ -347,7 +375,7 @@ final class Bulk_Queue
 				self::push_history($current, ($current['status'] ?? '') === 'done' ? 'done' : 'stopped');
 			}
 
-			self::recover_stale_processing(60);
+			self::recover_stale_processing(0);
 
 			$user = wp_get_current_user();
 			$job  = self::defaults();
@@ -584,6 +612,17 @@ final class Bulk_Queue
 					return;
 				}
 
+				// Avancer le curseur AVANT process() : si PHP meurt (Imagick, OOM),
+				// le tick suivant ne reprend pas le même média.
+				$job['cursor']       = $next;
+				$job['last_tick_at'] = gmdate('c');
+				$job['last_message'] = sprintf(
+					/* translators: %d: attachment ID */
+					__('#%d — en cours…', 'lumen-wp'),
+					$next
+				);
+				self::save($job);
+
 				// L’IA Vision (timeout HTTP) doit tenir dans le budget restant du tick.
 				$ai_this = $use_ai && $remaining >= 18;
 
@@ -601,7 +640,6 @@ final class Bulk_Queue
 				$line  = '#' . $next . ' — ' . $entry['title'] . ' — ' . $msg;
 
 				$job                 = self::job();
-				$job['cursor']       = $next;
 				$job['processed']    = (int) $job['processed'] + 1;
 				$job['last_tick_at'] = gmdate('c');
 				if ($ok) {
@@ -610,7 +648,8 @@ final class Bulk_Queue
 					$job['err'] = (int) $job['err'] + 1;
 					$errors     = self::normalize_errors($job['errors'] ?? []);
 					array_unshift($errors, $entry);
-					$job['errors'] = array_slice($errors, 0, self::ERRORS_MAX);
+					$job['errors']   = array_slice($errors, 0, self::ERRORS_MAX);
+					$job['skip_ids'] = self::normalize_skip_ids(array_merge($job['skip_ids'] ?? [], [$next]));
 				}
 				$job['last_message'] = $line;
 				$job['log']          = $this->push_log($job['log'] ?? [], $line, $ok);
@@ -666,18 +705,18 @@ final class Bulk_Queue
 	/**
 	 * Médias coincés en « processing » après un kill PHP / timeout → repasser en erreur retentable.
 	 */
-	public static function recover_stale_processing(int $max_age_seconds = 120): int
+	public static function recover_stale_processing(int $max_age_seconds = 45): int
 	{
 		global $wpdb;
 
-		$max_age_seconds = max(60, $max_age_seconds);
+		$max_age_seconds = max(0, $max_age_seconds);
 		$now             = time();
 		$status_key      = Plugin::META_STATUS;
 
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		$ids = $wpdb->get_col(
 			$wpdb->prepare(
-				"SELECT post_id FROM {$wpdb->postmeta}
+				"SELECT DISTINCT post_id FROM {$wpdb->postmeta}
 				WHERE meta_key = %s AND meta_value = 'processing'
 				LIMIT 100",
 				$status_key
@@ -686,7 +725,11 @@ final class Bulk_Queue
 		// phpcs:enable
 
 		$fixed = 0;
-		$msg   = __('Traitement interrompu (timeout serveur) — sera retenté au prochain passage.', 'lumen-wp');
+		$recovered = [];
+		$msg   = __(
+			'Traitement interrompu (timeout serveur). Le média est hors file ; relancez-le depuis la fiche, ou avec « Reprendre aussi les médias déjà OK ».',
+			'lumen-wp'
+		);
 
 		foreach ($ids as $raw_id) {
 			$id = (int) $raw_id;
@@ -701,46 +744,86 @@ final class Bulk_Queue
 				continue;
 			}
 
-			update_post_meta($id, Plugin::META_STATUS, 'error');
-			update_post_meta($id, Plugin::META_ERROR, $msg);
-			delete_post_meta($id, Plugin::META_PROCESSING_AT);
+			self::mark_attachment_failed($id, $msg);
+			$recovered[] = $id;
 			++$fixed;
+		}
+
+		if ($recovered !== []) {
+			$job = self::job();
+			if (($job['status'] ?? '') === 'running') {
+				$job['skip_ids'] = self::normalize_skip_ids(array_merge($job['skip_ids'] ?? [], $recovered));
+				$job['err']      = (int) $job['err'] + count($recovered);
+				self::save($job);
+			}
 		}
 
 		return $fixed;
 	}
 
 	/**
+	 * Marque un média en erreur (toutes les lignes de statut, y compris doublons WPML).
+	 */
+	public static function mark_attachment_failed(int $attachment_id, string $message): void
+	{
+		if ($attachment_id <= 0) {
+			return;
+		}
+		delete_post_meta($attachment_id, Plugin::META_STATUS);
+		delete_post_meta($attachment_id, Plugin::META_PROCESSING_AT);
+		update_post_meta($attachment_id, Plugin::META_STATUS, 'error');
+		update_post_meta($attachment_id, Plugin::META_ERROR, $message);
+	}
+
+	/**
 	 * Force-clear ALL attachments in « processing » (repair / upgrade / Tools).
+	 * Passe en error (hors file) — ne pas delete le statut, sinon le poison redevient pending.
 	 */
 	public static function clear_all_processing(): int
 	{
 		global $wpdb;
 
 		$status_key = Plugin::META_STATUS;
-		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$ids = $wpdb->get_col(
-			$wpdb->prepare(
-				"SELECT post_id FROM {$wpdb->postmeta}
-				WHERE meta_key = %s AND meta_value = 'processing'
-				LIMIT 500",
-				$status_key
-			)
+		$msg        = __(
+			'Statut « processing » réparé — média marqué en erreur (hors file). Relancez-le depuis la fiche média, ou avec « Reprendre aussi les médias déjà OK ».',
+			'lumen-wp'
 		);
-		// phpcs:enable
+		$fixed      = 0;
 
-		$fixed = 0;
-		$msg   = __('Statut « processing » réparé — média remis en file.', 'lumen-wp');
-		foreach ($ids as $raw_id) {
-			$id = (int) $raw_id;
-			if ($id <= 0) {
-				continue;
+		for ($batch = 0; $batch < 20; $batch++) {
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$ids = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT DISTINCT post_id FROM {$wpdb->postmeta}
+					WHERE meta_key = %s AND meta_value = 'processing'
+					LIMIT 500",
+					$status_key
+				)
+			);
+			// phpcs:enable
+
+			if (! is_array($ids) || $ids === []) {
+				break;
 			}
-			// Remettre sans statut « done » pour que le bulk les reprenne.
-			delete_post_meta($id, Plugin::META_STATUS);
-			delete_post_meta($id, Plugin::META_PROCESSING_AT);
-			update_post_meta($id, Plugin::META_ERROR, $msg);
-			++$fixed;
+
+			foreach ($ids as $raw_id) {
+				$id = (int) $raw_id;
+				if ($id <= 0) {
+					continue;
+				}
+				self::mark_attachment_failed($id, $msg);
+				++$fixed;
+			}
+		}
+
+		$job = self::job();
+		if (($job['status'] ?? '') === 'running' && $fixed > 0) {
+			$job['last_message'] = sprintf(
+				/* translators: %d: number of attachments */
+				_n('%d média processing réparé (erreur).', '%d médias processing réparés (erreur).', $fixed, 'lumen-wp'),
+				$fixed
+			);
+			self::save($job);
 		}
 
 		return $fixed;
@@ -804,9 +887,10 @@ final class Bulk_Queue
 	private function count_pending(bool $force, array $types): int
 	{
 		global $wpdb;
+		$skip  = self::normalize_skip_ids(self::job()['skip_ids'] ?? []);
+		$built = $this->pending_sql($force, false, 0, $types, $skip);
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
-		$sql = $this->pending_sql($force, false, 0, $types);
-		$total = (int) $wpdb->get_var($sql['sql']);
+		$total = (int) $wpdb->get_var($built['sql']);
 		// phpcs:enable
 
 		return max(0, $total);
@@ -818,7 +902,8 @@ final class Bulk_Queue
 	private function next_id(int $cursor, bool $force, array $types): int
 	{
 		global $wpdb;
-		$built = $this->pending_sql($force, true, $cursor, $types);
+		$skip  = self::normalize_skip_ids(self::job()['skip_ids'] ?? []);
+		$built = $this->pending_sql($force, true, $cursor, $types, $skip);
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
 		$id = $built['args'] === []
 			? $wpdb->get_var($built['sql'])
@@ -829,10 +914,49 @@ final class Bulk_Queue
 	}
 
 	/**
+	 * processing / error / unsupported / busy doivent être exclus même si le LEFT JOIN
+	 * ne matche que ok/awaiting (sinon processing ≡ « jamais traité »).
+	 */
+	private function blocked_status_sql(bool $include_error): string
+	{
+		global $wpdb;
+		$status = Plugin::META_STATUS;
+		$values = $include_error
+			? "'processing','error','unsupported','busy'"
+			: "'processing','unsupported','busy'";
+
+		return "NOT EXISTS (
+			SELECT 1 FROM {$wpdb->postmeta} lumen_blk
+			WHERE lumen_blk.post_id = p.ID
+			  AND lumen_blk.meta_key = '{$status}'
+			  AND lumen_blk.meta_value IN ({$values})
+		)";
+	}
+
+	/**
+	 * @param list<int> $skip_ids
+	 * @return array{sql: string, args: list<int>}
+	 */
+	private function skip_ids_clause(array $skip_ids): array
+	{
+		$skip_ids = self::normalize_skip_ids($skip_ids);
+		if ($skip_ids === []) {
+			return ['sql' => '', 'args' => []];
+		}
+		$placeholders = implode(',', array_fill(0, count($skip_ids), '%d'));
+
+		return [
+			'sql'  => " AND p.ID NOT IN ({$placeholders})",
+			'args' => $skip_ids,
+		];
+	}
+
+	/**
 	 * @param list<string> $types
+	 * @param list<int>    $skip_ids
 	 * @return array{sql: string, args: list<mixed>}
 	 */
-	private function pending_sql(bool $force, bool $next_only, int $cursor = 0, array $types = []): array
+	private function pending_sql(bool $force, bool $next_only, int $cursor = 0, array $types = [], array $skip_ids = []): array
 	{
 		global $wpdb;
 
@@ -841,16 +965,26 @@ final class Bulk_Queue
 		$status   = Plugin::META_STATUS;
 		$variants = Plugin::META_VARIANTS;
 		$args     = [];
+		$skip     = $this->skip_ids_clause($skip_ids);
 
 		if ($force) {
-			$sql = 'SELECT ' . ($next_only ? 'p.ID' : 'COUNT(p.ID)') . "
+			// Force = tout retraiter, y compris les erreurs (retry explicite).
+			// processing / unsupported restent hors file pour ne pas re-hang / re-skip en boucle.
+			$block = $this->blocked_status_sql(false);
+			$sql   = 'SELECT ' . ($next_only ? 'p.ID' : 'COUNT(p.ID)') . "
 				FROM {$wpdb->posts} p
 				WHERE p.post_type = 'attachment'
 				  AND p.post_status = 'inherit'
-				  AND {$mime_sql}";
+				  AND {$mime_sql}
+				  AND {$block}" . $skip['sql'];
+			$args  = $skip['args'];
 			if ($next_only) {
 				$sql .= ' AND p.ID > %d ORDER BY p.ID ASC LIMIT 1';
 				$args[] = $cursor;
+			}
+			if (! $next_only && $args !== []) {
+				$sql  = $wpdb->prepare($sql, ...$args) ?: $sql;
+				$args = [];
 			}
 
 			return ['sql' => $sql, 'args' => $args];
@@ -905,6 +1039,7 @@ final class Bulk_Queue
 		}
 
 		$pending_sql = implode(' OR ', $pending_parts);
+		$block       = $this->blocked_status_sql(true);
 
 		$sql = 'SELECT ' . ($next_only ? 'p.ID' : 'COUNT(DISTINCT p.ID)') . "
 			FROM {$wpdb->posts} p
@@ -914,9 +1049,11 @@ final class Bulk_Queue
 				ON v.post_id = p.ID AND v.meta_key = %s AND v.meta_value != '' AND v.meta_value != 'a:0:{}'
 			WHERE p.post_type = 'attachment'
 			  AND p.post_status = 'inherit'
-			  AND ({$pending_sql})";
+			  AND {$block}
+			  AND ({$pending_sql})" . $skip['sql'];
 		$args[] = $status;
 		$args[] = $variants;
+		$args   = array_merge($args, $skip['args']);
 
 		if ($next_only) {
 			$sql .= ' AND p.ID > %d ORDER BY p.ID ASC LIMIT 1';
