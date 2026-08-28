@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.9.7-e879f9?style=flat-square" />
+  <img alt="Version" src="https://img.shields.io/badge/version-1.9.8-e879f9?style=flat-square" />
   <img alt="WordPress" src="https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square" />
   <img alt="PHP" src="https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square" />
@@ -149,6 +149,11 @@ lumen-wp/
 ---
 
 ## Changelog
+
+### 1.9.8
+
+- Bulk IA : plus de « IA reportée / SEO local » — si le tick est trop court, le média attend Vision
+- Bulk IA : batch figé à 1 (plus de spirale ticks rapides → encore moins d’IA)
 
 ### 1.9.7
 

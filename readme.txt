@@ -4,7 +4,7 @@ Tags: images, webp, avif, seo, media
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 1.9.7
+Stable tag: 1.9.8
 License: Proprietary
 
 Optimize media library images (WebP/AVIF/JPEG), enrich SEO metadata (alt, JSON-LD, Gutenberg), and process SVG/PDF/video — multi-AI Vision support.
@@ -77,6 +77,10 @@ The plugin is designed for single-site installations. Multisite support is not o
 5. Icon kit generator
 
 == Changelog ==
+
+= 1.9.8 =
+* With AI on, a short tick waits instead of closing the media with local SEO
+* AI bulk batch size stays at 1 (no spiral of skipped Vision calls)
 
 = 1.9.7 =
 * Bulk no longer retries a stuck « processing » item as if it had never been processed
@@ -161,6 +165,9 @@ The plugin is designed for single-site installations. Multisite support is not o
 * Lazy total estimation (no heavy COUNT at start)
 
 == Upgrade Notice ==
+
+= 1.9.8 =
+AI bulk no longer marks items OK with local SEO when the tick is too short for Vision.
 
 = 1.9.7 =
 Poison-pill media leave the queue as errors; bulk continues instead of hanging forever.

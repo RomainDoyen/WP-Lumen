@@ -75,6 +75,47 @@ class BulkQueueTest extends WP_UnitTestCase
 		$this->assertSame('error', (string) get_post_meta($id, Plugin::META_STATUS, true));
 	}
 
+	public function test_should_defer_for_ai_when_budget_too_short(): void
+	{
+		$this->assertTrue(Bulk_Queue::should_defer_for_ai(true, true, 10.0));
+		$this->assertTrue(Bulk_Queue::should_defer_for_ai(true, true, 17.99));
+	}
+
+	public function test_should_not_defer_for_ai_when_enough_budget(): void
+	{
+		$this->assertFalse(Bulk_Queue::should_defer_for_ai(true, true, 18.0));
+		$this->assertFalse(Bulk_Queue::should_defer_for_ai(true, true, 22.0));
+	}
+
+	public function test_should_not_defer_for_ai_on_skips_or_without_ai(): void
+	{
+		$this->assertFalse(Bulk_Queue::should_defer_for_ai(true, false, 5.0));
+		$this->assertFalse(Bulk_Queue::should_defer_for_ai(false, true, 5.0));
+	}
+
+	public function test_adapt_batch_size_stays_at_one_when_ai_enabled(): void
+	{
+		$queue = new Bulk_Queue();
+		$ref   = new \ReflectionMethod(Bulk_Queue::class, 'adapt_batch_size');
+		$ref->setAccessible(true);
+
+		$size = $ref->invoke(
+			$queue,
+			[
+				'use_ai'      => true,
+				'batch_min'   => 1,
+				'batch_max'   => 10,
+				'batch_size'  => 4,
+				'tick_budget' => 22,
+			],
+			10,
+			2.0,
+			false
+		);
+
+		$this->assertSame(1, $size);
+	}
+
 	private function make_jpeg_attachment(string $title): int
 	{
 		return (int) self::factory()->attachment->create(

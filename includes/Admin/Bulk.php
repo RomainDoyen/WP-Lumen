@@ -202,6 +202,9 @@ final class Bulk
 								);
 								?>
 							</p>
+							<p class="description">
+								<?php esc_html_e('Avec l’IA : un média par tick. S’il manque du temps, le média attend le passage suivant — il n’est plus clôturé en SEO local.', 'lumen-wp'); ?>
+							</p>
 							<p class="description" id="lumen-wp-bulk-estimate" hidden></p>
 						</td>
 					</tr>

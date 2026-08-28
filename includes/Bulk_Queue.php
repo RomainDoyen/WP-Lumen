@@ -13,6 +13,8 @@ final class Bulk_Queue
 	public const SKIP_IDS_MAX = 500;
 	public const CRON_HOOK = 'lumen_wp_bulk_tick';
 	public const LOCK = 'lumen_wp_bulk_lock';
+	/** Secondes min. restantes dans le tick pour lancer Vision (sinon on attend le tick suivant). */
+	public const AI_TICK_MIN_SECONDS = 18.0;
 
 	public function register(): void
 	{
@@ -84,6 +86,15 @@ final class Bulk_Queue
 		}
 
 		return $out;
+	}
+
+	/**
+	 * Un média qui a encore du vrai travail ne doit pas être « terminé SEO local »
+	 * faute de temps Vision : on le laisse pour le tick suivant.
+	 */
+	public static function should_defer_for_ai(bool $use_ai, bool $needs_full_process, float $remaining_seconds): bool
+	{
+		return $use_ai && $needs_full_process && $remaining_seconds < self::AI_TICK_MIN_SECONDS;
 	}
 
 	/**
@@ -253,6 +264,10 @@ final class Bulk_Queue
 		$job['batch_max']   = max($job['batch_min'], (int) ($job['batch_max'] ?? 10));
 		$job['batch_size']  = max($job['batch_min'], min($job['batch_max'], (int) ($job['batch_size'] ?? 2)));
 		$job['tick_budget'] = max(8, min(60, (int) ($job['tick_budget'] ?? 22)));
+		if (! empty($job['use_ai'])) {
+			$job['batch_max']  = 1;
+			$job['batch_size'] = 1;
+		}
 
 		return $job;
 	}
@@ -388,6 +403,7 @@ final class Bulk_Queue
 			$job['cursor']         = 0;
 			$job['total_estimate'] = 0; // Filled asynchronously (no heavy COUNT at start).
 			$job['batch_size']     = $use_ai ? 1 : 2;
+			$job['batch_max']      = $use_ai ? 1 : 10;
 			$job['started_at']     = gmdate('c');
 			$job['last_tick_at']   = gmdate('c');
 			$job['user_id']        = (int) $user->ID;
@@ -612,6 +628,18 @@ final class Bulk_Queue
 					return;
 				}
 
+				$needs_full = $force || ! Plugin::attachment_is_done($next);
+				if (self::should_defer_for_ai($use_ai, $needs_full, $remaining)) {
+					// Ne pas avancer le curseur ni marquer OK : Vision au tick suivant.
+					$hit_budget          = true;
+					$job['last_message'] = __(
+						'Pas assez de temps dans ce tick pour l’IA — prochain passage.',
+						'lumen-wp'
+					);
+					self::save($job);
+					break;
+				}
+
 				// Avancer le curseur AVANT process() : si PHP meurt (Imagick, OOM),
 				// le tick suivant ne reprend pas le même média.
 				$job['cursor']       = $next;
@@ -623,8 +651,7 @@ final class Bulk_Queue
 				);
 				self::save($job);
 
-				// L’IA Vision (timeout HTTP) doit tenir dans le budget restant du tick.
-				$ai_this = $use_ai && $remaining >= 18;
+				$ai_this = $use_ai && $needs_full;
 
 				$result = (new Hooks())->process($next, $force, $ai_this);
 				$ok     = ! empty($result['ok']);
@@ -632,9 +659,6 @@ final class Bulk_Queue
 				$msg    = (string) ($result['message'] ?? ($status !== '' ? $status : ''));
 				if ($msg === '') {
 					$msg = $ok ? 'ok' : 'error';
-				}
-				if ($use_ai && ! $ai_this && $ok && $status !== 'skipped' && $status !== 'unsupported') {
-					$msg .= ' — ' . __('IA reportée (budget tick) — SEO local.', 'lumen-wp');
 				}
 				$entry = self::make_error_entry($next, $msg);
 				$line  = '#' . $next . ' — ' . $entry['title'] . ' — ' . $msg;
@@ -834,6 +858,9 @@ final class Bulk_Queue
 	 */
 	private function adapt_batch_size(array $job, int $processed_in_tick, float $elapsed, bool $pressure): int
 	{
+		if (! empty($job['use_ai'])) {
+			return 1;
+		}
 		$min    = max(1, (int) ($job['batch_min'] ?? 1));
 		$max    = max($min, (int) ($job['batch_max'] ?? 10));
 		$budget = max(8, (int) ($job['tick_budget'] ?? 22));
