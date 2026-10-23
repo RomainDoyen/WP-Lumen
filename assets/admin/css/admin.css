@@ -137,6 +137,12 @@ body.lumen-wp-admin #wpfooter {
 	box-sizing: border-box;
 }
 
+/* La nav passe au-dessus de la fenêtre. Pendant une popup, elle repasse
+   dessous : le voile est dans la fenêtre et doit la couvrir. */
+html.lumen-wp-modal-open .lumen-wp-nav {
+	z-index: 0;
+}
+
 .lumen-wp-nav__logo {
 	display: flex;
 	align-items: center;
@@ -3418,7 +3424,9 @@ body.lumen-wp-theme-light .lumen-wp-wrap input[type='number']:not(.lumen-wp-nste
 body.lumen-wp-theme-light .lumen-wp-wrap textarea,
 body.lumen-wp-theme-light .lumen-wp-wrap select,
 body.lumen-wp-theme-light .lumen-wp-metabox input,
-body.lumen-wp-theme-light .lumen-wp-metabox textarea {
+body.lumen-wp-theme-light .lumen-wp-metabox textarea,
+.lumen-wp-metabox.lumen-wp-theme-light input,
+.lumen-wp-metabox.lumen-wp-theme-light textarea {
 	background: #ffffff !important;
 	color: #1c1917 !important;
 	border: 1px solid rgba(28, 25, 23, 0.22) !important;
@@ -4166,6 +4174,12 @@ body.lumen-wp-theme-dark .lumen-wp-audit-scorebar__stats > span {
 	justify-content: flex-end;
 	margin-top: 1.1rem;
 	gap: 0.5rem;
+}
+#lumen-wp-history-modal-validate {
+	margin-right: auto;
+}
+#lumen-wp-history-modal-validate[hidden] {
+	display: none !important;
 }
 .lumen-wp-history-modal__body {
 	margin-top: 0.15rem;

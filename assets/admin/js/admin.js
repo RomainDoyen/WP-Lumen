@@ -2301,11 +2301,16 @@
       facts += row('Erreur', d.error);
     }
 
-    var validation = d.validation_url
-      ? '<p class="lumen-wp-history-detail__extra"><a class="button" href="' +
-        escHtml(d.validation_url) +
-        '">Ouvrir À valider</a></p>'
-      : '';
+    var validate = document.getElementById('lumen-wp-history-modal-validate');
+    if (validate) {
+      if (d.validation_url) {
+        validate.href = d.validation_url;
+        validate.hidden = false;
+      } else {
+        validate.hidden = true;
+        validate.removeAttribute('href');
+      }
+    }
 
     var jobsHtml = '';
     if (Array.isArray(d.jobs) && d.jobs.length) {
@@ -2347,7 +2352,6 @@
       facts +
       '</div>' +
       jobsHtml +
-      validation +
       '</div>';
   }
 
@@ -2356,6 +2360,10 @@
     var id = $(this).data('id');
     if (!id) return;
     var body = document.getElementById('lumen-wp-history-modal-body');
+    var validate = document.getElementById('lumen-wp-history-modal-validate');
+    if (validate) {
+      validate.hidden = true;
+    }
     if (body) {
       body.innerHTML = '<p class="description">Chargement…</p>';
     }

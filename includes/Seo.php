@@ -234,19 +234,18 @@ final class Seo
 
 	private function truncate(string $text, int $max): string
 	{
-		if (function_exists('mb_strlen') && function_exists('mb_substr')) {
-			if (mb_strlen($text) <= $max) {
-				return $text;
-			}
-
-			return mb_substr($text, 0, $max);
-		}
-
-		if (strlen($text) <= $max) {
+		$length = function_exists('mb_strlen') ? mb_strlen($text) : strlen($text);
+		if ($length <= $max) {
 			return $text;
 		}
 
-		return substr($text, 0, $max);
+		$slice = function_exists('mb_substr') ? mb_substr($text, 0, $max) : substr($text, 0, $max);
+		$break = function_exists('mb_strrpos') ? mb_strrpos($slice, ' ') : strrpos($slice, ' ');
+		if ($break !== false && $break >= (int) floor($max * 0.6)) {
+			$slice = function_exists('mb_substr') ? mb_substr($slice, 0, (int) $break) : substr($slice, 0, (int) $break);
+		}
+
+		return rtrim($slice, " \t,;:—-") . '…';
 	}
 
 	private function site_title(): string

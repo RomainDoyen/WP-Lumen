@@ -9,7 +9,7 @@ namespace LumenWp;
  */
 final class History_Query
 {
-	public const PER_PAGE = 25;
+	public const PER_PAGE = 6;
 
 	/** @var list<string> */
 	public const FILTERS = ['all', 'processing', 'awaiting_validation', 'ok', 'error'];
@@ -200,16 +200,7 @@ final class History_Query
 			$alt = (string) ($pending['alt_text'] ?? $pending['alt_text_wcag'] ?? $pending['alt_text_seo'] ?? '');
 		}
 
-		$formats = [];
-		if (is_array($variants)) {
-			foreach ($variants as $key => $val) {
-				if (is_string($key) && $key !== '') {
-					$formats[] = strtoupper($key);
-				} elseif (is_array($val) && isset($val['format'])) {
-					$formats[] = strtoupper((string) $val['format']);
-				}
-			}
-		}
+		$formats = is_array($variants) ? self::variant_formats($variants) : [];
 
 		$last = get_post_meta($id, Plugin::META_LAST_JOB, true);
 
@@ -336,15 +327,7 @@ final class History_Query
 			return __('Non compressé', 'lumen-wp');
 		}
 
-		$keys = [];
-		foreach ($variants as $key => $val) {
-			if (is_string($key) && $key !== '') {
-				$keys[] = strtoupper($key);
-			} elseif (is_array($val) && isset($val['format'])) {
-				$keys[] = strtoupper((string) $val['format']);
-			}
-		}
-		$keys = array_values(array_unique(array_filter($keys)));
+		$keys = self::variant_formats($variants);
 		if ($keys === []) {
 			return __('Compressé', 'lumen-wp');
 		}
@@ -354,6 +337,38 @@ final class History_Query
 			__('Compressé (%s)', 'lumen-wp'),
 			implode(', ', $keys)
 		);
+	}
+
+	/**
+	 * Formats réellement écrits (webp, jpeg, avif), y compris dans variants[].files.
+	 *
+	 * @param array<mixed> $variants
+	 * @return list<string>
+	 */
+	private static function variant_formats(array $variants): array
+	{
+		$formats = [];
+		foreach ($variants as $key => $val) {
+			if (is_string($key) && $key !== '' && ! is_numeric($key)) {
+				$formats[] = strtoupper($key);
+			}
+			if (! is_array($val)) {
+				continue;
+			}
+			if (isset($val['format']) && is_string($val['format']) && $val['format'] !== '') {
+				$formats[] = strtoupper($val['format']);
+			}
+			if (! isset($val['files']) || ! is_array($val['files'])) {
+				continue;
+			}
+			foreach ($val['files'] as $format => $file) {
+				if (is_string($format) && $format !== '') {
+					$formats[] = strtoupper($format);
+				}
+			}
+		}
+
+		return array_values(array_unique(array_filter($formats)));
 	}
 
 	private static function ai_label(int $id, string $status): string

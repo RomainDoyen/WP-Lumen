@@ -12,7 +12,7 @@ use LumenWp\Seo_Geo_Auditor;
 
 final class Audit
 {
-	private const AFFECTED_DISPLAY = 6;
+	private const AFFECTED_DISPLAY = 3;
 
 	public function register(): void
 	{

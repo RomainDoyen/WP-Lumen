@@ -9,7 +9,7 @@ use LumenWp\Seo;
 
 final class Validation
 {
-	public const PER_PAGE = 20;
+	public const PER_PAGE = 3;
 
 	public function register(): void
 	{

@@ -171,6 +171,7 @@ final class History
 						<p class="description"><?php esc_html_e('Chargement…', 'lumen-wp'); ?></p>
 					</div>
 					<div class="lumen-wp-modal__actions">
+						<a id="lumen-wp-history-modal-validate" class="button" href="#" hidden><?php esc_html_e('Ouvrir à valider', 'lumen-wp'); ?></a>
 						<a id="lumen-wp-history-modal-edit" class="button" href="#" target="_blank" rel="noopener noreferrer"><?php esc_html_e('Fiche média', 'lumen-wp'); ?></a>
 						<button type="button" class="button button-primary" data-lumen-history-close><?php esc_html_e('Fermer', 'lumen-wp'); ?></button>
 					</div>
