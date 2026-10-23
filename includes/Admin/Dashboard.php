@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace LumenWp\Admin;
 
 use LumenWp\Bulk_Queue;
-use LumenWp\Icon_Kit;
 use LumenWp\Job_Repository;
 use LumenWp\Media_Types;
 use LumenWp\Plugin;
@@ -51,7 +50,6 @@ final class Dashboard
 		$failed   = $stats['error'] > 0 ? $this->failed_attachments(50) : [];
 		$caps     = Server_Caps::detect();
 		$settings = Plugin::instance()->settings();
-		$icons    = Icon_Kit::stored();
 		$usage    = Vision_Ai::usage();
 		$tokens_month = Job_Repository::sum_tokens_month();
 		$ai_prov  = Vision_Ai::active_provider();
@@ -72,46 +70,89 @@ final class Dashboard
 		<div class="wrap lumen-wp-wrap">
 			<?php
 			Brand::render_nav('dashboard');
+			ob_start();
+			if ($pending_validation > 0) {
+				echo '<a class="button button-primary" href="' . esc_url(Validation::tab_url()) . '">';
+				Brand::icon('validate');
+				esc_html_e('Valider', 'lumen-wp');
+				echo '</a>';
+			} else {
+				echo '<a class="button button-primary" href="' . esc_url(admin_url('admin.php?page=lumen-wp-bulk&tab=launch')) . '">';
+				Brand::icon('bulk');
+				esc_html_e('Lancer le traitement', 'lumen-wp');
+				echo '</a>';
+			}
+			$header_actions = (string) ob_get_clean();
 			Brand::render_header(
 				__('Dashboard', 'lumen-wp'),
-				__('Vue d’ensemble — traitement, validation, audit et serveur.', 'lumen-wp')
+				__('Vue d’ensemble — traitement, validation, audit et serveur.', 'lumen-wp'),
+				'',
+				$header_actions
 			);
 			?>
 
+			<?php
+			$catalog = max(0, (int) $stats['total']);
+			$ok_n    = max(0, (int) $stats['ok']);
+			$err_n   = max(0, (int) $stats['error']);
+			$pend_n  = max(0, (int) $stats['pending']);
+			$ok_pct  = $catalog > 0 ? (int) round(100 * $ok_n / $catalog) : 0;
+			?>
 			<section class="lumen-wp-dash-stats">
 				<article class="lumen-wp-stat">
+					<span class="lumen-wp-stat__icon"><?php Brand::icon('validate'); ?></span>
 					<span class="lumen-wp-stat__label"><?php esc_html_e('Médias OK', 'lumen-wp'); ?></span>
-					<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $stats['ok']); ?></strong>
+					<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $ok_n); ?></strong>
+					<span class="lumen-wp-stat__hint">
+						<?php
+						echo $catalog > 0
+							? esc_html(sprintf(
+								/* translators: %s: percentage of the catalog */
+								__('%s %% du catalogue', 'lumen-wp'),
+								number_format_i18n($ok_pct)
+							))
+							: esc_html__('Aucun média', 'lumen-wp');
+						?>
+					</span>
 				</article>
 				<article class="lumen-wp-stat">
+					<span class="lumen-wp-stat__icon"><?php Brand::icon('bulk'); ?></span>
 					<span class="lumen-wp-stat__label"><?php esc_html_e('À traiter', 'lumen-wp'); ?></span>
-					<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $stats['pending']); ?></strong>
+					<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $pend_n); ?></strong>
+					<span class="lumen-wp-stat__hint"><?php esc_html_e('En file d’attente', 'lumen-wp'); ?></span>
 				</article>
-				<?php if ((int) $stats['error'] > 0) : ?>
+				<?php if ($err_n > 0) : ?>
 					<a class="lumen-wp-stat lumen-wp-stat--link" href="#lumen-wp-failed-media">
+						<span class="lumen-wp-stat__icon"><?php Brand::icon('alert'); ?></span>
 						<span class="lumen-wp-stat__label"><?php esc_html_e('Erreurs', 'lumen-wp'); ?></span>
-						<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $stats['error']); ?></strong>
+						<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $err_n); ?></strong>
 						<span class="lumen-wp-stat__hint"><?php esc_html_e('Voir la liste', 'lumen-wp'); ?></span>
 					</a>
 				<?php else : ?>
 					<article class="lumen-wp-stat">
+						<span class="lumen-wp-stat__icon"><?php Brand::icon('alert'); ?></span>
 						<span class="lumen-wp-stat__label"><?php esc_html_e('Erreurs', 'lumen-wp'); ?></span>
-						<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $stats['error']); ?></strong>
+						<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $err_n); ?></strong>
+						<span class="lumen-wp-stat__hint"><?php esc_html_e('Rien à corriger', 'lumen-wp'); ?></span>
 					</article>
 				<?php endif; ?>
 				<?php if ($pending_validation > 0) : ?>
 					<a class="lumen-wp-stat lumen-wp-stat--link" href="<?php echo esc_url(Validation::tab_url()); ?>">
+						<span class="lumen-wp-stat__icon"><?php Brand::icon('validate'); ?></span>
 						<span class="lumen-wp-stat__label"><?php esc_html_e('À valider', 'lumen-wp'); ?></span>
 						<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $pending_validation); ?></strong>
 						<span class="lumen-wp-stat__hint"><?php esc_html_e('Ouvrir', 'lumen-wp'); ?></span>
 					</a>
 				<?php else : ?>
 					<article class="lumen-wp-stat">
+						<span class="lumen-wp-stat__icon"><?php Brand::icon('image'); ?></span>
 						<span class="lumen-wp-stat__label"><?php esc_html_e('Médias supportés', 'lumen-wp'); ?></span>
-						<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $stats['total']); ?></strong>
+						<strong class="lumen-wp-stat__value"><?php echo esc_html((string) $catalog); ?></strong>
+						<span class="lumen-wp-stat__hint"><?php esc_html_e('Images, PDF, SVG, vidéo', 'lumen-wp'); ?></span>
 					</article>
 				<?php endif; ?>
 				<article class="lumen-wp-stat">
+					<span class="lumen-wp-stat__icon"><?php Brand::icon('bolt'); ?></span>
 					<span class="lumen-wp-stat__label"><?php esc_html_e('Appels IA / mois', 'lumen-wp'); ?></span>
 					<strong class="lumen-wp-stat__value"><?php echo esc_html(number_format_i18n((int) $usage['calls_month'])); ?></strong>
 					<span class="lumen-wp-stat__hint">
@@ -128,66 +169,8 @@ final class Dashboard
 				</article>
 			</section>
 
-			<section class="lumen-wp-dash-grid">
-				<a class="lumen-wp-dash-card" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-bulk&tab=launch')); ?>">
-					<span class="lumen-wp-dash-card__eyebrow"><?php esc_html_e('File', 'lumen-wp'); ?></span>
-					<h2 class="lumen-wp-dash-card__title"><?php esc_html_e('Traitement', 'lumen-wp'); ?></h2>
-					<p class="lumen-wp-dash-card__text">
-						<?php
-						if (in_array($bulk_status, ['running', 'paused'], true)) {
-							echo esc_html(
-								$bulk_status === 'paused'
-									? __('File en pause.', 'lumen-wp')
-									: __('Traitement en cours…', 'lumen-wp')
-							);
-						} else {
-							printf(
-								/* translators: %d: pending count */
-								esc_html(_n('%d média à traiter', '%d médias à traiter', $stats['pending'], 'lumen-wp')),
-								(int) $stats['pending']
-							);
-						}
-						?>
-					</p>
-				</a>
-
-				<a class="lumen-wp-dash-card" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-history')); ?>">
-					<span class="lumen-wp-dash-card__eyebrow"><?php esc_html_e('Suivi', 'lumen-wp'); ?></span>
-					<h2 class="lumen-wp-dash-card__title"><?php esc_html_e('Historique', 'lumen-wp'); ?></h2>
-					<p class="lumen-wp-dash-card__text"><?php esc_html_e('Timeline des médias traités, filtres et détails.', 'lumen-wp'); ?></p>
-				</a>
-
-				<?php if (current_user_can('manage_options')) : ?>
-					<a class="lumen-wp-dash-card" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-audit')); ?>">
-						<span class="lumen-wp-dash-card__eyebrow"><?php esc_html_e('SEO / GEO', 'lumen-wp'); ?></span>
-						<h2 class="lumen-wp-dash-card__title"><?php esc_html_e('Audit', 'lumen-wp'); ?></h2>
-						<p class="lumen-wp-dash-card__text">
-							<?php
-							echo $audit_score !== null
-								? esc_html(sprintf(
-									/* translators: %d: score percent */
-									__('Dernier score : %d %%', 'lumen-wp'),
-									$audit_score
-								))
-								: esc_html__('Analyser le site et corriger assisté.', 'lumen-wp');
-							?>
-						</p>
-					</a>
-				<?php endif; ?>
-
-				<a class="lumen-wp-dash-card" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-icons')); ?>">
-					<span class="lumen-wp-dash-card__eyebrow"><?php esc_html_e('Identité', 'lumen-wp'); ?></span>
-					<h2 class="lumen-wp-dash-card__title"><?php esc_html_e('Icônes & favicons', 'lumen-wp'); ?></h2>
-					<p class="lumen-wp-dash-card__text">
-						<?php
-						echo ! empty($icons['kit'])
-							? esc_html__('Kit généré — prêt à télécharger ou appliquer.', 'lumen-wp')
-							: esc_html__('Générez un kit PNG multi-tailles pour le site.', 'lumen-wp');
-						?>
-					</p>
-				</a>
-			</section>
-
+			<div class="lumen-wp-split">
+				<div class="lumen-wp-split__main">
 			<section class="lumen-wp-panel lumen-wp-panel--next">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Prochaines actions', 'lumen-wp'); ?></h2>
 				<ul class="lumen-wp-next-actions">
@@ -204,7 +187,7 @@ final class Dashboard
 								);
 								?>
 							</span>
-							<a class="button button-primary" href="<?php echo esc_url(Validation::tab_url()); ?>"><?php esc_html_e('Valider', 'lumen-wp'); ?></a>
+							<a class="button button-primary" href="<?php echo esc_url(Validation::tab_url()); ?>"><?php Brand::icon('validate'); ?><?php esc_html_e('Valider', 'lumen-wp'); ?></a>
 						</li>
 					<?php endif; ?>
 					<?php if (in_array($bulk_status, ['running', 'paused'], true)) : ?>
@@ -233,7 +216,7 @@ final class Dashboard
 								);
 								?>
 							</span>
-							<a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-bulk&tab=launch')); ?>"><?php esc_html_e('Lancer', 'lumen-wp'); ?></a>
+							<a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-bulk&tab=launch')); ?>"><?php Brand::icon('bulk'); ?><?php esc_html_e('Lancer', 'lumen-wp'); ?></a>
 						</li>
 					<?php endif; ?>
 					<?php if ((int) $stats['error'] > 0) : ?>
@@ -300,7 +283,55 @@ final class Dashboard
 				</section>
 			<?php endif; ?>
 
-			<section class="lumen-wp-dash-footer">
+			<?php
+			$runs = array_slice(Bulk_Queue::history(), 0, 6);
+			$runs_url = admin_url('admin.php?page=lumen-wp-bulk&tab=launch#lumen-wp-bulk-history-panel');
+			?>
+			<section class="lumen-wp-panel lumen-wp-dash-runs">
+				<div class="lumen-wp-dash-runs__head">
+					<h2 class="lumen-wp-panel__title"><?php esc_html_e('Derniers traitements', 'lumen-wp'); ?></h2>
+					<a class="button" href="<?php echo esc_url($runs_url); ?>"><?php esc_html_e('Voir tout', 'lumen-wp'); ?></a>
+				</div>
+				<ul class="lumen-wp-history">
+					<?php if ($runs === []) : ?>
+						<li class="lumen-wp-history__empty"><?php esc_html_e('Aucun traitement terminé pour le moment.', 'lumen-wp'); ?></li>
+					<?php else : ?>
+						<?php foreach ($runs as $entry) : ?>
+							<?php echo Bulk::render_history_item($entry); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+						<?php endforeach; ?>
+					<?php endif; ?>
+				</ul>
+			</section>
+				</div>
+				<div class="lumen-wp-split__aside">
+					<ul class="lumen-wp-dash-links">
+						<li>
+							<a href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-bulk&tab=launch')); ?>">
+								<?php Brand::icon('bulk'); ?>
+								<span><?php esc_html_e('Traitement', 'lumen-wp'); ?></span>
+							</a>
+						</li>
+						<li>
+							<a href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-history')); ?>">
+								<?php Brand::icon('history'); ?>
+								<span><?php esc_html_e('Historique', 'lumen-wp'); ?></span>
+							</a>
+						</li>
+						<?php if (current_user_can('manage_options')) : ?>
+							<li>
+								<a href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-audit')); ?>">
+									<?php Brand::icon('audit'); ?>
+									<span><?php esc_html_e('Audit', 'lumen-wp'); ?></span>
+								</a>
+							</li>
+						<?php endif; ?>
+						<li>
+							<a href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-icons')); ?>">
+								<?php Brand::icon('icons'); ?>
+								<span><?php esc_html_e('Icônes & favicons', 'lumen-wp'); ?></span>
+							</a>
+						</li>
+					</ul>
 				<section class="lumen-wp-panel lumen-wp-panel--ai-usage">
 					<h2 class="lumen-wp-panel__title"><?php esc_html_e('Usage IA (compteur local)', 'lumen-wp'); ?></h2>
 					<div class="lumen-wp-ai-usage-grid">
@@ -374,7 +405,10 @@ final class Dashboard
 						</span>
 					</div>
 				</section>
-			</section>
+				</div>
+			</div>
+			</div>
+			</div>
 		</div>
 		<?php
 	}

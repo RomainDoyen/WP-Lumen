@@ -97,7 +97,7 @@ final class Hooks
 			return;
 		}
 		$printed = true;
-		$bg      = Plugin::ui_theme() === 'light' ? '#f5f5f4' : '#0c0a09';
+		$bg      = Plugin::ui_theme() === 'light' ? '#c5bed4' : '#0c0a09';
 		?>
 		<style id="lumen-wp-critical">
 			html.wp-toolbar,
@@ -165,10 +165,11 @@ final class Hooks
 			#adminmenu li#toplevel_page_lumen-wp.current .wp-menu-name {
 				color: #fafaf9 !important;
 			}
-			#adminmenu li#toplevel_page_lumen-wp .wp-submenu {
-				background: #1c1917 !important;
-				border: 0 !important;
-				box-shadow: none !important;
+			#adminmenu li#toplevel_page_lumen-wp .wp-submenu,
+			#adminmenu li#toplevel_page_lumen-wp.wp-has-current-submenu .wp-submenu,
+			#adminmenu li#toplevel_page_lumen-wp.opensub .wp-submenu,
+			.folded #adminmenu li#toplevel_page_lumen-wp:hover .wp-submenu {
+				display: none !important;
 			}
 			#adminmenu li#toplevel_page_lumen-wp .wp-submenu a {
 				color: #a8a29e !important;
@@ -195,7 +196,7 @@ final class Hooks
 			}
 			body.lumen-wp-theme-light #adminmenu li#toplevel_page_lumen-wp.wp-has-current-submenu::after,
 			body.lumen-wp-theme-light #adminmenu li#toplevel_page_lumen-wp.current::after {
-				border-right-color: #f5f5f4 !important;
+				border-right-color: #c5bed4 !important;
 			}
 			#adminmenu #toplevel_page_lumen-wp .wp-menu-image img {
 				padding: 5px 0 0 !important;
@@ -520,18 +521,21 @@ final class Hooks
 		wp_style_add_data('lumen-wp-fonts', 'media', 'print');
 		add_filter('style_loader_tag', [$this, 'async_font_tag'], 10, 2);
 
+		$admin_css = LUMEN_WP_PATH . 'assets/admin/css/admin.css';
+		$admin_js  = LUMEN_WP_PATH . 'assets/admin/js/admin.js';
+
 		wp_enqueue_style(
 			'lumen-wp-admin',
 			LUMEN_WP_URL . 'assets/admin/css/admin.css',
 			[],
-			LUMEN_WP_VERSION
+			is_readable($admin_css) ? (string) filemtime($admin_css) : LUMEN_WP_VERSION
 		);
 
 		wp_enqueue_script(
 			'lumen-wp-admin',
 			LUMEN_WP_URL . 'assets/admin/js/admin.js',
 			['jquery'],
-			LUMEN_WP_VERSION,
+			is_readable($admin_js) ? (string) filemtime($admin_js) : LUMEN_WP_VERSION,
 			true
 		);
 

@@ -191,12 +191,26 @@ final class Settings
 		<div class="wrap lumen-wp-wrap">
 			<?php
 			Brand::render_nav('settings');
+			ob_start();
+			echo '<button type="submit" class="button button-primary" form="lumen-wp-settings-form">';
+			esc_html_e('Enregistrer', 'lumen-wp');
+			echo '</button>';
+			$header_actions = (string) ob_get_clean();
 			Brand::render_header(
 				__('Réglages', 'lumen-wp'),
-				__('Optimisation, SEO et IA pour les médias de la bibliothèque.', 'lumen-wp')
+				__('Optimisation, SEO et IA pour les médias de la bibliothèque.', 'lumen-wp'),
+				'',
+				$header_actions
 			);
 			?>
-
+			<nav class="lumen-wp-seg" data-lumen-settings-tabs aria-label="<?php esc_attr_e('Sections des réglages', 'lumen-wp'); ?>">
+				<button type="button" class="lumen-wp-seg__item is-active" data-lumen-settings-tab="appearance" aria-selected="true"><?php esc_html_e('Apparence', 'lumen-wp'); ?></button>
+				<button type="button" class="lumen-wp-seg__item" data-lumen-settings-tab="images" aria-selected="false"><?php esc_html_e('Images', 'lumen-wp'); ?></button>
+				<button type="button" class="lumen-wp-seg__item" data-lumen-settings-tab="seo" aria-selected="false"><?php esc_html_e('SEO', 'lumen-wp'); ?></button>
+				<button type="button" class="lumen-wp-seg__item" data-lumen-settings-tab="ai" aria-selected="false"><?php esc_html_e('IA', 'lumen-wp'); ?></button>
+			</nav>
+			<div class="lumen-wp-split">
+				<div class="lumen-wp-split__aside">
 			<section class="lumen-wp-panel">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Capacités serveur', 'lumen-wp'); ?></h2>
 				<table class="widefat striped lumen-wp-caps">
@@ -226,10 +240,11 @@ final class Settings
 					</tbody>
 				</table>
 			</section>
-
-			<form method="post" action="options.php" class="lumen-wp-panel">
-				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Configuration', 'lumen-wp'); ?></h2>
+				</div>
+				<div class="lumen-wp-split__main">
+			<form id="lumen-wp-settings-form" method="post" action="options.php">
 				<?php settings_fields('lumen_wp_settings_group'); ?>
+				<div data-lumen-settings-panel="appearance">
 				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><?php esc_html_e('Thème admin', 'lumen-wp'); ?></th>
@@ -242,6 +257,10 @@ final class Settings
 							<p class="description"><?php esc_html_e('Apparence des pages Lumen (Dashboard, Traitement, Réglages…).', 'lumen-wp'); ?></p>
 						</td>
 					</tr>
+				</table>
+				</div>
+				<div data-lumen-settings-panel="images">
+				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><?php esc_html_e('Formats de sortie', 'lumen-wp'); ?></th>
 						<td>
@@ -360,6 +379,10 @@ final class Settings
 							</div>
 						</td>
 					</tr>
+				</table>
+				</div>
+				<div data-lumen-settings-panel="seo">
+				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><?php esc_html_e('URL du site (snippets)', 'lumen-wp'); ?></th>
 						<td>
@@ -384,6 +407,10 @@ final class Settings
 							<p class="description"><?php esc_html_e('Décochez pour que les lecteurs d’écran n’aient pas à lire le nom du site avant chaque description d’image. Recommandé désactivé.', 'lumen-wp'); ?></p>
 						</td>
 					</tr>
+				</table>
+				</div>
+				<div data-lumen-settings-panel="ai">
+				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><?php esc_html_e('Fournisseur IA Vision', 'lumen-wp'); ?></th>
 						<td>
@@ -569,6 +596,10 @@ final class Settings
 							</p>
 						</td>
 					</tr>
+				</table>
+				</div>
+				<div data-lumen-settings-panel="seo">
+				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><?php esc_html_e('GEO — llms.txt', 'lumen-wp'); ?></th>
 						<td>
@@ -627,8 +658,10 @@ final class Settings
 						</td>
 					</tr>
 				</table>
-				<?php submit_button(__('Enregistrer', 'lumen-wp')); ?>
+				</div>
 			</form>
+				</div>
+			</div>
 
 			<p class="description">
 				<?php
@@ -646,6 +679,8 @@ final class Settings
 				);
 				?>
 			</p>
+			</div>
+			</div>
 		</div>
 		<?php
 	}

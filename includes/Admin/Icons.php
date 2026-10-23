@@ -37,6 +37,21 @@ final class Icons
 		$stored   = Icon_Kit::stored();
 		$settings = Plugin::instance()->settings();
 		$applied  = ! empty($settings['site_favicons']) && ! empty($stored['site']);
+		$has_zip  = ! empty($stored['zip']['url']);
+
+		ob_start();
+		echo '<button type="button" class="button' . ($has_zip ? '' : ' button-primary') . '" id="lumen-wp-icons-generate" disabled>';
+		Brand::icon('icons');
+		esc_html_e('Générer le kit', 'lumen-wp');
+		echo '</button>';
+		if ($has_zip) {
+			echo '<a class="button button-primary" id="lumen-wp-icons-zip" href="' . esc_url((string) $stored['zip']['url']) . '">';
+		} else {
+			echo '<a class="button" id="lumen-wp-icons-zip" href="#" hidden>';
+		}
+		esc_html_e('Télécharger tout (ZIP)', 'lumen-wp');
+		echo '</a>';
+		$header_actions = (string) ob_get_clean();
 
 		?>
 		<div class="wrap lumen-wp-wrap">
@@ -44,9 +59,14 @@ final class Icons
 			Brand::render_nav('icons');
 			Brand::render_header(
 				__('Kit d’icônes', 'lumen-wp'),
-				__('Une image source → plusieurs tailles PNG, ZIP, et favicons du site.', 'lumen-wp')
+				__('Une image source → plusieurs tailles PNG, ZIP, et favicons du site.', 'lumen-wp'),
+				'',
+				$header_actions
 			);
 			?>
+
+			<div class="lumen-wp-split">
+				<div class="lumen-wp-split__main">
 
 			<section class="lumen-wp-panel lumen-wp-icons-panel">
 				<input
@@ -57,9 +77,7 @@ final class Icons
 				/>
 				<div id="lumen-wp-icons-drop" class="lumen-wp-dropzone" tabindex="0" role="button" aria-label="<?php esc_attr_e('Zone de dépôt d’image', 'lumen-wp'); ?>">
 					<div class="lumen-wp-dropzone__icon" aria-hidden="true">
-						<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" width="40" height="40">
-							<path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
-						</svg>
+						<?php Brand::scene('icons'); ?>
 					</div>
 					<p class="lumen-wp-dropzone__title">
 						<?php esc_html_e('Glissez-déposez votre image ici ou', 'lumen-wp'); ?>
@@ -79,9 +97,6 @@ final class Icons
 				</div>
 
 				<p class="lumen-wp-actions-row">
-					<button type="button" class="button button-primary" id="lumen-wp-icons-generate" disabled>
-						<?php esc_html_e('Générer le kit', 'lumen-wp'); ?>
-					</button>
 					<button type="button" class="button" id="lumen-wp-icons-reset">
 						<?php esc_html_e('Réinitialiser', 'lumen-wp'); ?>
 					</button>
@@ -118,8 +133,10 @@ final class Icons
 					}
 					?>
 				</div>
-
-				<div class="lumen-wp-icons-site" id="lumen-wp-icons-site">
+			</section>
+				</div>
+				<div class="lumen-wp-split__aside" <?php echo empty($stored['site']) || ! is_array($stored['site']) ? 'hidden' : ''; ?>>
+				<div class="lumen-wp-panel lumen-wp-icons-site" id="lumen-wp-icons-site">
 					<?php if (! empty($stored['site']) && is_array($stored['site'])) : ?>
 						<h3 class="lumen-wp-panel__title"><?php esc_html_e('Favicons site', 'lumen-wp'); ?></h3>
 						<ul class="lumen-wp-icons-site-list">
@@ -133,19 +150,10 @@ final class Icons
 						</ul>
 					<?php endif; ?>
 				</div>
-
-				<p class="lumen-wp-actions-row">
-					<?php if (! empty($stored['zip']['url'])) : ?>
-						<a class="button button-primary" id="lumen-wp-icons-zip" href="<?php echo esc_url((string) $stored['zip']['url']); ?>">
-							<?php esc_html_e('Télécharger tout (ZIP)', 'lumen-wp'); ?>
-						</a>
-					<?php else : ?>
-						<a class="button button-primary" id="lumen-wp-icons-zip" href="#" hidden>
-							<?php esc_html_e('Télécharger tout (ZIP)', 'lumen-wp'); ?>
-						</a>
-					<?php endif; ?>
-				</p>
-			</section>
+				</div>
+			</div>
+			</div>
+			</div>
 		</div>
 		<?php
 	}

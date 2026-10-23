@@ -46,6 +46,21 @@ final class Tools
 		$urls_job         = Url_Queue::job();
 		$urls_last_errors = Url_Queue::last_error_ids();
 		$urls_running     = (($urls_job['status'] ?? '') === 'running');
+		$tab = isset($_GET['tab']) ? sanitize_key((string) wp_unslash($_GET['tab'])) : 'maintenance'; // phpcs:ignore WordPress.Security.NonceVerification
+		if (! in_array($tab, ['maintenance', 'urls', 'reports'], true)) {
+			$tab = 'maintenance';
+		}
+		ob_start();
+		if ($tab === 'maintenance') {
+			echo '<button type="button" class="button button-primary" id="lumen-wp-cleanup-run">';
+			esc_html_e('Lancer le nettoyage', 'lumen-wp');
+			echo '</button>';
+		} elseif ($tab === 'urls') {
+			echo '<button type="submit" class="button button-primary" id="lumen-wp-urls-rewrite" form="lumen-wp-urls-rewrite-form">';
+			esc_html_e('Réécrire', 'lumen-wp');
+			echo '</button>';
+		}
+		$header_actions = (string) ob_get_clean();
 
 		?>
 		<div class="wrap lumen-wp-wrap">
@@ -53,9 +68,29 @@ final class Tools
 			Brand::render_nav('tools');
 			Brand::render_header(
 				__('Outils', 'lumen-wp'),
-				__('Relancer un traitement bloqué, nettoyer les fichiers Lumen, restaurer un original.', 'lumen-wp')
+				__('Relancer un traitement bloqué, nettoyer les fichiers Lumen, restaurer un original.', 'lumen-wp'),
+				'',
+				$header_actions
 			);
-
+			$maintenance_url = admin_url('admin.php?page=lumen-wp-tools&tab=maintenance');
+			$urls_url        = admin_url('admin.php?page=lumen-wp-tools&tab=urls');
+			$reports_url     = admin_url('admin.php?page=lumen-wp-tools&tab=reports');
+			?>
+			<nav class="lumen-wp-seg" aria-label="<?php esc_attr_e('Sections outils', 'lumen-wp'); ?>">
+				<a class="lumen-wp-seg__item<?php echo $tab === 'maintenance' ? ' is-active' : ''; ?>" href="<?php echo esc_url($maintenance_url); ?>"<?php echo $tab === 'maintenance' ? ' aria-current="page"' : ''; ?>>
+					<span class="lumen-wp-seg__label"><?php esc_html_e('Maintenance', 'lumen-wp'); ?></span>
+				</a>
+				<a class="lumen-wp-seg__item<?php echo $tab === 'urls' ? ' is-active' : ''; ?>" href="<?php echo esc_url($urls_url); ?>"<?php echo $tab === 'urls' ? ' aria-current="page"' : ''; ?>>
+					<span class="lumen-wp-seg__label"><?php esc_html_e('URLs', 'lumen-wp'); ?></span>
+				</a>
+				<a class="lumen-wp-seg__item<?php echo $tab === 'reports' ? ' is-active' : ''; ?>" href="<?php echo esc_url($reports_url); ?>"<?php echo $tab === 'reports' ? ' aria-current="page"' : ''; ?>>
+					<span class="lumen-wp-seg__label"><?php esc_html_e('Rapports', 'lumen-wp'); ?></span>
+				</a>
+			</nav>
+			<?php if ($tab === 'maintenance') : ?>
+			<div class="lumen-wp-split">
+				<div class="lumen-wp-split__aside">
+			<?php
 			$status_labels = [
 				'idle'    => __('Inactif', 'lumen-wp'),
 				'running' => __('En cours', 'lumen-wp'),
@@ -135,7 +170,8 @@ final class Tools
 					</button>
 				</p>
 			</section>
-
+				</div>
+				<div class="lumen-wp-split__main">
 			<section class="lumen-wp-panel">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Nettoyage', 'lumen-wp'); ?></h2>
 				<p class="description">
@@ -150,15 +186,18 @@ final class Tools
 					data-label-backups="<?php echo esc_attr__('Sauvegardes', 'lumen-wp'); ?>"
 				>
 					<article class="lumen-wp-stat">
+						<span class="lumen-wp-stat__icon"><?php Brand::icon('image'); ?></span>
 						<span class="lumen-wp-stat__label"><?php esc_html_e('Médias', 'lumen-wp'); ?></span>
 						<strong class="lumen-wp-stat__value" data-preview="attachments"><?php echo esc_html((string) (int) $preview['attachments']); ?></strong>
 					</article>
 					<article class="lumen-wp-stat">
+						<span class="lumen-wp-stat__icon"><?php Brand::icon('bulk'); ?></span>
 						<span class="lumen-wp-stat__label"><?php esc_html_e('Variantes', 'lumen-wp'); ?></span>
 						<strong class="lumen-wp-stat__value" data-preview="sidecars"><?php echo esc_html((string) (int) $preview['sidecars']); ?></strong>
 						<span class="lumen-wp-stat__hint" data-preview="sidecar_bytes"><?php echo esc_html(Cleanup::format_bytes((int) $preview['sidecar_bytes'])); ?></span>
 					</article>
 					<article class="lumen-wp-stat">
+						<span class="lumen-wp-stat__icon"><?php Brand::icon('save'); ?></span>
 						<span class="lumen-wp-stat__label"><?php esc_html_e('Sauvegardes', 'lumen-wp'); ?></span>
 						<strong class="lumen-wp-stat__value" data-preview="backups"><?php echo esc_html((string) (int) $preview['backups']); ?></strong>
 						<span class="lumen-wp-stat__hint" data-preview="backup_bytes"><?php echo esc_html(Cleanup::format_bytes((int) $preview['backup_bytes'])); ?></span>
@@ -186,9 +225,6 @@ final class Tools
 				<p class="lumen-wp-actions-row">
 					<button type="button" class="button" id="lumen-wp-cleanup-refresh">
 						<?php esc_html_e('Recalculer', 'lumen-wp'); ?>
-					</button>
-					<button type="button" class="button button-primary" id="lumen-wp-cleanup-run">
-						<?php esc_html_e('Lancer le nettoyage', 'lumen-wp'); ?>
 					</button>
 				</p>
 				<p class="description" id="lumen-wp-cleanup-result" hidden></p>
@@ -222,7 +258,9 @@ final class Tools
 					<?php esc_html_e('Quand Lumen remplace un fichier image, une copie de l’original est gardée. Pour la récupérer : ouvrez la fiche média → « Restaurer l’original ».', 'lumen-wp'); ?>
 				</p>
 			</section>
-
+				</div>
+			</div>
+			<?php elseif ($tab === 'urls') : ?>
 			<section class="lumen-wp-panel" id="lumen-wp-urls-broken">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('URLs cassées', 'lumen-wp'); ?></h2>
 				<p class="description">
@@ -248,7 +286,7 @@ final class Tools
 						<span class="lumen-wp-choice__label"><?php esc_html_e('Parcours complet (ignorer « déjà propres »)', 'lumen-wp'); ?></span>
 					</label>
 				</p>
-				<p class="lumen-wp-actions-row">
+				<div class="lumen-wp-actions-row">
 					<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-inline-form lumen-wp-urls-form" data-urls-mode="diagnose">
 						<?php wp_nonce_field('lumen_wp_urls'); ?>
 						<input type="hidden" name="action" value="lumen_wp_urls_start" />
@@ -260,6 +298,7 @@ final class Tools
 						</button>
 					</form>
 					<form
+						id="lumen-wp-urls-rewrite-form"
 						method="post"
 						action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
 						class="lumen-wp-inline-form lumen-wp-urls-form"
@@ -271,9 +310,6 @@ final class Tools
 						<input type="hidden" name="mode" value="rewrite" />
 						<input type="hidden" name="force_restart" value="0" class="lumen-wp-urls-force-restart" />
 						<input type="hidden" name="force_full" value="0" class="lumen-wp-urls-force-full-field" />
-						<button type="submit" class="button button-primary" id="lumen-wp-urls-rewrite">
-							<?php esc_html_e('Réécrire', 'lumen-wp'); ?>
-						</button>
 					</form>
 					<form
 						method="post"
@@ -315,7 +351,7 @@ final class Tools
 							<?php esc_html_e('Arrêter', 'lumen-wp'); ?>
 						</button>
 					</form>
-				</p>
+				</div>
 				<div
 					class="lumen-wp-progress"
 					id="lumen-wp-urls-progress"
@@ -334,7 +370,7 @@ final class Tools
 				<ul class="lumen-wp-urls-errors" id="lumen-wp-urls-errors" hidden></ul>
 				<div id="lumen-wp-urls-results" class="lumen-wp-urls-results" hidden></div>
 			</section>
-
+			<?php elseif ($tab === 'reports') : ?>
 			<section class="lumen-wp-panel">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Rapports', 'lumen-wp'); ?></h2>
 				<p class="description">
@@ -351,21 +387,24 @@ final class Tools
 					<div class="lumen-wp-reports__block">
 						<h3 class="lumen-wp-reports__label"><?php esc_html_e('Audit médiathèque', 'lumen-wp'); ?></h3>
 						<p class="lumen-wp-reports__actions">
-							<a class="button" href="<?php echo esc_url(Reports::export_url('audit', 'csv')); ?>">CSV</a>
-							<a class="button" href="<?php echo esc_url(Reports::export_url('audit', 'xlsx')); ?>">Excel</a>
-							<a class="button" href="<?php echo esc_url(Reports::export_url('audit', 'pdf')); ?>">PDF</a>
+							<a class="button" href="<?php echo esc_url(Reports::export_url('audit', 'csv')); ?>"><?php Brand::icon('export'); ?>CSV</a>
+							<a class="button" href="<?php echo esc_url(Reports::export_url('audit', 'xlsx')); ?>"><?php Brand::icon('export'); ?>Excel</a>
+							<a class="button" href="<?php echo esc_url(Reports::export_url('audit', 'pdf')); ?>"><?php Brand::icon('export'); ?>PDF</a>
 						</p>
 					</div>
 					<div class="lumen-wp-reports__block">
 						<h3 class="lumen-wp-reports__label"><?php esc_html_e('Historique des traitements', 'lumen-wp'); ?></h3>
 						<p class="lumen-wp-reports__actions">
-							<a class="button" href="<?php echo esc_url(Reports::export_url('history', 'csv')); ?>">CSV</a>
-							<a class="button" href="<?php echo esc_url(Reports::export_url('history', 'xlsx')); ?>">Excel</a>
-							<a class="button" href="<?php echo esc_url(Reports::export_url('history', 'pdf')); ?>">PDF</a>
+							<a class="button" href="<?php echo esc_url(Reports::export_url('history', 'csv')); ?>"><?php Brand::icon('export'); ?>CSV</a>
+							<a class="button" href="<?php echo esc_url(Reports::export_url('history', 'xlsx')); ?>"><?php Brand::icon('export'); ?>Excel</a>
+							<a class="button" href="<?php echo esc_url(Reports::export_url('history', 'pdf')); ?>"><?php Brand::icon('export'); ?>PDF</a>
 						</p>
 					</div>
 				</div>
 			</section>
+			<?php endif; ?>
+			</div>
+			</div>
 		</div>
 		<?php
 	}

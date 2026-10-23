@@ -37,64 +37,108 @@ final class Brand
 	public static function render_nav(string $current): void
 	{
 		$pending = Validation::pending_count();
-		$bulk_label = __('Traitement', 'lumen-wp');
-		if ($pending > 0) {
-			$bulk_label = sprintf(
-				/* translators: %d: pending validation count */
-				__('Traitement (%d)', 'lumen-wp'),
-				$pending
-			);
-		}
 
 		$items = [
 			'dashboard' => [
 				'label' => __('Dashboard', 'lumen-wp'),
+				'sub'   => __('Vue d’ensemble', 'lumen-wp'),
 				'url'   => admin_url('admin.php?page=lumen-wp'),
 				'cap'   => 'upload_files',
 			],
 			'bulk'      => [
-				'label' => $bulk_label,
+				'label' => __('Traitement', 'lumen-wp'),
+				'sub'   => __('File et validation', 'lumen-wp'),
 				'url'   => admin_url('admin.php?page=lumen-wp-bulk'),
 				'cap'   => 'manage_options',
+				'count' => $pending,
 			],
 			'history'   => [
 				'label' => __('Historique', 'lumen-wp'),
+				'sub'   => __('Runs passés', 'lumen-wp'),
 				'url'   => admin_url('admin.php?page=lumen-wp-history'),
 				'cap'   => 'upload_files',
 			],
 			'audit'     => [
 				'label' => __('Audit', 'lumen-wp'),
+				'sub'   => __('SEO et GEO', 'lumen-wp'),
 				'url'   => admin_url('admin.php?page=lumen-wp-audit'),
 				'cap'   => 'manage_options',
 			],
 			'tools'     => [
 				'label' => __('Outils', 'lumen-wp'),
+				'sub'   => __('Maintenance, URLs', 'lumen-wp'),
 				'url'   => admin_url('admin.php?page=lumen-wp-tools'),
 				'cap'   => 'manage_options',
 			],
 			'icons'     => [
 				'label' => __('Icônes', 'lumen-wp'),
+				'sub'   => __('Favicon du site', 'lumen-wp'),
 				'url'   => admin_url('admin.php?page=lumen-wp-icons'),
 				'cap'   => 'upload_files',
 			],
 			'settings'  => [
 				'label' => __('Réglages', 'lumen-wp'),
+				'sub'   => __('Apparence, images, IA', 'lumen-wp'),
 				'url'   => admin_url('admin.php?page=lumen-wp-settings'),
 				'cap'   => 'manage_options',
 			],
 		];
+		$visible = [];
+		foreach ($items as $key => $item) {
+			if (! current_user_can($item['cap'])) {
+				continue;
+			}
+			$visible[$key] = $item;
+		}
+		$keys  = array_keys($visible);
+		$index = array_search($current, $keys, true);
 		?>
-		<nav class="lumen-wp-nav" aria-label="<?php esc_attr_e('Navigation Lumen', 'lumen-wp'); ?>">
-			<?php foreach ($items as $key => $item) : ?>
-				<?php if (! current_user_can($item['cap'])) : ?>
-					<?php continue; ?>
-				<?php endif; ?>
-				<a
-					class="lumen-wp-nav__link<?php echo $key === $current ? ' is-active' : ''; ?>"
-					href="<?php echo esc_url($item['url']); ?>"
-				><?php echo esc_html($item['label']); ?></a>
-			<?php endforeach; ?>
-		</nav>
+		<div class="lumen-wp-shell">
+			<nav class="lumen-wp-nav" aria-label="<?php esc_attr_e('Navigation Lumen', 'lumen-wp'); ?>">
+				<a class="lumen-wp-nav__logo" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp')); ?>">
+					<img src="<?php echo esc_url(self::logo_url()); ?>" alt="" class="lumen-wp-nav__mark" width="28" height="28" />
+					<span class="lumen-wp-nav__name"><?php esc_html_e('Lumen', 'lumen-wp'); ?></span>
+					<span class="lumen-wp-nav__version"><?php echo esc_html(LUMEN_WP_VERSION); ?></span>
+				</a>
+				<ul class="lumen-wp-nav__tabs">
+					<li class="lumen-wp-nav__item">
+						<span class="lumen-wp-nav__link lumen-wp-nav__link--cap<?php echo $index === 0 ? ' is-top' : ''; ?>" aria-hidden="true"></span>
+					</li>
+					<?php foreach ($visible as $key => $item) : ?>
+						<?php
+						$pos = array_search($key, $keys, true);
+						$patte = '';
+						if ($index !== false && $pos === $index - 1) {
+							$patte = ' is-top';
+						} elseif ($index !== false && $pos === $index + 1) {
+							$patte = ' is-bottom';
+						}
+						?>
+						<li class="lumen-wp-nav__item<?php echo $key === $current ? ' is-active' : ''; ?>">
+						<a
+							class="lumen-wp-nav__link<?php echo $key === $current ? ' is-active' : ''; ?><?php echo esc_attr($patte); ?>"
+							href="<?php echo esc_url($item['url']); ?>"
+							<?php echo $key === $current ? 'aria-current="page"' : ''; ?>
+						>
+							<span class="lumen-wp-nav__copy">
+								<span class="lumen-wp-nav__label">
+									<?php echo esc_html($item['label']); ?>
+									<?php if (! empty($item['count'])) : ?>
+										<span class="lumen-wp-nav__count"><?php echo esc_html((string) $item['count']); ?></span>
+									<?php endif; ?>
+								</span>
+								<span class="lumen-wp-nav__sub"><?php echo esc_html($item['sub']); ?></span>
+							</span>
+							<?php self::icon($key); ?>
+						</a>
+						</li>
+					<?php endforeach; ?>
+					<li class="lumen-wp-nav__item">
+						<span class="lumen-wp-nav__link lumen-wp-nav__link--cap<?php echo ($index !== false && $index === count($keys) - 1) ? ' is-bottom' : ''; ?>" aria-hidden="true"></span>
+					</li>
+				</ul>
+			</nav>
+			<div class="lumen-wp-sheet">
 		<?php
 	}
 
@@ -146,7 +190,7 @@ final class Brand
 	/**
 	 * Branded page / panel header 
 	 */
-	public static function render_header(string $title, string $subtitle = '', string $eyebrow = ''): void
+	public static function render_header(string $title, string $subtitle = '', string $eyebrow = '', string $actions = ''): void
 	{
 		if ($eyebrow === '') {
 			$eyebrow = sprintf(
@@ -171,7 +215,148 @@ final class Brand
 					<p class="lumen-wp-brand__subtitle"><?php echo esc_html($subtitle); ?></p>
 				<?php endif; ?>
 			</div>
+			<?php if ($actions !== '') : ?>
+				<div class="lumen-wp-brand__actions">
+					<?php echo $actions; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- HTML déjà échappé par l’appelant. ?>
+				</div>
+			<?php endif; ?>
 		</header>
 		<?php
+	}
+
+	public static function icon(string $name): void
+	{
+		echo self::render_svg($name, self::icon_paths(), 'lumen-wp-icon'); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	}
+
+	public static function scene(string $name): void
+	{
+		echo self::render_svg($name, self::scene_paths(), 'lumen-wp-scene'); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	}
+
+	/**
+	 * @param array<string, list<string>> $sets
+	 */
+	private static function render_svg(string $name, array $sets, string $class): string
+	{
+		if (! isset($sets[$name])) {
+			return '';
+		}
+
+		$body = '';
+		if ($class === 'lumen-wp-scene') {
+			$body .= '<circle class="lumen-wp-scene__plate" cx="12" cy="12" r="10" fill="currentColor" stroke="none"/>';
+		}
+		foreach ($sets[$name] as $d) {
+			$body .= '<path pathLength="1" d="' . esc_attr($d) . '"/>';
+		}
+
+		return '<svg class="' . esc_attr($class . ' ' . $class . '--' . $name) . '" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' . $body . '</svg>';
+	}
+
+	/**
+	 * @return array<string, list<string>>
+	 */
+	private static function icon_paths(): array
+	{
+		return [
+			'dashboard' => [
+				'M4 4h6v6H4z',
+				'M14 4h6v6h-6z',
+				'M4 14h6v6H4z',
+				'M14 14h6v6h-6z',
+			],
+			'bulk' => [
+				'M12 3l8 4-8 4-8-4 8-4z',
+				'M4 12l8 4 8-4',
+				'M4 16l8 4 8-4',
+			],
+			'history' => [
+				'M4 17h16',
+				'M8 17V9',
+				'M12 17V6',
+				'M16 17V12',
+			],
+			'audit' => [
+				'M12 3v3',
+				'M12 18v3',
+				'M3 12h3',
+				'M18 12h3',
+				'M12 8a4 4 0 1 0 0.01 0',
+			],
+			'tools' => [
+				'M14 7l3 3-8 8H6v-3l8-8z',
+			],
+			'icons' => [
+				'M4 4h6v6H4z',
+				'M14 5l5 3-5 3-5-3 5-3z',
+				'M9 15a3 3 0 1 0 0.01 0',
+			],
+			'settings' => [
+				'M4 8h16',
+				'M4 16h16',
+				'M9 6v4',
+				'M15 14v4',
+			],
+			'validate' => [
+				'M5 12l5 5L20 7',
+			],
+			'export' => [
+				'M12 4v10',
+				'M8 10l4 4 4-4',
+				'M5 19h14',
+			],
+			'alert' => [
+				'M12 9v4',
+				'M12 17h.01',
+				'M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z',
+			],
+			'image' => [
+				'M4 5h16v14H4z',
+				'M4 15l4.5-4.5 3 3L15 10l5 5',
+				'M9 9.2h.01',
+			],
+			'bolt' => [
+				'M13 2L4 14h7l-1 8 9-12h-7l1-8z',
+			],
+			'save' => [
+				'M5 4h11l3 3v13H5z',
+				'M8 4v5h8V4',
+				'M8 20v-6h8v6',
+			],
+		];
+	}
+
+	/**
+	 * @return array<string, list<string>>
+	 */
+	private static function scene_paths(): array
+	{
+		return [
+			'history' => [
+				'M7 16.5h10',
+				'M7.5 13.5l2.8-3 2.2 2.1 3.8-4.6',
+			],
+			'bulk' => [
+				'M12 5.5l6.2 3.1L12 11.7 5.8 8.6 12 5.5z',
+				'M6.2 12.2l5.8 2.9 5.8-2.9',
+				'M6.2 15.4l5.8 2.9 5.8-2.9',
+			],
+			'validate' => [
+				'M8.2 12.2l2.5 2.5 5.1-5.4',
+			],
+			'audit' => [
+				'M12 8a4 4 0 1 0 0.01 0',
+				'M12 5.2v1.5',
+				'M12 17.3v1.5',
+				'M5.2 12h1.5',
+				'M17.3 12h1.5',
+			],
+			'icons' => [
+				'M6.2 6.4h4v4h-4z',
+				'M15.6 6.2l2.3 4H13.3z',
+				'M8.4 16.4a1.7 1.7 0 1 0 0.01 0',
+			],
+		];
 	}
 }

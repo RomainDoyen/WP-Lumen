@@ -119,6 +119,22 @@ final class Validation
 		exit;
 	}
 
+	public static function header_action(): string
+	{
+		$page   = max(1, (int) ($_GET['paged'] ?? 1)); // phpcs:ignore WordPress.Security.NonceVerification
+		$offset = ($page - 1) * self::PER_PAGE;
+		$ids    = self::pending_ids(self::PER_PAGE, $offset);
+		if ($ids === []) {
+			return '';
+		}
+		ob_start();
+		echo '<button type="submit" class="button button-primary" form="lumen-wp-validation-form" name="bulk_action" value="approve">';
+		Brand::icon('validate');
+		esc_html_e('Approuver la page', 'lumen-wp');
+		echo '</button>';
+		return (string) ob_get_clean();
+	}
+
 	/**
 	 * Panel content for Traitement → À valider (no outer wrap/nav).
 	 */
@@ -140,49 +156,53 @@ final class Validation
 			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Action groupée effectuée.', 'lumen-wp') . '</p></div>';
 		}
 		?>
-		<section class="lumen-wp-panel">
-			<p class="description">
-				<?php
-				printf(
-					/* translators: %d: pending count */
-					esc_html(_n('%d média en attente', '%d médias en attente', $total, 'lumen-wp')),
-					$total
-				);
-				?>
-			</p>
-
-			<?php if ($ids === []) : ?>
-				<p><?php esc_html_e('Aucune métadonnée en attente de validation. Lancez un traitement avec IA + validation pour remplir cette file.', 'lumen-wp'); ?></p>
-			<?php else : ?>
-				<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-actions-row lumen-wp-validation-bulk">
-					<?php wp_nonce_field('lumen_wp_validation_bulk'); ?>
-					<input type="hidden" name="action" value="lumen_wp_validation_bulk" />
-					<input type="hidden" name="ids" value="<?php echo esc_attr(implode(',', $ids)); ?>" />
-					<button type="submit" name="bulk_action" value="approve" class="button button-primary">
-						<?php esc_html_e('Approuver la page', 'lumen-wp'); ?>
-					</button>
-					<button type="submit" name="bulk_action" value="reject" class="button">
-						<?php esc_html_e('Rejeter la page', 'lumen-wp'); ?>
-					</button>
-				</form>
-
-				<?php foreach ($ids as $id) : ?>
-					<?php self::render_card($id); ?>
-				<?php endforeach; ?>
-
-				<?php if ($pages > 1) : ?>
-					<p class="lumen-wp-actions-row">
-						<?php if ($page > 1) : ?>
-							<a class="button" href="<?php echo esc_url(add_query_arg('paged', $page - 1, $base)); ?>"><?php esc_html_e('Précédent', 'lumen-wp'); ?></a>
-						<?php endif; ?>
-						<span class="description"><?php echo esc_html($page . ' / ' . $pages); ?></span>
-						<?php if ($page < $pages) : ?>
-							<a class="button" href="<?php echo esc_url(add_query_arg('paged', $page + 1, $base)); ?>"><?php esc_html_e('Suivant', 'lumen-wp'); ?></a>
-						<?php endif; ?>
-					</p>
+		<div class="lumen-wp-split">
+			<div class="lumen-wp-split__main">
+				<?php if ($ids === []) : ?>
+					<section class="lumen-wp-panel">
+						<p><?php Brand::scene('validate'); ?><?php esc_html_e('Aucune métadonnée en attente de validation. Lancez un traitement avec IA + validation pour remplir cette file.', 'lumen-wp'); ?></p>
+					</section>
+				<?php else : ?>
+					<?php foreach ($ids as $id) : ?>
+						<?php self::render_card($id); ?>
+					<?php endforeach; ?>
+					<?php if ($pages > 1) : ?>
+						<p class="lumen-wp-actions-row">
+							<?php if ($page > 1) : ?>
+								<a class="button" href="<?php echo esc_url(add_query_arg('paged', $page - 1, $base)); ?>"><?php esc_html_e('Précédent', 'lumen-wp'); ?></a>
+							<?php endif; ?>
+							<span class="description"><?php echo esc_html($page . ' / ' . $pages); ?></span>
+							<?php if ($page < $pages) : ?>
+								<a class="button" href="<?php echo esc_url(add_query_arg('paged', $page + 1, $base)); ?>"><?php esc_html_e('Suivant', 'lumen-wp'); ?></a>
+							<?php endif; ?>
+						</p>
+					<?php endif; ?>
 				<?php endif; ?>
-			<?php endif; ?>
-		</section>
+			</div>
+			<div class="lumen-wp-split__aside">
+				<section class="lumen-wp-panel">
+					<p class="description">
+						<?php
+						printf(
+							/* translators: %d: pending count */
+							esc_html(_n('%d média en attente', '%d médias en attente', $total, 'lumen-wp')),
+							$total
+						);
+						?>
+					</p>
+					<?php if ($ids !== []) : ?>
+						<form id="lumen-wp-validation-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-actions-row lumen-wp-validation-bulk">
+							<?php wp_nonce_field('lumen_wp_validation_bulk'); ?>
+							<input type="hidden" name="action" value="lumen_wp_validation_bulk" />
+							<input type="hidden" name="ids" value="<?php echo esc_attr(implode(',', $ids)); ?>" />
+							<button type="submit" name="bulk_action" value="reject" class="button">
+								<?php esc_html_e('Rejeter la page', 'lumen-wp'); ?>
+							</button>
+						</form>
+					<?php endif; ?>
+				</section>
+			</div>
+		</div>
 		<?php
 	}
 
@@ -262,6 +282,7 @@ final class Validation
 					</div>
 					<div class="lumen-wp-validation-card__actions">
 						<button type="submit" name="item_action" value="approve" class="button button-primary">
+							<?php Brand::icon('validate'); ?>
 							<?php esc_html_e('Approuver', 'lumen-wp'); ?>
 						</button>
 						<button type="submit" name="item_action" value="reject" class="button">

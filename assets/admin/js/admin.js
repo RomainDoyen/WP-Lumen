@@ -865,14 +865,16 @@
     var $ul = $('#lumen-wp-bulk-history');
     if (!$ul.length) return;
 
+    var $scene = $ul.find('.lumen-wp-scene--history').first().detach();
     var rows = history || [];
     $ul.empty();
     if (!rows.length) {
-      $ul.append(
-        $('<li class="lumen-wp-history__empty" id="lumen-wp-bulk-history-empty"/>').text(
-          'Aucun traitement terminé pour le moment.'
-        )
-      );
+      var $li = $('<li class="lumen-wp-history__empty" id="lumen-wp-bulk-history-empty"/>');
+      if ($scene.length) {
+        $li.append($scene);
+      }
+      $li.append(document.createTextNode('Aucun traitement terminé pour le moment.'));
+      $ul.append($li);
       return;
     }
 
@@ -940,7 +942,7 @@
   }
 
   function applyBulkJob(job, meta) {
-    if (!job) return;
+    if (!job || !$('#lumen-wp-bulk-status-text').length) return;
     var status = job.status || 'idle';
     var processed = parseInt(job.processed, 10) || 0;
     var total = parseInt(job.total_estimate, 10) || 0;
@@ -1068,12 +1070,6 @@
     }
   }
 
-  $(function () {
-    if ($('#lumen-wp-bulk-start').length) {
-      pollBulkStatus();
-      refreshBulkEstimate();
-    }
-  });
 
   $(document).on('click', '#lumen-wp-use-ai-label[data-ai-locked="1"]', function (e) {
     e.preventDefault();
@@ -1380,7 +1376,7 @@
     $('.lumen-wp-metabox')
       .removeClass('lumen-wp-theme-dark lumen-wp-theme-light')
       .addClass('lumen-wp-theme-' + next);
-    var bg = next === 'light' ? '#f5f5f4' : '#0c0a09';
+    var bg = next === 'light' ? '#c5bed4' : '#0c0a09';
     var $crit = $('#lumen-wp-critical');
     if ($crit.length) {
       $crit.text(
@@ -1395,11 +1391,6 @@
     applyUiThemePreview($(this).val());
   });
 
-  $(function () {
-    enhanceAllCustomSelects('.lumen-wp-wrap');
-    enhanceAllNumberSteppers('.lumen-wp-wrap');
-    refreshAiProviderUi({ skipFetch: false, force: false });
-  });
 
   $(document).on('click', '.lumen-wp-api-key__toggle', function (e) {
     e.preventDefault();
@@ -1469,6 +1460,7 @@
     });
 
     var siteBox = $('#lumen-wp-icons-site').empty();
+    var aside = siteBox.closest('.lumen-wp-split__aside');
     if (data.site && Object.keys(data.site).length) {
       siteBox.append('<h3 class="lumen-wp-panel__title">Favicons site</h3>');
       var ul = $('<ul class="lumen-wp-icons-site-list"/>');
@@ -1485,10 +1477,14 @@
         );
       });
       siteBox.append(ul);
+      aside.prop('hidden', false);
+    } else {
+      aside.prop('hidden', true);
     }
 
     if (data.zip && data.zip.url) {
       $('#lumen-wp-icons-zip').attr('href', data.zip.url).prop('hidden', false);
+      syncIconsHeader();
     }
 
     $('#lumen-wp-icons-results').prop('hidden', false);
@@ -1533,6 +1529,7 @@
     if (files && files[0]) {
       iconsFile = files[0];
       $('#lumen-wp-icons-generate').prop('disabled', false);
+      syncIconsHeader();
       iconsStatus(iconsFile.name);
     }
   });
@@ -1542,6 +1539,7 @@
     if (!f) return;
     iconsFile = f;
     $('#lumen-wp-icons-generate').prop('disabled', false);
+    syncIconsHeader();
     iconsStatus(f.name);
   });
 
@@ -1550,6 +1548,7 @@
     iconsFile = null;
     $('#lumen-wp-icons-file').val('');
     $('#lumen-wp-icons-generate').prop('disabled', true);
+    syncIconsHeader();
     iconsStatus('');
   });
 
@@ -1629,6 +1628,18 @@
     return (n / (1024 * 1024)).toFixed(2) + ' MB';
   }
 
+  function lumenStatIcon(name) {
+    var paths = {
+      image: ['M4 5h16v14H4z', 'M4 15l4.5-4.5 3 3L15 10l5 5', 'M9 9.2h.01'],
+      bulk: ['M12 3l8 4-8 4-8-4 8-4z', 'M4 12l8 4 8-4', 'M4 16l8 4 8-4'],
+      save: ['M5 4h11l3 3v13H5z', 'M8 4v5h8V4', 'M8 20v-6h8v6']
+    };
+    var body = (paths[name] || []).map(function (d) {
+      return '<path pathLength="1" d="' + d + '"/>';
+    }).join('');
+    return '<svg class="lumen-wp-icon lumen-wp-icon--' + name + '" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + body + '</svg>';
+  }
+
   function renderCleanupPreview(p) {
     var $root = $('#lumen-wp-cleanup-preview');
     if (!p || !$root.length) return;
@@ -1647,6 +1658,7 @@
     var lb = $root.data('label-backups') || 'Sauvegardes';
     $root.html(
       '<article class="lumen-wp-stat">' +
+        '<span class="lumen-wp-stat__icon">' + lumenStatIcon('image') + '</span>' +
         '<span class="lumen-wp-stat__label">' +
         li +
         '</span>' +
@@ -1655,6 +1667,7 @@
         '</strong>' +
         '</article>' +
         '<article class="lumen-wp-stat">' +
+        '<span class="lumen-wp-stat__icon">' + lumenStatIcon('bulk') + '</span>' +
         '<span class="lumen-wp-stat__label">' +
         lv +
         '</span>' +
@@ -1666,6 +1679,7 @@
         '</span>' +
         '</article>' +
         '<article class="lumen-wp-stat">' +
+        '<span class="lumen-wp-stat__icon">' + lumenStatIcon('save') + '</span>' +
         '<span class="lumen-wp-stat__label">' +
         lb +
         '</span>' +
@@ -2153,11 +2167,6 @@
       });
   }
 
-  $(function () {
-    if ($('#lumen-wp-urls-diagnose').length) {
-      pollUrlsStatus();
-    }
-  });
 
   $(document).on('submit', '.lumen-wp-urls-form', function (e) {
     e.preventDefault();
@@ -2170,7 +2179,11 @@
     var forceFull =
       mode !== 'retry' && $('#lumen-wp-urls-force-full').is(':checked') ? 1 : 0;
     $form.find('.lumen-wp-urls-force-full-field').val(forceFull ? '1' : '0');
-    startUrlsJob(mode, $form.find('button[type="submit"]'), false);
+    var $btn = $form.find('button[type="submit"]');
+    if (!$btn.length && this.id) {
+      $btn = $('button[type="submit"][form="' + this.id + '"]');
+    }
+    startUrlsJob(mode, $btn, false);
   });
 
   $(document).on('submit', '#lumen-wp-urls-tick-form', function (e) {
@@ -2209,10 +2222,14 @@
   });
 
   // —— Historique : modale détails ——
-  var historyModal = document.getElementById('lumen-wp-history-modal');
   var historyFocus = null;
 
+  function historyModalEl() {
+    return document.getElementById('lumen-wp-history-modal');
+  }
+
   function closeHistoryModal() {
+    var historyModal = historyModalEl();
     if (!historyModal) return;
     historyModal.hidden = true;
     historyModal.setAttribute('aria-hidden', 'true');
@@ -2225,6 +2242,7 @@
   }
 
   function openHistoryModal() {
+    var historyModal = historyModalEl();
     if (!historyModal) return;
     historyFocus = document.activeElement;
     historyModal.hidden = false;
@@ -2335,9 +2353,6 @@
 
   $(document).on('click', '.lumen-wp-history-detail', function (e) {
     e.preventDefault();
-    if (!historyModal) {
-      historyModal = document.getElementById('lumen-wp-history-modal');
-    }
     var id = $(this).data('id');
     if (!id) return;
     var body = document.getElementById('lumen-wp-history-modal-body');
@@ -2371,9 +2386,325 @@
   });
 
   $(document).on('keydown', function (e) {
+    var historyModal = historyModalEl();
     if (e.key === 'Escape' && historyModal && !historyModal.hidden) {
       closeHistoryModal();
     }
+  });
+
+  // —— Navigation interne (pas de rechargement WP) ——
+  var lumenNavSeq = 0;
+  var lumenPageCache = {};
+  var lumenPrefetch = {};
+  var LUMEN_CACHE_MS = 12000;
+
+  function lumenLocation(href) {
+    if (!href) return null;
+    var url;
+    try {
+      url = new URL(href, window.location.href);
+    } catch (err) {
+      return null;
+    }
+    if (url.origin !== window.location.origin) return null;
+    if (!/\/admin\.php$/.test(url.pathname || '')) return null;
+    var page = url.searchParams.get('page') || '';
+    if (page !== 'lumen-wp' && page.indexOf('lumen-wp-') !== 0) return null;
+    url.hash = '';
+    return url;
+  }
+
+  function sameLumenQuery(a, b) {
+    if (!a || !b || a.pathname !== b.pathname) return false;
+    var seen = {};
+    var params = [a.searchParams, b.searchParams];
+    var i;
+    for (i = 0; i < params.length; i++) {
+      params[i].forEach(function (_value, key) {
+        seen[key] = true;
+      });
+    }
+    var keys = Object.keys(seen);
+    for (i = 0; i < keys.length; i++) {
+      if (a.searchParams.get(keys[i]) !== b.searchParams.get(keys[i])) return false;
+    }
+    return true;
+  }
+
+  function rememberLumenPage(url, html) {
+    lumenPageCache[url] = { html: html, at: Date.now() };
+  }
+
+  function cachedLumenPage(url) {
+    var hit = lumenPageCache[url];
+    if (!hit) return null;
+    if (Date.now() - hit.at > LUMEN_CACHE_MS) {
+      delete lumenPageCache[url];
+      return null;
+    }
+    return hit.html;
+  }
+
+  function fetchLumenPage(url) {
+    if (lumenPrefetch[url]) return lumenPrefetch[url];
+    var xhr = $.ajax({ url: url, method: 'GET', dataType: 'html' });
+    lumenPrefetch[url] = xhr;
+    xhr.always(function () {
+      if (lumenPrefetch[url] === xhr) delete lumenPrefetch[url];
+    });
+    return xhr;
+  }
+
+  function prefetchLumen(url) {
+    if (cachedLumenPage(url)) return;
+    fetchLumenPage(url).done(function (html, _status, xhr) {
+      var finalUrl = (xhr && xhr.responseURL) || url;
+      rememberLumenPage(url, html);
+      if (finalUrl !== url) rememberLumenPage(finalUrl, html);
+    });
+  }
+
+  function paintLumenActive(url) {
+    var dest = lumenLocation(url);
+    if (!dest) return;
+    var page = dest.searchParams.get('page');
+    document.querySelectorAll('.lumen-wp-nav__tabs .lumen-wp-nav__item').forEach(function (item) {
+      var link = item.querySelector('.lumen-wp-nav__link');
+      if (!link) return;
+      var loc = lumenLocation(link.href);
+      var on = !!(loc && loc.searchParams.get('page') === page);
+      item.classList.toggle('is-active', on);
+      link.classList.toggle('is-active', on);
+      if (on) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    });
+    paintLumenPatte();
+    document.querySelectorAll('.lumen-wp-seg__item').forEach(function (link) {
+      var loc = lumenLocation(link.href);
+      var on = !!(loc && loc.searchParams.get('page') === page);
+      if (on) {
+        ['tab', 'status'].forEach(function (key) {
+          if (!loc.searchParams.has(key) && !dest.searchParams.has(key)) return;
+          var fallback = key === 'tab' ? 'launch' : 'all';
+          var left = loc.searchParams.get(key) || fallback;
+          var right = dest.searchParams.get(key) || fallback;
+          if (left !== right) on = false;
+        });
+      }
+      link.classList.toggle('is-active', on);
+      if (on) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    });
+  }
+
+  function paintLumenPatte() {
+    var tabs = document.querySelector('.lumen-wp-nav__tabs');
+    if (!tabs) return;
+    tabs.querySelectorAll('.lumen-wp-nav__link').forEach(function (link) {
+      link.classList.remove('is-top', 'is-bottom');
+    });
+    var active = tabs.querySelector('.lumen-wp-nav__link.is-active');
+    if (!active) return;
+    var item = active.closest('.lumen-wp-nav__item');
+    if (!item) return;
+    var prev = item.previousElementSibling && item.previousElementSibling.querySelector('.lumen-wp-nav__link');
+    var next = item.nextElementSibling && item.nextElementSibling.querySelector('.lumen-wp-nav__link');
+    if (prev) prev.classList.add('is-top');
+    if (next) next.classList.add('is-bottom');
+  }
+
+  function syncWpSubmenu(url) {
+    var dest = lumenLocation(url);
+    var root = document.getElementById('toplevel_page_lumen-wp');
+    if (!dest || !root) return;
+    var page = dest.searchParams.get('page');
+    root.querySelectorAll('.wp-submenu a').forEach(function (link) {
+      var loc = lumenLocation(link.href);
+      var on = !!(loc && loc.searchParams.get('page') === page);
+      link.classList.toggle('current', on);
+      if (link.parentElement) link.parentElement.classList.toggle('current', on);
+      if (on) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    });
+  }
+
+  function bootLumenScreen() {
+    var wrap = document.querySelector('.lumen-wp-wrap');
+    if (!wrap) return;
+    enhanceAllCustomSelects(wrap);
+    enhanceAllNumberSteppers(wrap);
+    refreshAiProviderUi({ skipFetch: false, force: false });
+    if ($('#lumen-wp-bulk-start').length) {
+      pollBulkStatus();
+      refreshBulkEstimate();
+    } else {
+      stopBulkPoll();
+    }
+    if ($('#lumen-wp-urls-diagnose').length) {
+      pollUrlsStatus();
+    } else {
+      stopUrlsPoll();
+    }
+    bootSettingsTabs();
+  }
+
+  function syncIconsHeader() {
+    var generate = $('#lumen-wp-icons-generate');
+    var zip = $('#lumen-wp-icons-zip');
+    var zipOn = zip.length && !zip.is('[hidden]') && zip.attr('href') && zip.attr('href') !== '#';
+    var fileReady = generate.length && !generate.prop('disabled');
+    var zipPrimary = zipOn && !fileReady;
+    generate.toggleClass('button-primary', !zipPrimary);
+    zip.toggleClass('button-primary', zipPrimary);
+  }
+
+  function bootSettingsTabs() {
+    var root = document.querySelector('.lumen-wp-wrap');
+    if (!root) return;
+    var seg = root.querySelector('[data-lumen-settings-tabs]');
+    if (!seg || seg.getAttribute('data-lumen-settings-ready') === '1') return;
+    seg.setAttribute('data-lumen-settings-ready', '1');
+    var panels = root.querySelectorAll('[data-lumen-settings-panel]');
+    function show(name) {
+      panels.forEach(function (panel) {
+        if (panel.getAttribute('data-lumen-settings-panel') === name) {
+          panel.removeAttribute('hidden');
+        } else {
+          panel.setAttribute('hidden', '');
+        }
+      });
+      seg.querySelectorAll('[data-lumen-settings-tab]').forEach(function (btn) {
+        var on = btn.getAttribute('data-lumen-settings-tab') === name;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+    seg.addEventListener('click', function (event) {
+      var btn = event.target.closest('[data-lumen-settings-tab]');
+      if (!btn || !seg.contains(btn)) return;
+      show(btn.getAttribute('data-lumen-settings-tab'));
+    });
+    show('appearance');
+  }
+
+  function applyLumenHtml(html, url, push, seq, keyboard) {
+    if (seq !== lumenNavSeq) return;
+    var doc;
+    try {
+      doc = new DOMParser().parseFromString(html, 'text/html');
+    } catch (err) {
+      window.location.assign(url);
+      return;
+    }
+    var nextSheet = doc.querySelector('.lumen-wp-sheet');
+    var current = document.querySelector('.lumen-wp-wrap');
+    var currentSheet = current ? current.querySelector('.lumen-wp-sheet') : null;
+    if (!nextSheet || !currentSheet) {
+      window.location.assign(url);
+      return;
+    }
+    closeHistoryModal();
+    stopBulkPoll();
+    stopUrlsPoll();
+    var imported = document.importNode(nextSheet, true);
+    imported.classList.remove('is-switching');
+    imported.removeAttribute('aria-busy');
+    currentSheet.replaceWith(imported);
+    if (current) current.classList.add('is-booted');
+    if (push) {
+      window.history.pushState({ lumenNav: 1 }, '', url);
+    }
+    if (doc.title) document.title = doc.title;
+    if (doc.body) {
+      var themeMatch = String(doc.body.className || '').match(/lumen-wp-theme-(light|dark)/);
+      if (themeMatch) {
+        document.body.classList.remove('lumen-wp-theme-light', 'lumen-wp-theme-dark');
+        document.body.classList.add('lumen-wp-theme-' + themeMatch[1]);
+      }
+    }
+    syncWpSubmenu(url);
+    bootLumenScreen();
+    if (keyboard) {
+      var focusEl = imported.querySelector('.lumen-wp-seg__item.is-active');
+      if (focusEl && typeof focusEl.focus === 'function') {
+        focusEl.focus({ preventScroll: true });
+      }
+    }
+  }
+
+  function navigateLumen(url, push, keyboard) {
+    var seq = ++lumenNavSeq;
+    var wrap = document.querySelector('.lumen-wp-wrap');
+    var sheet = wrap ? wrap.querySelector('.lumen-wp-sheet') : null;
+    if (!wrap || !sheet) {
+      window.location.assign(url);
+      return;
+    }
+    sheet.classList.add('is-switching');
+    sheet.setAttribute('aria-busy', 'true');
+    paintLumenActive(url);
+
+    var cached = cachedLumenPage(url);
+    if (cached) {
+      applyLumenHtml(cached, url, push, seq, keyboard);
+      return;
+    }
+
+    fetchLumenPage(url)
+      .done(function (html, _status, xhr) {
+        var finalUrl = (xhr && xhr.responseURL) || url;
+        rememberLumenPage(url, html);
+        if (finalUrl !== url) rememberLumenPage(finalUrl, html);
+        applyLumenHtml(html, finalUrl, push, seq, keyboard);
+      })
+      .fail(function (_xhr, status) {
+        if (status === 'abort' || seq !== lumenNavSeq) return;
+        window.location.assign(url);
+      });
+  }
+
+  $(document).on('mouseenter', '.lumen-wp-nav__link, .lumen-wp-seg__item', function () {
+    var dest = lumenLocation(this.href);
+    if (!dest) return;
+    var here = lumenLocation(window.location.href);
+    if (sameLumenQuery(here, dest)) return;
+    prefetchLumen(dest.href);
+  });
+
+  $(document).on('click', '.lumen-wp-wrap a', function (e) {
+    if (e.defaultPrevented) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (typeof e.button === 'number' && e.button !== 0) return;
+    if (this.hasAttribute('download')) return;
+    var target = (this.getAttribute('target') || '').toLowerCase();
+    if (target && target !== '_self') return;
+    var raw = this.getAttribute('href') || '';
+    if (!raw || raw.charAt(0) === '#') return;
+    var dest = lumenLocation(this.href);
+    if (!dest) return;
+    var here = lumenLocation(window.location.href);
+    if (sameLumenQuery(here, dest)) {
+      if ((this.hash || '') !== '' && this.hash !== window.location.hash) return;
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    navigateLumen(dest.href, true, e.detail === 0);
+  });
+
+  window.addEventListener('popstate', function () {
+    if (!document.querySelector('.lumen-wp-wrap')) return;
+    if (!lumenLocation(window.location.href)) return;
+    navigateLumen(window.location.href, false, false);
+  });
+
+  $(function () {
+    paintLumenActive(window.location.href);
+    bootLumenScreen();
+    window.setTimeout(function () {
+      var wrap = document.querySelector('.lumen-wp-wrap');
+      if (wrap) wrap.classList.add('is-booted');
+    }, 600);
   });
 
 })(jQuery);

@@ -68,118 +68,62 @@ final class Audit
 		}
 
 		$has_items = is_array($report) && ! empty($report['items']);
+		$score     = 0;
+		$circ      = 0.0;
+		$offset    = 0.0;
+		if (is_array($report)) {
+			$score  = max(0, min(100, (int) ($report['score'] ?? 0)));
+			$circ   = 2 * M_PI * 15.5;
+			$offset = $circ * (1 - ($score / 100));
+		}
+		ob_start();
+		echo '<button type="submit" class="button button-primary" form="lumen-wp-audit-form" name="lumen_wp_run_audit" value="1">';
+		esc_html_e('Lancer l’analyse', 'lumen-wp');
+		echo '</button>';
+		$header_actions = (string) ob_get_clean();
 		?>
 		<div class="wrap lumen-wp-wrap lumen-wp-theme-<?php echo esc_attr($theme); ?>">
 			<?php
 			Brand::render_nav('audit');
 			Brand::render_header(
 				__('Audit SEO & GEO', 'lumen-wp'),
-				__('Analyse on-page, médias, signaux GEO et correctifs assistés.', 'lumen-wp')
+				__('Analyse on-page, médias, signaux GEO et correctifs assistés.', 'lumen-wp'),
+				'',
+				$header_actions
 			);
 			?>
 
 			<?php settings_errors('lumen_wp_audit'); ?>
 
-			<section class="lumen-wp-audit-top">
+			<div class="lumen-wp-split">
+				<div class="lumen-wp-split__main">
 				<div class="lumen-wp-panel lumen-wp-audit-run">
+					<?php if ($report === null) : ?>
+						<?php Brand::scene('audit'); ?>
+					<?php endif; ?>
 					<p class="description"><?php esc_html_e('Identifie les images, vidéos et pages à corriger. Chaque correctif demande confirmation.', 'lumen-wp'); ?></p>
-					<div class="lumen-wp-actions-row">
-						<form method="post">
-							<?php wp_nonce_field('lumen_wp_run_audit'); ?>
-							<button type="submit" name="lumen_wp_run_audit" value="1" class="button button-primary"><?php esc_html_e('Lancer l’analyse', 'lumen-wp'); ?></button>
-						</form>
-						<?php if (is_array($report)) : ?>
-							<a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lumen_wp_export_seo_audit'), 'lumen_wp_export_seo_audit')); ?>"><?php esc_html_e('Exporter PDF', 'lumen-wp'); ?></a>
-						<?php endif; ?>
-					</div>
-				</div>
-
-				<div class="lumen-wp-panel lumen-wp-audit-llms">
-					<h2 class="lumen-wp-panel__title"><?php esc_html_e('llms.txt', 'lumen-wp'); ?></h2>
-					<p class="description lumen-wp-audit-llms__status">
-						<?php if ($llms->exists()) : ?>
-							<?php
-							echo wp_kses(
-								sprintf(
-									/* translators: %s: public url */
-									__('Actif — %s', 'lumen-wp'),
-									'<a href="' . esc_url($llms->public_url()) . '" target="_blank" rel="noopener noreferrer">' . esc_html($llms->public_url()) . '</a>'
-								),
-								[
-									'a' => [
-										'href'   => true,
-										'target' => true,
-										'rel'    => true,
-									],
-								]
-							);
-							?>
-						<?php else : ?>
-							<?php esc_html_e('Pas encore généré (ou désactivé).', 'lumen-wp'); ?>
-						<?php endif; ?>
-					</p>
-					<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-actions-row">
-						<input type="hidden" name="action" value="lumen_wp_llms_generate" />
-						<?php wp_nonce_field('lumen_wp_llms_generate'); ?>
-						<button type="submit" class="button" <?php disabled(! $llms->is_enabled()); ?>><?php esc_html_e('Générer', 'lumen-wp'); ?></button>
-						<?php if ($llms->exists()) : ?>
-							<a class="button" href="<?php echo esc_url($llms->public_url()); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e('Ouvrir', 'lumen-wp'); ?></a>
-						<?php endif; ?>
+					<form id="lumen-wp-audit-form" method="post">
+						<?php wp_nonce_field('lumen_wp_run_audit'); ?>
 					</form>
 				</div>
-			</section>
 
 			<?php if (is_array($report)) : ?>
-				<?php
-				$score = max(0, min(100, (int) ($report['score'] ?? 0)));
-				$circ  = 2 * M_PI * 15.5;
-				$offset = $circ * (1 - ($score / 100));
-				?>
-				<section class="lumen-wp-audit-scorebar" role="status">
-					<div
-						class="lumen-wp-audit-ring"
-						role="img"
-						aria-label="<?php echo esc_attr(sprintf(/* translators: %d: score percent */ __('Score d’audit : %d pour cent', 'lumen-wp'), $score)); ?>"
-					>
-						<svg class="lumen-wp-audit-ring__svg" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
-							<circle class="lumen-wp-audit-ring__track" cx="18" cy="18" r="15.5" />
-							<circle
-								class="lumen-wp-audit-ring__progress"
-								cx="18"
-								cy="18"
-								r="15.5"
-								stroke-dasharray="<?php echo esc_attr((string) round($circ, 2)); ?>"
-								stroke-dashoffset="<?php echo esc_attr((string) round($offset, 2)); ?>"
-							/>
-						</svg>
-						<span class="lumen-wp-audit-ring__value">
-							<?php echo esc_html((string) $score); ?><span class="lumen-wp-audit-ring__unit">%</span>
-						</span>
-					</div>
-					<div class="lumen-wp-audit-scorebar__stats">
-						<span><strong><?php echo esc_html((string) (int) ($report['summary']['critical'] ?? 0)); ?></strong> <?php esc_html_e('critiques', 'lumen-wp'); ?></span>
-						<span><strong><?php echo esc_html((string) (int) ($report['summary']['warning'] ?? 0)); ?></strong> <?php esc_html_e('à améliorer', 'lumen-wp'); ?></span>
-						<span><strong><?php echo esc_html((string) (int) ($report['summary']['info'] ?? 0)); ?></strong> <?php esc_html_e('infos', 'lumen-wp'); ?></span>
-						<span class="lumen-wp-audit-scorebar__when"><?php echo esc_html((string) ($report['generated_at'] ?? '')); ?></span>
-					</div>
-					<?php if ($has_items) : ?>
-						<form
-							method="post"
-							action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
-							class="lumen-wp-audit-scorebar__fix"
-							data-lumen-confirm="<?php echo esc_attr(__('Appliquer tous les correctifs automatiques du dernier audit ?', 'lumen-wp')); ?>"
-							data-lumen-confirm-title="<?php echo esc_attr__('Tout corriger', 'lumen-wp'); ?>"
-						>
-							<input type="hidden" name="action" value="lumen_wp_audit_fix_all" />
-							<?php wp_nonce_field('lumen_wp_audit_fix_all'); ?>
-							<button type="submit" class="button"><?php esc_html_e('Tout corriger', 'lumen-wp'); ?></button>
-						</form>
-					<?php endif; ?>
-				</section>
-
 				<?php if ($has_items) : ?>
 					<section class="lumen-wp-panel lumen-wp-audit-list-panel">
-						<h2 class="lumen-wp-panel__title"><?php esc_html_e('Points à corriger', 'lumen-wp'); ?></h2>
+						<div class="lumen-wp-audit-list-panel__head">
+							<h2 class="lumen-wp-panel__title"><?php esc_html_e('Points à corriger', 'lumen-wp'); ?></h2>
+							<form
+								method="post"
+								action="<?php echo esc_url(admin_url('admin-post.php')); ?>"
+								class="lumen-wp-audit-scorebar__fix"
+								data-lumen-confirm="<?php echo esc_attr(__('Appliquer tous les correctifs automatiques du dernier audit ?', 'lumen-wp')); ?>"
+								data-lumen-confirm-title="<?php echo esc_attr__('Tout corriger', 'lumen-wp'); ?>"
+							>
+								<input type="hidden" name="action" value="lumen_wp_audit_fix_all" />
+								<?php wp_nonce_field('lumen_wp_audit_fix_all'); ?>
+								<button type="submit" class="button"><?php esc_html_e('Tout corriger', 'lumen-wp'); ?></button>
+							</form>
+						</div>
 						<ul class="lumen-wp-audit-list">
 							<?php foreach ((array) $report['items'] as $item) : ?>
 								<?php
@@ -259,6 +203,78 @@ final class Audit
 					</section>
 				<?php endif; ?>
 			<?php endif; ?>
+				</div>
+				<div class="lumen-wp-split__aside">
+					<?php if (is_array($report)) : ?>
+						<section class="lumen-wp-audit-scorebar" role="status">
+							<div
+								class="lumen-wp-audit-ring"
+								role="img"
+								aria-label="<?php echo esc_attr(sprintf(/* translators: %d: score percent */ __('Score d’audit : %d pour cent', 'lumen-wp'), $score)); ?>"
+							>
+								<svg class="lumen-wp-audit-ring__svg" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+									<circle class="lumen-wp-audit-ring__track" cx="18" cy="18" r="15.5" />
+									<circle
+										class="lumen-wp-audit-ring__progress"
+										cx="18"
+										cy="18"
+										r="15.5"
+										stroke-dasharray="<?php echo esc_attr((string) round($circ, 2)); ?>"
+										stroke-dashoffset="<?php echo esc_attr((string) round($offset, 2)); ?>"
+									/>
+								</svg>
+								<span class="lumen-wp-audit-ring__value">
+									<?php echo esc_html((string) $score); ?><span class="lumen-wp-audit-ring__unit">%</span>
+								</span>
+							</div>
+							<div class="lumen-wp-audit-scorebar__stats">
+								<span><strong><?php echo esc_html((string) (int) ($report['summary']['critical'] ?? 0)); ?></strong> <?php esc_html_e('critiques', 'lumen-wp'); ?></span>
+								<span><strong><?php echo esc_html((string) (int) ($report['summary']['warning'] ?? 0)); ?></strong> <?php esc_html_e('à améliorer', 'lumen-wp'); ?></span>
+								<span><strong><?php echo esc_html((string) (int) ($report['summary']['info'] ?? 0)); ?></strong> <?php esc_html_e('infos', 'lumen-wp'); ?></span>
+								<span class="lumen-wp-audit-scorebar__when"><?php echo esc_html((string) ($report['generated_at'] ?? '')); ?></span>
+							</div>
+							<p class="lumen-wp-actions-row">
+								<a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=lumen_wp_export_seo_audit'), 'lumen_wp_export_seo_audit')); ?>"><?php Brand::icon('export'); ?><?php esc_html_e('Exporter PDF', 'lumen-wp'); ?></a>
+							</p>
+						</section>
+					<?php endif; ?>
+					<div class="lumen-wp-panel lumen-wp-audit-llms">
+						<h2 class="lumen-wp-panel__title"><?php esc_html_e('llms.txt', 'lumen-wp'); ?></h2>
+						<p class="description lumen-wp-audit-llms__status">
+							<?php if ($llms->exists()) : ?>
+								<?php
+								echo wp_kses(
+									sprintf(
+										/* translators: %s: public url */
+										__('Actif — %s', 'lumen-wp'),
+										'<a href="' . esc_url($llms->public_url()) . '" target="_blank" rel="noopener noreferrer">' . esc_html($llms->public_url()) . '</a>'
+									),
+									[
+										'a' => [
+											'href'   => true,
+											'target' => true,
+											'rel'    => true,
+										],
+									]
+								);
+								?>
+							<?php else : ?>
+								<?php esc_html_e('Pas encore généré (ou désactivé).', 'lumen-wp'); ?>
+							<?php endif; ?>
+						</p>
+						<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-actions-row">
+							<input type="hidden" name="action" value="lumen_wp_llms_generate" />
+							<?php wp_nonce_field('lumen_wp_llms_generate'); ?>
+							<button type="submit" class="button" <?php disabled(! $llms->is_enabled()); ?>><?php esc_html_e('Générer', 'lumen-wp'); ?></button>
+							<?php if ($llms->exists()) : ?>
+								<a class="button" href="<?php echo esc_url($llms->public_url()); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e('Ouvrir', 'lumen-wp'); ?></a>
+							<?php endif; ?>
+						</form>
+					</div>
+				</div>
+			</div>
+			</div>
+			</div>
 		</div>
 		<?php
 	}

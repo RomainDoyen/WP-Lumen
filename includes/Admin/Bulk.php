@@ -46,19 +46,40 @@ final class Bulk
 		<div class="wrap lumen-wp-wrap">
 			<?php
 			Brand::render_nav('bulk');
+			ob_start();
+			if ($tab === 'validate') {
+				echo Validation::header_action(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			} else {
+				echo '<button type="button" class="button button-primary" id="lumen-wp-bulk-start">';
+				Brand::icon('bulk');
+				esc_html_e('Démarrer', 'lumen-wp');
+				echo '</button>';
+				echo '<button type="button" class="button" id="lumen-wp-bulk-pause" disabled>';
+				esc_html_e('Pause', 'lumen-wp');
+				echo '</button>';
+				echo '<button type="button" class="button" id="lumen-wp-bulk-resume" disabled>';
+				esc_html_e('Reprendre', 'lumen-wp');
+				echo '</button>';
+				echo '<button type="button" class="button" id="lumen-wp-bulk-stop" disabled>';
+				esc_html_e('Arrêter', 'lumen-wp');
+				echo '</button>';
+			}
+			$header_actions = (string) ob_get_clean();
 			Brand::render_header(
 				__('Traitement', 'lumen-wp'),
 				$tab === 'validate'
 					? __('Relisez les métadonnées IA avant de les publier sur les médias.', 'lumen-wp')
-					: __('File Action Scheduler + ticks adaptatifs. Le total s’estime en arrière-plan (pas de COUNT bloquant au démarrage).', 'lumen-wp')
+					: __('File Action Scheduler + ticks adaptatifs. Le total s’estime en arrière-plan (pas de COUNT bloquant au démarrage).', 'lumen-wp'),
+				'',
+				$header_actions
 			);
 			?>
 
 			<nav class="lumen-wp-seg" aria-label="<?php esc_attr_e('Sections traitement', 'lumen-wp'); ?>">
-				<a class="lumen-wp-seg__item<?php echo $tab === 'launch' ? ' is-active' : ''; ?>" href="<?php echo esc_url($launch_url); ?>">
+				<a class="lumen-wp-seg__item<?php echo $tab === 'launch' ? ' is-active' : ''; ?>" href="<?php echo esc_url($launch_url); ?>"<?php echo $tab === 'launch' ? ' aria-current="page"' : ''; ?>>
 					<span class="lumen-wp-seg__label"><?php esc_html_e('Lancer', 'lumen-wp'); ?></span>
 				</a>
-				<a class="lumen-wp-seg__item<?php echo $tab === 'validate' ? ' is-active' : ''; ?>" href="<?php echo esc_url($validate_url); ?>">
+				<a class="lumen-wp-seg__item<?php echo $tab === 'validate' ? ' is-active' : ''; ?>" href="<?php echo esc_url($validate_url); ?>"<?php echo $tab === 'validate' ? ' aria-current="page"' : ''; ?>>
 					<span class="lumen-wp-seg__label"><?php esc_html_e('À valider', 'lumen-wp'); ?></span>
 					<span class="lumen-wp-seg__count"><?php echo esc_html((string) $pending); ?></span>
 				</a>
@@ -69,6 +90,8 @@ final class Bulk
 			<?php else : ?>
 				<?php $this->render_launch_tab($pending); ?>
 			<?php endif; ?>
+			</div>
+			</div>
 		</div>
 		<?php
 	}
@@ -121,30 +144,8 @@ final class Bulk
 				</p>
 			<?php endif; ?>
 
-			<section class="lumen-wp-panel lumen-wp-panel--compact" id="lumen-wp-bulk-health">
-				<h2 class="lumen-wp-panel__title"><?php esc_html_e('État', 'lumen-wp'); ?></h2>
-				<p class="description" id="lumen-wp-bulk-health-text">
-					<?php
-					$health = Bulk_Queue::health();
-					if (! empty($health['stale'])) {
-						esc_html_e('Le traitement semble bloqué — cliquez sur « Avancer maintenant ».', 'lumen-wp');
-					} elseif ($cron_off) {
-						esc_html_e('Traitement automatique désactivé — utilisez « Avancer maintenant » si besoin.', 'lumen-wp');
-					} else {
-						esc_html_e('Tout va bien. Le traitement avance tout seul en arrière-plan.', 'lumen-wp');
-					}
-					?>
-				</p>
-				<p class="lumen-wp-actions-row">
-					<button type="button" class="button" id="lumen-wp-bulk-force-tick">
-						<?php esc_html_e('Avancer maintenant', 'lumen-wp'); ?>
-					</button>
-					<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-tools')); ?>">
-						<?php esc_html_e('Outils', 'lumen-wp'); ?>
-					</a>
-				</p>
-			</section>
-
+			<div class="lumen-wp-split">
+				<div class="lumen-wp-split__main">
 			<section class="lumen-wp-panel">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Options', 'lumen-wp'); ?></h2>
 				<table class="form-table" role="presentation">
@@ -210,21 +211,6 @@ final class Bulk
 					</tr>
 				</table>
 
-				<p class="lumen-wp-actions-row">
-					<button type="button" class="button button-primary" id="lumen-wp-bulk-start">
-						<?php esc_html_e('Démarrer', 'lumen-wp'); ?>
-					</button>
-					<button type="button" class="button" id="lumen-wp-bulk-pause" disabled>
-						<?php esc_html_e('Pause', 'lumen-wp'); ?>
-					</button>
-					<button type="button" class="button" id="lumen-wp-bulk-resume" disabled>
-						<?php esc_html_e('Reprendre', 'lumen-wp'); ?>
-					</button>
-					<button type="button" class="button" id="lumen-wp-bulk-stop" disabled>
-						<?php esc_html_e('Arrêter', 'lumen-wp'); ?>
-					</button>
-				</p>
-
 				<div class="lumen-wp-progress" id="lumen-wp-bulk-progress" <?php echo in_array($job['status'], ['running', 'paused', 'done'], true) ? '' : 'hidden'; ?>>
 					<progress id="lumen-wp-progress-bar" max="100" value="0"></progress>
 					<p id="lumen-wp-progress-label">—</p>
@@ -238,6 +224,7 @@ final class Bulk
 					</header>
 					<ul id="lumen-wp-bulk-log" class="lumen-wp-log" aria-live="polite"></ul>
 					<p class="lumen-wp-log-empty" id="lumen-wp-bulk-log-empty">
+						<?php Brand::scene('bulk'); ?>
 						<?php esc_html_e('Les messages de traitement apparaîtront ici.', 'lumen-wp'); ?>
 					</p>
 				</div>
@@ -249,6 +236,31 @@ final class Bulk
 					</header>
 					<ul id="lumen-wp-bulk-errors" class="lumen-wp-error-list" aria-live="polite"></ul>
 				</div>
+			</section>
+				</div>
+				<div class="lumen-wp-split__aside">
+			<section class="lumen-wp-panel lumen-wp-panel--compact" id="lumen-wp-bulk-health">
+				<h2 class="lumen-wp-panel__title"><?php esc_html_e('État', 'lumen-wp'); ?></h2>
+				<p class="description" id="lumen-wp-bulk-health-text">
+					<?php
+					$health = Bulk_Queue::health();
+					if (! empty($health['stale'])) {
+						esc_html_e('Le traitement semble bloqué — cliquez sur « Avancer maintenant ».', 'lumen-wp');
+					} elseif ($cron_off) {
+						esc_html_e('Traitement automatique désactivé — utilisez « Avancer maintenant » si besoin.', 'lumen-wp');
+					} else {
+						esc_html_e('Tout va bien. Le traitement avance tout seul en arrière-plan.', 'lumen-wp');
+					}
+					?>
+				</p>
+				<p class="lumen-wp-actions-row">
+					<button type="button" class="button" id="lumen-wp-bulk-force-tick">
+						<?php esc_html_e('Avancer maintenant', 'lumen-wp'); ?>
+					</button>
+					<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-tools')); ?>">
+						<?php esc_html_e('Outils', 'lumen-wp'); ?>
+					</a>
+				</p>
 			</section>
 
 			<section class="lumen-wp-panel" id="lumen-wp-bulk-history-panel">
@@ -265,6 +277,7 @@ final class Bulk
 				<ul class="lumen-wp-history" id="lumen-wp-bulk-history" aria-live="polite">
 					<?php if ($history === []) : ?>
 						<li class="lumen-wp-history__empty" id="lumen-wp-bulk-history-empty">
+							<?php Brand::scene('history'); ?>
 							<?php esc_html_e('Aucun traitement terminé pour le moment.', 'lumen-wp'); ?>
 						</li>
 					<?php else : ?>
@@ -274,6 +287,8 @@ final class Bulk
 					<?php endif; ?>
 				</ul>
 			</section>
+				</div>
+			</div>
 		<?php
 	}
 

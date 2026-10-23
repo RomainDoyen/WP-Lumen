@@ -65,6 +65,7 @@ final class History
 					<a
 						class="lumen-wp-seg__item<?php echo $filter === $key ? ' is-active' : ''; ?>"
 						href="<?php echo esc_url($url); ?>"
+						<?php echo $filter === $key ? 'aria-current="page"' : ''; ?>
 					>
 						<span class="lumen-wp-seg__label"><?php echo esc_html(History_Query::filter_label($key)); ?></span>
 						<span class="lumen-wp-seg__count"><?php echo esc_html((string) $n); ?></span>
@@ -75,6 +76,7 @@ final class History
 			<section class="lumen-wp-panel lumen-wp-history-panel">
 				<?php if ($rows === []) : ?>
 					<p class="lumen-wp-history-empty" role="status">
+						<?php Brand::scene('history'); ?>
 						<?php
 						echo esc_html(
 							$filter === 'all'
@@ -173,6 +175,8 @@ final class History
 						<button type="button" class="button button-primary" data-lumen-history-close><?php esc_html_e('Fermer', 'lumen-wp'); ?></button>
 					</div>
 				</div>
+			</div>
+			</div>
 			</div>
 		</div>
 		<?php
