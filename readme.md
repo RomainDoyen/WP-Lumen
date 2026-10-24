@@ -1,4 +1,4 @@
-![Lumen](assets/admin/icons/lumen-mark.svg)
+<img src="assets/admin/icons/lumen-mark.svg" alt="Lumen" width="72" height="72">
 
 # Lumen
 
@@ -645,5 +645,5 @@ UNLICENSED — usage privé / projet Lumen.
 
 ---
 
-![](assets/admin/icons/lumen-mark.svg)  
+<img src="assets/admin/icons/lumen-mark.svg" alt="" width="72" height="72">
 Lumen — médias, SEO et optimisation pour WordPress
