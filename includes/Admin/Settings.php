@@ -6,6 +6,7 @@ namespace LumenWp\Admin;
 
 use LumenWp\Api_Key_Encryption;
 use LumenWp\Plugin;
+use LumenWp\Seo_Plugin_Bridge;
 use LumenWp\Vision_Ai;
 
 final class Settings
@@ -95,6 +96,27 @@ final class Settings
 			})(),
 			'ai_budget_month'       => max(0, (int) ($input['ai_budget_month'] ?? 0)),
 			'ai_require_validation' => ! empty($input['ai_require_validation']),
+			'ai_strip_exif'         => ! empty($input['ai_strip_exif']),
+			'ai_rgpd_ack'           => ! empty($input['ai_rgpd_ack']),
+			'video_format'          => (static function () use ($input): string {
+				$format = sanitize_key((string) ($input['video_format'] ?? 'mp4'));
+
+				return in_array($format, ['mp4', 'webm', 'mp4_webm'], true) ? $format : 'mp4';
+			})(),
+			'video_crf'             => $this->clamp_int($input['video_crf'] ?? 28, 18, 36),
+			'video_max_width'       => $this->clamp_int($input['video_max_width'] ?? 1920, 640, 3840),
+			'pdf_preset'            => (static function () use ($input): string {
+				$preset = sanitize_key((string) ($input['pdf_preset'] ?? 'ebook'));
+
+				return in_array($preset, ['screen', 'ebook', 'print', 'prepress'], true) ? $preset : 'ebook';
+			})(),
+			'pdf_fallback'          => (static function () use ($input): string {
+				$mode = sanitize_key((string) ($input['pdf_fallback'] ?? 'imagick'));
+
+				return in_array($mode, ['imagick', 'external_api', 'seo_only'], true) ? $mode : 'imagick';
+			})(),
+			'pdf_external_api_url'  => esc_url_raw((string) ($input['pdf_external_api_url'] ?? '')),
+			'emit_image_schema'     => ! empty($input['emit_image_schema']),
 			'llms_txt_enabled'      => ! empty($input['llms_txt_enabled']),
 			'emit_faq_schema'       => ! empty($input['emit_faq_schema']),
 			'ai_enrich_faq'         => ! empty($input['ai_enrich_faq']),
@@ -206,7 +228,7 @@ final class Settings
 			?>
 			<nav class="lumen-wp-seg" data-lumen-settings-tabs aria-label="<?php esc_attr_e('Sections des réglages', 'lumen-wp'); ?>">
 				<button type="button" class="lumen-wp-seg__item is-active" data-lumen-settings-tab="appearance" aria-selected="true"><?php esc_html_e('Apparence', 'lumen-wp'); ?></button>
-				<button type="button" class="lumen-wp-seg__item" data-lumen-settings-tab="images" aria-selected="false"><?php esc_html_e('Images', 'lumen-wp'); ?></button>
+				<button type="button" class="lumen-wp-seg__item" data-lumen-settings-tab="images" aria-selected="false"><?php esc_html_e('Médias', 'lumen-wp'); ?></button>
 				<button type="button" class="lumen-wp-seg__item" data-lumen-settings-tab="seo" aria-selected="false"><?php esc_html_e('SEO', 'lumen-wp'); ?></button>
 				<button type="button" class="lumen-wp-seg__item" data-lumen-settings-tab="ai" aria-selected="false"><?php esc_html_e('IA', 'lumen-wp'); ?></button>
 			</nav>
@@ -261,6 +283,8 @@ final class Settings
 				</table>
 				</div>
 				<div data-lumen-settings-panel="images">
+				<section class="lumen-wp-settings-group">
+					<h3 class="lumen-wp-settings-group__title"><?php esc_html_e('Images', 'lumen-wp'); ?></h3>
 				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><?php esc_html_e('Formats de sortie', 'lumen-wp'); ?></th>
@@ -363,6 +387,9 @@ final class Settings
 							<p class="description"><?php esc_html_e('Après un remplacement (ex. .jpg → .webp), réécrit les liens en dur dans le contenu et les données Elementor, et à la restauration. Pensez à vider le cache éventuel.', 'lumen-wp'); ?></p>
 						</td>
 					</tr>
+				</table>
+				</section>
+				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><?php esc_html_e('À l’upload', 'lumen-wp'); ?></th>
 						<td>
@@ -380,10 +407,157 @@ final class Settings
 							</div>
 						</td>
 					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e('Vidéo', 'lumen-wp'); ?></th>
+						<td>
+							<p class="description"><?php esc_html_e('FFmpeg requis. Miniature poster, métadonnées IA et schema VideoObject restent gérés par le traitement.', 'lumen-wp'); ?></p>
+							<div class="lumen-wp-callout lumen-wp-callout--<?php echo ! empty($caps['ffmpeg']) ? 'ok' : 'warn'; ?>">
+								<strong><?php echo ! empty($caps['ffmpeg']) ? esc_html__('FFmpeg détecté', 'lumen-wp') : esc_html__('Vidéo indisponible', 'lumen-wp'); ?></strong>
+								<?php if (! empty($caps['ffmpeg'])) : ?>
+									<?php esc_html_e('Compression MP4 / WebM et miniature poster au traitement.', 'lumen-wp'); ?>
+								<?php else : ?>
+									<?php esc_html_e('FFmpeg n’est pas installé. Le SEO vidéo continue sans compression.', 'lumen-wp'); ?>
+									<a href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp')); ?>"><?php esc_html_e('Capacités serveur', 'lumen-wp'); ?></a>
+								<?php endif; ?>
+							</div>
+							<div class="lumen-wp-choices lumen-wp-choices--grid" role="radiogroup" aria-label="<?php esc_attr_e('Format vidéo', 'lumen-wp'); ?>">
+								<?php
+								$video_format = (string) ($settings['video_format'] ?? 'mp4');
+								$video_cards  = [
+									'mp4'      => [__('MP4', 'lumen-wp'), __('MP4 (H.264) — compatibilité maximale', 'lumen-wp')],
+									'webm'     => [__('WebM', 'lumen-wp'), __('WebM (VP9) — poids réduit, navigateurs modernes', 'lumen-wp')],
+									'mp4_webm' => [__('MP4 + WebM', 'lumen-wp'), __('Les deux formats générés', 'lumen-wp')],
+								];
+								foreach ($video_cards as $value => $card) :
+									?>
+									<label class="lumen-wp-choice lumen-wp-choice--card">
+										<input type="radio" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[video_format]" value="<?php echo esc_attr($value); ?>" <?php checked($video_format, $value); ?> />
+										<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
+										<span class="lumen-wp-choice__label">
+											<?php echo esc_html($card[0]); ?>
+											<span class="lumen-wp-choice__hint"><?php echo esc_html($card[1]); ?></span>
+										</span>
+									</label>
+								<?php endforeach; ?>
+							</div>
+							<p class="lumen-wp-range-label">
+								<label for="lumen-wp-video-crf"><?php esc_html_e('Qualité vidéo (CRF)', 'lumen-wp'); ?></label>
+								<output id="lumen-wp-video-crf-val" for="lumen-wp-video-crf"><?php echo esc_html((string) (int) ($settings['video_crf'] ?? 28)); ?></output>
+							</p>
+							<input type="range" id="lumen-wp-video-crf" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[video_crf]" min="18" max="36" step="1" value="<?php echo esc_attr((string) (int) ($settings['video_crf'] ?? 28)); ?>" style="--lumen-range: <?php echo esc_attr((string) (int) round((((int) ($settings['video_crf'] ?? 28) - 18) / 18) * 100)); ?>%" />
+							<p class="description"><?php esc_html_e('Plus bas = meilleure qualité, fichier plus lourd (18–36).', 'lumen-wp'); ?></p>
+							<div class="lumen-wp-field">
+								<label for="lumen-wp-video-width"><?php esc_html_e('Largeur maximale (px)', 'lumen-wp'); ?></label>
+								<input type="number" class="small-text" id="lumen-wp-video-width" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[video_max_width]" min="640" max="3840" step="1" value="<?php echo esc_attr((string) (int) ($settings['video_max_width'] ?? 1920)); ?>" />
+								<p class="description"><?php esc_html_e('Redimensionne les vidéos plus larges (ex. 1920 pour Full HD).', 'lumen-wp'); ?></p>
+							</div>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e('PDF', 'lumen-wp'); ?></th>
+						<td>
+							<p class="description"><?php esc_html_e('Ghostscript recommandé — repli automatique s’il est absent.', 'lumen-wp'); ?></p>
+							<div class="lumen-wp-callout lumen-wp-callout--<?php echo ! empty($caps['ghostscript']) ? 'ok' : 'warn'; ?>">
+								<strong><?php echo ! empty($caps['ghostscript']) ? esc_html__('Ghostscript détecté', 'lumen-wp') : esc_html__('Mode dégradé PDF', 'lumen-wp'); ?></strong>
+								<?php
+								echo ! empty($caps['ghostscript'])
+									? esc_html__('Compression PDF native au traitement.', 'lumen-wp')
+									: esc_html__('Ghostscript absent — le repli choisi ci-dessous est utilisé.', 'lumen-wp');
+								?>
+							</div>
+							<p class="lumen-wp-range-label"><?php esc_html_e('Repli sans Ghostscript', 'lumen-wp'); ?></p>
+							<div class="lumen-wp-choices lumen-wp-choices--grid" role="radiogroup" aria-label="<?php esc_attr_e('Repli PDF', 'lumen-wp'); ?>">
+								<?php
+								$pdf_fallback = (string) ($settings['pdf_fallback'] ?? 'imagick');
+								$fallback_cards = [
+									'imagick'      => [__('Imagick', 'lumen-wp'), __('Aperçu page 1', 'lumen-wp')],
+									'external_api' => [__('API externe', 'lumen-wp'), __('API externe (clé optionnelle)', 'lumen-wp')],
+									'seo_only'     => [__('SEO seul', 'lumen-wp'), __('Sans compression', 'lumen-wp')],
+								];
+								foreach ($fallback_cards as $value => $card) :
+									?>
+									<label class="lumen-wp-choice lumen-wp-choice--card">
+										<input type="radio" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[pdf_fallback]" value="<?php echo esc_attr($value); ?>" <?php checked($pdf_fallback, $value); ?> />
+										<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
+										<span class="lumen-wp-choice__label">
+											<?php echo esc_html($card[0]); ?>
+											<span class="lumen-wp-choice__hint"><?php echo esc_html($card[1]); ?></span>
+										</span>
+									</label>
+								<?php endforeach; ?>
+							</div>
+							<div class="lumen-wp-field">
+								<label for="lumen-wp-pdf-api-url"><?php esc_html_e('URL API PDF externe', 'lumen-wp'); ?></label>
+								<input type="url" class="regular-text" id="lumen-wp-pdf-api-url" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[pdf_external_api_url]" value="<?php echo esc_attr((string) ($settings['pdf_external_api_url'] ?? '')); ?>" placeholder="https://api.example.com/compress-pdf" />
+								<p class="description"><?php esc_html_e('POST multipart — réponse PDF, JSON {url} ou {file_base64}.', 'lumen-wp'); ?></p>
+							</div>
+							<div class="lumen-wp-field">
+								<label for="lumen-wp-pdf-api-key"><?php esc_html_e('Clé API PDF (optionnel)', 'lumen-wp'); ?></label>
+								<input type="password" class="regular-text" id="lumen-wp-pdf-api-key" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[pdf_external_api_key]" value="" autocomplete="new-password" placeholder="<?php echo esc_attr((string) ($settings['pdf_external_api_key'] ?? '') !== '' ? '••••••••' : ''); ?>" />
+								<?php if ((string) ($settings['pdf_external_api_key'] ?? '') !== '') : ?>
+									<label class="lumen-wp-api-key__clear">
+										<input type="checkbox" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[pdf_external_api_key_clear]" value="1" />
+										<?php esc_html_e('Effacer la clé', 'lumen-wp'); ?>
+									</label>
+								<?php endif; ?>
+							</div>
+							<p class="lumen-wp-range-label"><?php esc_html_e('Préréglage Ghostscript', 'lumen-wp'); ?></p>
+							<div class="lumen-wp-choices lumen-wp-choices--grid" role="radiogroup" aria-label="<?php esc_attr_e('Préréglage PDF', 'lumen-wp'); ?>">
+								<?php
+								$pdf_preset = (string) ($settings['pdf_preset'] ?? 'ebook');
+								$preset_cards = [
+									'screen'   => [__('Screen', 'lumen-wp'), __('Écran — le plus léger', 'lumen-wp')],
+									'ebook'    => [__('Ebook', 'lumen-wp'), __('Lecture — équilibre (recommandé)', 'lumen-wp')],
+									'print'    => [__('Print', 'lumen-wp'), __('Impression — haute qualité', 'lumen-wp')],
+									'prepress' => [__('Prepress', 'lumen-wp'), __('Archivage — qualité maximale', 'lumen-wp')],
+								];
+								foreach ($preset_cards as $value => $card) :
+									?>
+									<label class="lumen-wp-choice lumen-wp-choice--card">
+										<input type="radio" name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[pdf_preset]" value="<?php echo esc_attr($value); ?>" <?php checked($pdf_preset, $value); ?> />
+										<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
+										<span class="lumen-wp-choice__label">
+											<?php echo esc_html($card[0]); ?>
+											<span class="lumen-wp-choice__hint"><?php echo esc_html($card[1]); ?></span>
+										</span>
+									</label>
+								<?php endforeach; ?>
+							</div>
+						</td>
+					</tr>
 				</table>
 				</div>
 				<div data-lumen-settings-panel="seo">
 				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><?php esc_html_e('Interop SEO', 'lumen-wp'); ?></th>
+						<td>
+							<?php $seo_label = (new Seo_Plugin_Bridge())->get_active_plugin_label(); ?>
+							<div class="lumen-wp-callout lumen-wp-callout--info">
+								<?php
+								printf(
+									/* translators: %s: detected SEO plugin name */
+									esc_html__('Plugin SEO détecté : %s', 'lumen-wp'),
+									esc_html($seo_label)
+								);
+								?>
+							</div>
+							<label class="lumen-wp-choice lumen-wp-choice--wide" for="lumen-wp-emit-image-schema">
+								<input
+									type="checkbox"
+									name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[emit_image_schema]"
+									id="lumen-wp-emit-image-schema"
+									value="1"
+									<?php checked(! empty($settings['emit_image_schema'])); ?>
+								/>
+								<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
+								<span class="lumen-wp-choice__label">
+									<?php esc_html_e('Schema.org ImageObject', 'lumen-wp'); ?>
+									<span class="lumen-wp-choice__hint"><?php esc_html_e('JSON-LD sur les pages de pièces jointes image', 'lumen-wp'); ?></span>
+								</span>
+							</label>
+						</td>
+					</tr>
 					<tr>
 						<th scope="row"><?php esc_html_e('URL du site (snippets)', 'lumen-wp'); ?></th>
 						<td>
@@ -598,6 +772,41 @@ final class Settings
 								);
 								?>
 							</p>
+						</td>
+					</tr>
+					<tr id="lumen-wp-ai-privacy-row" <?php echo $provider === 'none' ? 'hidden' : ''; ?>>
+						<th scope="row"><?php esc_html_e('Vie privée', 'lumen-wp'); ?></th>
+						<td>
+							<div class="lumen-wp-choices lumen-wp-choices--stack">
+								<label class="lumen-wp-choice lumen-wp-choice--wide" for="lumen-wp-ai-strip-exif">
+									<input
+										type="checkbox"
+										name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[ai_strip_exif]"
+										id="lumen-wp-ai-strip-exif"
+										value="1"
+										<?php checked(! empty($settings['ai_strip_exif'])); ?>
+									/>
+									<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
+									<span class="lumen-wp-choice__label">
+										<?php esc_html_e('Supprimer EXIF avant envoi', 'lumen-wp'); ?>
+										<span class="lumen-wp-choice__hint"><?php esc_html_e('Retirer géolocalisation et métadonnées EXIF avant envoi à l’IA (recommandé RGPD)', 'lumen-wp'); ?></span>
+									</span>
+								</label>
+								<label class="lumen-wp-choice lumen-wp-choice--wide" for="lumen-wp-ai-rgpd-ack">
+									<input
+										type="checkbox"
+										name="<?php echo esc_attr(Plugin::OPTION_KEY); ?>[ai_rgpd_ack]"
+										id="lumen-wp-ai-rgpd-ack"
+										value="1"
+										<?php checked(! empty($settings['ai_rgpd_ack'])); ?>
+									/>
+									<span class="lumen-wp-choice__ui" aria-hidden="true"></span>
+									<span class="lumen-wp-choice__label">
+										<?php esc_html_e('Accusé de réception RGPD', 'lumen-wp'); ?>
+										<span class="lumen-wp-choice__hint"><?php esc_html_e('J’ai informé les utilisateurs que les images sont envoyées à un service IA tiers', 'lumen-wp'); ?></span>
+									</span>
+								</label>
+							</div>
 						</td>
 					</tr>
 				</table>

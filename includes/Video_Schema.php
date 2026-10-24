@@ -103,6 +103,11 @@ final class Video_Schema
 
 	private static function thumbnail_fallback(int $attachment_id): string
 	{
+		$poster = (string) get_post_meta($attachment_id, Video_Optimizer::META_POSTER_URL, true);
+		if ($poster !== '') {
+			return $poster;
+		}
+
 		if (function_exists('get_post_thumbnail_id') && function_exists('wp_get_attachment_image_url')) {
 			$poster = (int) get_post_thumbnail_id($attachment_id);
 			if ($poster > 0) {

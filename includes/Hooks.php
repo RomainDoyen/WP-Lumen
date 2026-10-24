@@ -342,6 +342,17 @@ final class Hooks
 			} else {
 				delete_post_meta($attachment_id, Plugin::META_VARIANTS);
 				delete_post_meta($attachment_id, Plugin::META_GUTENBERG);
+				if ($kind === Media_Types::KIND_VIDEO) {
+					$media = (new Video_Optimizer())->process($attachment_id);
+					if ($job_message === null && ! empty($media['message'])) {
+						$job_message = (string) $media['message'];
+					}
+				} elseif ($kind === Media_Types::KIND_PDF) {
+					$media = (new Pdf_Optimizer())->process($attachment_id);
+					if ($job_message === null && ! empty($media['message'])) {
+						$job_message = (string) $media['message'];
+					}
+				}
 				if ($kind !== Media_Types::KIND_VIDEO) {
 					delete_post_meta($attachment_id, Plugin::META_JSONLD);
 				}

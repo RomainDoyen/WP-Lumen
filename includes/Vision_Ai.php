@@ -937,6 +937,11 @@ final class Vision_Ai
 		}
 
 		if ($kind === Media_Types::KIND_PDF) {
+			$stored = Pdf_Optimizer::preview_path($attachment_id);
+			if ($stored !== null) {
+				return ['path' => $stored, 'mime' => 'image/jpeg'];
+			}
+
 			$imagick = $this->imagick_pdf_preview($file);
 			if ($imagick !== null) {
 				return $imagick;
@@ -946,6 +951,11 @@ final class Vision_Ai
 		}
 
 		if ($kind === Media_Types::KIND_VIDEO) {
+			$poster = Video_Optimizer::poster_path($attachment_id);
+			if ($poster !== null) {
+				return ['path' => $poster, 'mime' => 'image/jpeg'];
+			}
+
 			return $this->ffmpeg_video_frame($file);
 		}
 
@@ -1194,18 +1204,21 @@ final class Vision_Ai
 	 */
 	private function thumb_from_image_file(string $file, string $mime, bool $cleanup): array
 	{
-		$editor = \wp_get_image_editor($file);
+		$stripped = $this->exif_stripped_copy($file);
+		$source   = $stripped ?? $file;
+		$editor   = \wp_get_image_editor($source);
 
 		try {
 			if (is_wp_error($editor)) {
-				$bytes = file_get_contents($file);
+				$bytes = file_get_contents($source);
 				if ($bytes === false) {
 					throw new \RuntimeException(__('Impossible de lire l’image', 'lumen-wp'));
 				}
+				$out_mime = $stripped !== null ? 'image/jpeg' : $mime;
 
 				return [
-					'data_url' => 'data:' . $mime . ';base64,' . base64_encode($bytes),
-					'mime'     => $mime,
+					'data_url' => 'data:' . $out_mime . ';base64,' . base64_encode($bytes),
+					'mime'     => $out_mime,
 					'base64'   => base64_encode($bytes),
 				];
 			}
@@ -1246,9 +1259,45 @@ final class Vision_Ai
 				'base64'   => $b64,
 			];
 		} finally {
+			if ($stripped !== null) {
+				@unlink($stripped);
+			}
 			if ($cleanup) {
 				@unlink($file);
 			}
+		}
+	}
+
+	/**
+	 * Copie JPEG sans EXIF pour l’envoi IA. Le fichier de la médiathèque n’est pas modifié.
+	 */
+	private function exif_stripped_copy(string $file): ?string
+	{
+		if (empty(Plugin::instance()->settings()['ai_strip_exif'])) {
+			return null;
+		}
+		if (! is_readable($file) || ! class_exists(\Imagick::class)) {
+			return null;
+		}
+
+		try {
+			$image = new \Imagick($file);
+			$image->stripImage();
+			$image->setImageFormat('jpeg');
+			$tmp = \wp_tempnam('lumen-exif');
+			if (! is_string($tmp) || $tmp === '') {
+				$image->clear();
+				$image->destroy();
+
+				return null;
+			}
+			$image->writeImage($tmp);
+			$image->clear();
+			$image->destroy();
+
+			return is_readable($tmp) ? $tmp : null;
+		} catch (\Throwable $e) {
+			return null;
 		}
 	}
 

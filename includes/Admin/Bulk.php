@@ -213,6 +213,10 @@ final class Bulk
 						</td>
 					</tr>
 				</table>
+			</section>
+
+			<section class="lumen-wp-panel" id="lumen-wp-bulk-run">
+				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Traitement', 'lumen-wp'); ?></h2>
 
 				<?php
 				$bulk_processed = (int) ($job['processed'] ?? 0);

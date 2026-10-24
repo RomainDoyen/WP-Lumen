@@ -78,7 +78,7 @@ final class Brand
 			],
 			'settings'  => [
 				'label' => __('Réglages', 'lumen-wp'),
-				'sub'   => __('Apparence, images, IA', 'lumen-wp'),
+				'sub'   => __('Apparence, médias, IA', 'lumen-wp'),
 				'url'   => admin_url('admin.php?page=lumen-wp-settings'),
 				'cap'   => 'manage_options',
 			],

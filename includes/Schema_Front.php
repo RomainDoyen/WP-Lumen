@@ -15,6 +15,64 @@ final class Schema_Front
 	{
 		$this->emit_faq();
 		$this->emit_videos();
+		$this->emit_image();
+	}
+
+	private function emit_image(): void
+	{
+		if (! is_attachment()) {
+			return;
+		}
+		$settings = Plugin::instance()->settings();
+		if (empty($settings['emit_image_schema'])) {
+			return;
+		}
+
+		$attachment_id = (int) get_queried_object_id();
+		if ($attachment_id <= 0 || Media_Types::kind($attachment_id) !== Media_Types::KIND_IMAGE) {
+			return;
+		}
+
+		$stored = get_post_meta($attachment_id, Plugin::META_JSONLD, true);
+		if (is_array($stored) && ($stored['@type'] ?? '') === 'ImageObject') {
+			$this->echo_ld_json($stored);
+
+			return;
+		}
+
+		$url = wp_get_attachment_url($attachment_id);
+		if (! is_string($url) || $url === '') {
+			return;
+		}
+
+		$seo  = get_post_meta($attachment_id, Plugin::META_SEO, true);
+		$seo  = is_array($seo) ? $seo : [];
+		$meta = wp_get_attachment_metadata($attachment_id);
+		$meta = is_array($meta) ? $meta : [];
+		$post = get_post($attachment_id);
+
+		$schema = [
+			'@context'   => 'https://schema.org',
+			'@type'      => 'ImageObject',
+			'contentUrl' => $url,
+			'name'       => trim((string) ($seo['title'] ?? ($post instanceof \WP_Post ? $post->post_title : ''))),
+		];
+		$description = trim((string) ($seo['description'] ?? ''));
+		if ($description !== '') {
+			$schema['description'] = $description;
+		}
+		$caption = trim((string) ($seo['caption'] ?? ''));
+		if ($caption !== '') {
+			$schema['caption'] = $caption;
+		}
+		$width  = (int) ($meta['width'] ?? 0);
+		$height = (int) ($meta['height'] ?? 0);
+		if ($width > 0 && $height > 0) {
+			$schema['width']  = $width;
+			$schema['height'] = $height;
+		}
+
+		$this->echo_ld_json($schema);
 	}
 
 	public function emit_faq(): void

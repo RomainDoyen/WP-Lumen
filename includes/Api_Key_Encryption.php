@@ -16,6 +16,7 @@ final class Api_Key_Encryption
 		'openai_api_key',
 		'anthropic_api_key',
 		'gemini_api_key',
+		'pdf_external_api_key',
 	];
 
 	public static function available(): bool

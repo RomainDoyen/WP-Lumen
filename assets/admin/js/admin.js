@@ -73,8 +73,26 @@
   function setButtonLabel($btn, label) {
     if (!$btn || !$btn.length) return;
     var icons = $btn.children('svg').detach();
+    $btn.children('.lumen-wp-spinner').remove();
     $btn.text(label);
     if (icons.length) $btn.prepend(icons);
+    if ($btn.hasClass('is-busy')) {
+      $btn.prepend('<span class="lumen-wp-spinner" aria-hidden="true"></span>');
+    }
+  }
+
+  function setButtonBusy($btn, busy) {
+    if (!$btn || !$btn.length) return;
+    $btn.toggleClass('is-busy', !!busy);
+    if (busy) {
+      $btn.attr('aria-busy', 'true');
+      if (!$btn.children('.lumen-wp-spinner').length) {
+        $btn.prepend('<span class="lumen-wp-spinner" aria-hidden="true"></span>');
+      }
+    } else {
+      $btn.removeAttr('aria-busy');
+      $btn.children('.lumen-wp-spinner').remove();
+    }
   }
 
   function setControlLabel(el, label) {
@@ -697,6 +715,7 @@
     var id = box.data('attachment-id');
     var btn = $(this).data('label', buttonPlainText($(this))).prop('disabled', true);
     setButtonLabel(btn, lumenWp.i18n.processing);
+    setButtonBusy(btn, true);
     ajax('lumen_wp_approve', { id: id, seo: seoPayload(box) })
       .done(function (res) {
         if (!res || !res.success) {
@@ -719,6 +738,7 @@
         window.lumenWpModal.error(ajaxErrorMessage(xhr, lumenWp.i18n.error));
       })
       .always(function () {
+        setButtonBusy(btn, false);
         btn.prop('disabled', false);
         setButtonLabel(btn, btn.data('label'));
       });
@@ -732,6 +752,7 @@
     banner.prop('hidden', true).text('');
     var btn = $(this).data('label', buttonPlainText($(this))).prop('disabled', true);
     setButtonLabel(btn, lumenWp.i18n.processing);
+    setButtonBusy(btn, true);
 
     ajax('lumen_wp_suggest', { id: id })
       .done(function (res) {
@@ -765,6 +786,7 @@
         window.lumenWpModal.error(msg);
       })
       .always(function () {
+        setButtonBusy(btn, false);
         btn.prop('disabled', false);
         setButtonLabel(btn, btn.data('label'));
       });
@@ -778,6 +800,7 @@
     var run = function () {
       var btn = $btn.data('label', buttonPlainText($btn)).prop('disabled', true);
       setButtonLabel(btn, lumenWp.i18n.processing);
+      setButtonBusy(btn, true);
       ajax('lumen_wp_reprocess', { id: id, use_mistral: 0 })
         .done(function (res) {
           var data = res && res.data ? res.data : {};
@@ -801,6 +824,7 @@
           window.lumenWpModal.error(lumenWp.i18n.error);
         })
         .always(function () {
+          setButtonBusy(btn, false);
           btn.prop('disabled', false);
           setButtonLabel(btn, btn.data('label'));
         });
@@ -837,6 +861,7 @@
     var id = box.data('attachment-id');
     var btn = $(this).prop('disabled', true);
     setButtonLabel(btn, lumenWp.i18n.processing);
+    setButtonBusy(btn, true);
 
     ajax('lumen_wp_restore_original', { id: id })
       .done(function (res) {
@@ -857,6 +882,7 @@
         );
       })
       .always(function () {
+        setButtonBusy(btn, false);
         btn.prop('disabled', false);
         setButtonLabel(btn, 'Restaurer l’original');
       });
@@ -1270,6 +1296,7 @@
   $(document).on('click', '#lumen-wp-bulk-force-tick', function (e) {
     e.preventDefault();
     var btn = $(this).prop('disabled', true);
+    setButtonBusy(btn, true);
     ajax('lumen_wp_bulk_force_tick', {}, { timeout: 90000 })
       .done(function (res) {
         if (!res || !res.success) {
@@ -1285,6 +1312,7 @@
         window.lumenWpModal.error(ajaxErrorMessage(xhr, lumenWp.i18n.error));
       })
       .always(function () {
+        setButtonBusy(btn, false);
         btn.prop('disabled', false);
       });
   });
@@ -1360,6 +1388,7 @@
     $('#lumen-wp-ai-model-row').prop('hidden', hideAiFields);
     $('#lumen-wp-ai-budget-row').prop('hidden', hideAiFields);
     $('#lumen-wp-ai-validation-row').prop('hidden', hideAiFields);
+    $('#lumen-wp-ai-privacy-row').prop('hidden', hideAiFields);
     $('.lumen-wp-api-key').each(function () {
       var match = $(this).data('provider') === provider;
       $(this).prop('hidden', !match);
@@ -1434,9 +1463,11 @@
     var label = buttonPlainText($btn);
     var apiKey = getVisibleApiKey(provider);
     setButtonLabel($btn, lumenWp.i18n.processing || 'Traitement…');
+    setButtonBusy($btn, true);
 
     if (!apiKey && !hasStoredApiKey(provider)) {
       window.lumenWpModal.error('Renseignez d’abord la clé API du fournisseur.');
+      setButtonBusy($btn, false);
       $btn.prop('disabled', false);
       setButtonLabel($btn, label);
       return;
@@ -1476,6 +1507,7 @@
         );
       })
       .always(function () {
+        setButtonBusy($btn, false);
         $btn.prop('disabled', false);
         setButtonLabel($btn, label);
       });
@@ -1521,6 +1553,7 @@
   $(document).on('click', '#lumen-wp-ai-usage-reset', function (e) {
     e.preventDefault();
     var btn = $(this).prop('disabled', true);
+    setButtonBusy(btn, true);
     ajax('lumen_wp_ai_usage_reset')
       .done(function (res) {
         if (res && res.success) {
@@ -1534,6 +1567,7 @@
         window.lumenWpModal.error(lumenWp.i18n.error);
       })
       .always(function () {
+        setButtonBusy(btn, false);
         btn.prop('disabled', false);
       });
   });
@@ -1602,6 +1636,7 @@
     }
 
     $('#lumen-wp-icons-results').prop('hidden', false);
+    bootCollapsibleCards(document.querySelector('.lumen-wp-wrap'));
   }
 
   function openIconsFilePicker() {
@@ -1676,6 +1711,7 @@
 
     var btn = $(this).prop('disabled', true);
     setButtonLabel(btn, lumenWp.i18n.processing);
+    setButtonBusy(btn, true);
     var fd = new FormData();
     fd.append('action', 'lumen_wp_icons_generate');
     fd.append('nonce', lumenWp.nonce);
@@ -1709,6 +1745,7 @@
         window.lumenWpModal.error(msg);
       })
       .always(function () {
+        setButtonBusy(btn, false);
         btn.prop('disabled', false);
         setButtonLabel(btn, 'Générer le kit');
       });
@@ -1850,6 +1887,7 @@
   $(document).on('click', '#lumen-wp-cron-force-tick', function (e) {
     e.preventDefault();
     var btn = $(this).prop('disabled', true);
+    setButtonBusy(btn, true);
     ajax('lumen_wp_bulk_force_tick', {}, { timeout: 90000 })
       .done(function (res) {
         if (!res || !res.success) {
@@ -1865,6 +1903,7 @@
         window.lumenWpModal.error(ajaxErrorMessage(xhr, lumenWp.i18n.error));
       })
       .always(function () {
+        setButtonBusy(btn, false);
         btn.prop('disabled', false);
       });
   });
@@ -1883,6 +1922,7 @@
     }
     var btn = $(this).prop('disabled', true);
     setButtonLabel(btn, lumenWp.i18n.processing);
+    setButtonBusy(btn, true);
     ajax('lumen_wp_cleanup_run', {
       sidecars: $('#lumen-wp-cleanup-sidecars').is(':checked') ? 1 : 0,
       backups: $('#lumen-wp-cleanup-backups').is(':checked') ? 1 : 0,
@@ -1906,6 +1946,7 @@
         );
       })
       .always(function () {
+        setButtonBusy(btn, false);
         btn.prop('disabled', false);
         setButtonLabel(btn, 'Lancer le nettoyage');
       });
@@ -1920,6 +1961,7 @@
 
     var run = function () {
       btn.prop('disabled', true);
+      setButtonBusy(btn, true);
       ajax('lumen_wp_jobs_purge')
         .done(function (res) {
           if (!res || !res.success) {
@@ -1938,6 +1980,7 @@
           window.lumenWpModal.error(ajaxErrorMessage(xhr, lumenWp.i18n.error));
         })
         .always(function () {
+          setButtonBusy(btn, false);
           btn.prop('disabled', false);
         });
     };
@@ -1962,6 +2005,7 @@
   $(document).on('click', '#lumen-wp-repair-processing', function (e) {
     e.preventDefault();
     var btn = $(this).prop('disabled', true);
+    setButtonBusy(btn, true);
     ajax('lumen_wp_repair_processing')
       .done(function (res) {
         if (!res || !res.success) {
@@ -1978,6 +2022,7 @@
         window.lumenWpModal.error(ajaxErrorMessage(xhr, lumenWp.i18n.error));
       })
       .always(function () {
+        setButtonBusy(btn, false);
         btn.prop('disabled', false);
       });
   });
@@ -2222,12 +2267,16 @@
   }
 
   function startUrlsJob(mode, $btn, forceRestart) {
-    var label = $btn && $btn.length ? buttonPlainText($btn) : '';
     var forceFull =
       mode !== 'retry' && $('#lumen-wp-urls-force-full').is(':checked') ? 1 : 0;
+    if ($btn && $btn.length && !$btn.hasClass('is-busy')) {
+      $btn.data('urls-label', buttonPlainText($btn));
+    }
+    var label = $btn && $btn.length ? $btn.data('urls-label') || buttonPlainText($btn) : '';
     if ($btn && $btn.length) {
       $btn.prop('disabled', true);
       setButtonLabel($btn, 'Démarrage…');
+      setButtonBusy($btn, true);
     }
     $('#lumen-wp-urls-progress').prop('hidden', false);
     $('#lumen-wp-urls-status-text').text('Démarrage…');
@@ -2255,6 +2304,7 @@
           }
           showModalError(msg);
           if ($btn && $btn.length) {
+            setButtonBusy($btn, false);
             $btn.prop('disabled', false);
             setButtonLabel($btn, label);
           }
@@ -2264,6 +2314,10 @@
           return;
         }
         applyUrlsJob(res.data.job, res.data.health, res.data.last_errors);
+        if ($btn && $btn.length) {
+          setButtonBusy($btn, false);
+          setButtonLabel($btn, label);
+        }
         startUrlsPoll();
       })
       .fail(function (xhr) {
@@ -2279,6 +2333,7 @@
         }
         showModalError(ajaxErrorMessage(xhr, 'Démarrage impossible'));
         if ($btn && $btn.length) {
+          setButtonBusy($btn, false);
           $btn.prop('disabled', false);
           setButtonLabel($btn, label);
         }
@@ -2308,6 +2363,7 @@
     e.preventDefault();
     var form = this;
     var btn = $('#lumen-wp-urls-force-tick').prop('disabled', true);
+    setButtonBusy(btn, true);
     ajax('lumen_wp_urls_force_tick', {}, { timeout: URLS_AJAX_TIMEOUT })
       .done(function (res) {
         if (!res || !res.success) {
@@ -2320,6 +2376,7 @@
         form.submit();
       })
       .always(function () {
+        setButtonBusy(btn, false);
         btn.prop('disabled', false);
       });
   });
@@ -2483,11 +2540,14 @@
       validate.hidden = true;
     }
     if (body) {
-      body.innerHTML = '<p class="description">Chargement…</p>';
+      body.setAttribute('aria-busy', 'true');
+      body.innerHTML =
+        '<p class="lumen-wp-loading"><span class="lumen-wp-spinner" aria-hidden="true"></span>Chargement…</p>';
     }
     openHistoryModal();
     ajax('lumen_wp_history_detail', { id: id })
       .done(function (res) {
+        if (body) body.removeAttribute('aria-busy');
         if (res && res.success && res.data) {
           renderHistoryDetail(res.data);
         } else {
@@ -2501,6 +2561,7 @@
       })
       .fail(function () {
         if (body) {
+          body.removeAttribute('aria-busy');
           body.innerHTML = '<p class="description">Erreur réseau.</p>';
         }
       });
@@ -2654,6 +2715,147 @@
     });
   }
 
+  function bootCollapsibleCards(root) {
+    if (!root) return;
+    var storeKey = 'lumenWpCollapsed';
+    var store = {};
+    try {
+      store = JSON.parse(window.localStorage.getItem(storeKey) || '{}') || {};
+    } catch (err) {
+      store = {};
+    }
+    var page = (window.location.pathname || '') + (window.location.search || '');
+    var seen = {};
+
+    function remember(key, collapsed) {
+      store[key] = collapsed ? 1 : 0;
+      try {
+        window.localStorage.setItem(storeKey, JSON.stringify(store));
+      } catch (err) {
+        /* navigation privée */
+      }
+    }
+
+    function wrapCollapseBody(card, keep) {
+      if (card.tagName === 'TR') {
+        var cell = card.querySelector('td');
+        if (!cell || cell.querySelector('.lumen-wp-collapse__body-inner')) return;
+        var inner = document.createElement('div');
+        inner.className = 'lumen-wp-collapse__body-inner';
+        while (cell.firstChild) inner.appendChild(cell.firstChild);
+        cell.appendChild(inner);
+        cell.classList.add('lumen-wp-collapse__body');
+        return;
+      }
+      if (card.querySelector(':scope > .lumen-wp-collapse__body')) return;
+      var body = document.createElement('div');
+      body.className = 'lumen-wp-collapse__body';
+      var inner = document.createElement('div');
+      inner.className = 'lumen-wp-collapse__body-inner';
+      Array.prototype.slice.call(card.children).forEach(function (el) {
+        if (el !== keep) inner.appendChild(el);
+      });
+      body.appendChild(inner);
+      card.appendChild(body);
+    }
+
+    function wire(card, titleEl, keepEl) {
+      if (!titleEl || titleEl.getAttribute('data-lumen-collapse-ready') === '1') return;
+      var label = (titleEl.textContent || '').replace(/\s+/g, ' ').trim();
+      if (label === '') return;
+      titleEl.setAttribute('data-lumen-collapse-ready', '1');
+      var base = page + '::' + (card.id || label);
+      seen[base] = (seen[base] || 0) + 1;
+      var key = seen[base] > 1 ? base + '#' + seen[base] : base;
+
+      var chevron = document.createElement('span');
+      chevron.className = 'lumen-wp-collapse__chevron';
+      chevron.setAttribute('aria-hidden', 'true');
+      var host = keepEl || titleEl;
+      host.appendChild(chevron);
+      titleEl.classList.add('lumen-wp-collapse__title');
+      if (keepEl) keepEl.classList.add('lumen-wp-collapse__keep');
+      titleEl.setAttribute('role', 'button');
+      titleEl.tabIndex = 0;
+      wrapCollapseBody(card, keepEl || titleEl);
+
+      function collapseBody() {
+        return card.tagName === 'TR'
+          ? card.querySelector('td.lumen-wp-collapse__body')
+          : card.querySelector(':scope > .lumen-wp-collapse__body');
+      }
+
+      function setCollapsed(collapsed, persist) {
+        var body = collapseBody();
+        titleEl.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        if (persist) remember(key, collapsed);
+        var animate = body
+          && card.classList.contains('is-collapse-animated')
+          && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!animate) {
+          card.classList.toggle('is-collapsed', collapsed);
+          if (body) body.style.height = '';
+          return;
+        }
+        body.style.overflow = 'hidden';
+        if (collapsed) {
+          body.style.height = body.scrollHeight + 'px';
+          body.getBoundingClientRect();
+          card.classList.add('is-collapsed');
+          body.style.height = '0px';
+        } else {
+          body.style.height = '0px';
+          card.classList.remove('is-collapsed');
+          body.getBoundingClientRect();
+          body.style.height = body.scrollHeight + 'px';
+        }
+        var onEnd = function (event) {
+          if (event.propertyName !== 'height') return;
+          body.style.height = '';
+          if (!card.classList.contains('is-collapsed')) body.style.overflow = '';
+          body.removeEventListener('transitionend', onEnd);
+        };
+        body.addEventListener('transitionend', onEnd);
+      }
+
+      setCollapsed(store[key] === 1, false);
+      window.requestAnimationFrame(function () {
+        card.classList.add('is-collapse-animated');
+      });
+
+      function onToggle(event) {
+        if (event.target.closest('a, button, input, select, textarea, label')) return;
+        setCollapsed(!card.classList.contains('is-collapsed'), true);
+      }
+
+      var hit = keepEl || titleEl;
+      hit.addEventListener('click', onToggle);
+      titleEl.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        setCollapsed(!card.classList.contains('is-collapsed'), true);
+      });
+    }
+
+    root.querySelectorAll('.lumen-wp-panel, .lumen-wp-settings-group, .lumen-wp-validation-card').forEach(function (card) {
+      var titleEl = card.querySelector('.lumen-wp-panel__title, .lumen-wp-settings-group__title, .lumen-wp-validation-card__title');
+      if (!titleEl || !card.contains(titleEl)) return;
+      var keep = titleEl;
+      while (keep.parentElement && keep.parentElement !== card) {
+        keep = keep.parentElement;
+      }
+      wire(card, titleEl, keep === titleEl ? null : keep);
+    });
+
+    root.querySelectorAll('.form-table tr').forEach(function (row) {
+      if (row.closest('.lumen-wp-settings-group, .lumen-wp-panel')) return;
+      var titleEl = row.querySelector('th');
+      var body = row.querySelector('td');
+      if (!titleEl || !body) return;
+      wire(row, titleEl, null);
+    });
+  }
+
   function bootLumenScreen() {
     var wrap = document.querySelector('.lumen-wp-wrap');
     if (!wrap) return;
@@ -2672,6 +2874,7 @@
       stopUrlsPoll();
     }
     bootSettingsTabs();
+    bootCollapsibleCards(wrap);
   }
 
   function syncIconsHeader() {
@@ -2709,6 +2912,21 @@
       show(btn.getAttribute('data-lumen-settings-tab'));
     });
     show('appearance');
+    var crf = document.getElementById('lumen-wp-video-crf');
+    var crfVal = document.getElementById('lumen-wp-video-crf-val');
+    if (crf && crfVal && crf.getAttribute('data-lumen-crf') !== '1') {
+      crf.setAttribute('data-lumen-crf', '1');
+      var paintCrf = function () {
+        crfVal.textContent = crf.value;
+        var min = Number(crf.min);
+        var max = Number(crf.max);
+        var val = Number(crf.value);
+        var pct = max === min ? 0 : ((val - min) / (max - min)) * 100;
+        crf.style.setProperty('--lumen-range', pct + '%');
+      };
+      paintCrf();
+      crf.addEventListener('input', paintCrf);
+    }
   }
 
   function applyLumenHtml(html, url, push, seq, keyboard) {

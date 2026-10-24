@@ -131,10 +131,16 @@ final class Server_Caps
 		];
 	}
 
-	private static function has_ghostscript(): bool
+	public static function ffmpeg_binary(): ?string
 	{
-		if (self::has_binary(['gs', 'gswin64c', 'gswin32c'])) {
-			return true;
+		return self::locate_binary(['ffmpeg']);
+	}
+
+	public static function ghostscript_binary(): ?string
+	{
+		$found = self::locate_binary(['gs', 'gswin64c', 'gswin32c']);
+		if ($found !== null) {
+			return $found;
 		}
 
 		$candidates = [
@@ -154,11 +160,45 @@ final class Server_Caps
 
 		foreach ($candidates as $path) {
 			if (is_string($path) && $path !== '' && is_executable($path)) {
-				return true;
+				return $path;
 			}
 		}
 
-		return false;
+		return null;
+	}
+
+	/**
+	 * @param list<string> $names
+	 */
+	public static function locate_binary(array $names): ?string
+	{
+		if (! self::fn_enabled('shell_exec')) {
+			return null;
+		}
+
+		foreach ($names as $name) {
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_shell_exec
+			$path = trim((string) shell_exec('command -v ' . escapeshellarg($name) . ' 2>/dev/null'));
+			if ($path !== '' && is_executable($path)) {
+				return $path;
+			}
+
+			if (DIRECTORY_SEPARATOR === '\\') {
+				// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_shell_exec
+				$where = trim((string) shell_exec('where ' . escapeshellarg($name) . ' 2>NUL'));
+				$first = strtok($where, "\r\n");
+				if (is_string($first) && $first !== '' && is_file($first)) {
+					return $first;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	private static function has_ghostscript(): bool
+	{
+		return self::ghostscript_binary() !== null;
 	}
 
 	/**
@@ -166,19 +206,7 @@ final class Server_Caps
 	 */
 	private static function has_binary(array $names): bool
 	{
-		if (! self::fn_enabled('shell_exec')) {
-			return false;
-		}
-
-		foreach ($names as $name) {
-			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.system_calls_shell_exec
-			$path = trim((string) shell_exec('command -v ' . escapeshellarg($name) . ' 2>/dev/null'));
-			if ($path !== '' && is_executable($path)) {
-				return true;
-			}
-		}
-
-		return false;
+		return self::locate_binary($names) !== null;
 	}
 
 	private static function fn_enabled(string $fn): bool

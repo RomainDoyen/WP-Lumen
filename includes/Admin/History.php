@@ -170,7 +170,7 @@ final class History
 						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
 					</button>
 					<div class="lumen-wp-history-modal__body" id="lumen-wp-history-modal-body">
-						<p class="description"><?php esc_html_e('Chargement…', 'lumen-wp'); ?></p>
+						<p class="lumen-wp-loading"><span class="lumen-wp-spinner" aria-hidden="true"></span><?php esc_html_e('Chargement…', 'lumen-wp'); ?></p>
 					</div>
 					<div class="lumen-wp-modal__actions">
 						<a id="lumen-wp-history-modal-validate" class="button" href="#" hidden><?php Brand::icon('validate'); ?><?php esc_html_e('Ouvrir à valider', 'lumen-wp'); ?></a>
