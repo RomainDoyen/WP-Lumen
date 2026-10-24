@@ -231,7 +231,13 @@ final class History_Query
 			case 'ok':
 				return __('Réussi', 'lumen-wp');
 			case 'error':
-				return __('Échoué', 'lumen-wp');
+				return __('Erreur', 'lumen-wp');
+			case 'unsupported':
+				return __('Non supporté', 'lumen-wp');
+			case 'busy':
+				return __('Occupé', 'lumen-wp');
+			case 'skipped':
+				return __('Ignoré', 'lumen-wp');
 			default:
 				return $status !== '' ? $status : __('—', 'lumen-wp');
 		}

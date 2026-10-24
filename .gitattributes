@@ -1,3 +1,6 @@
+# Scripts shell exécutés sous WSL / Linux (évite bash\r).
+*.sh text eol=lf
+
 # Fichiers exclus du ZIP de distribution (git archive)
 .gitattributes  export-ignore
 .gitignore      export-ignore

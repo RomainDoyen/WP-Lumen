@@ -193,6 +193,7 @@ final class Settings
 			Brand::render_nav('settings');
 			ob_start();
 			echo '<button type="submit" class="button button-primary" form="lumen-wp-settings-form">';
+			Brand::icon('save');
 			esc_html_e('Enregistrer', 'lumen-wp');
 			echo '</button>';
 			$header_actions = (string) ob_get_clean();
@@ -209,7 +210,7 @@ final class Settings
 				<button type="button" class="lumen-wp-seg__item" data-lumen-settings-tab="seo" aria-selected="false"><?php esc_html_e('SEO', 'lumen-wp'); ?></button>
 				<button type="button" class="lumen-wp-seg__item" data-lumen-settings-tab="ai" aria-selected="false"><?php esc_html_e('IA', 'lumen-wp'); ?></button>
 			</nav>
-			<div class="lumen-wp-split">
+			<div class="lumen-wp-split lumen-wp-split--start">
 				<div class="lumen-wp-split__aside">
 			<section class="lumen-wp-panel">
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Capacités serveur', 'lumen-wp'); ?></h2>
@@ -244,7 +245,7 @@ final class Settings
 				<div class="lumen-wp-split__main">
 			<form id="lumen-wp-settings-form" method="post" action="options.php">
 				<?php settings_fields('lumen_wp_settings_group'); ?>
-				<div data-lumen-settings-panel="appearance">
+				<div data-lumen-settings-panel="appearance" class="is-active">
 				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><?php esc_html_e('Thème admin', 'lumen-wp'); ?></th>
@@ -487,6 +488,8 @@ final class Settings
 											data-label-show="<?php echo esc_attr__('Afficher', 'lumen-wp'); ?>"
 											data-label-hide="<?php echo esc_attr__('Masquer', 'lumen-wp'); ?>"
 										>
+											<?php Brand::icon('eye'); ?>
+											<?php Brand::icon('eye-off'); ?>
 											<?php esc_html_e('Afficher', 'lumen-wp'); ?>
 										</button>
 									</div>
@@ -542,6 +545,7 @@ final class Settings
 							</select>
 							<p class="lumen-wp-actions-row" style="margin-top:0.65rem">
 								<button type="button" class="button" id="lumen-wp-ai-models-refresh">
+									<?php Brand::icon('refresh'); ?>
 									<?php esc_html_e('Actualiser les modèles', 'lumen-wp'); ?>
 								</button>
 							</p>
@@ -660,25 +664,24 @@ final class Settings
 				</table>
 				</div>
 			</form>
+				<p class="description lumen-wp-settings-footnote">
+					<?php
+					echo wp_kses(
+						sprintf(
+							/* translators: %s: dashboard link */
+							__('Le compteur d’usage IA est affiché sur le %s.', 'lumen-wp'),
+							'<a href="' . esc_url(admin_url('admin.php?page=lumen-wp')) . '">' . esc_html__('Dashboard', 'lumen-wp') . '</a>'
+						),
+						[
+							'a' => [
+								'href' => true,
+							],
+						]
+					);
+					?>
+				</p>
 				</div>
 			</div>
-
-			<p class="description">
-				<?php
-				echo wp_kses(
-					sprintf(
-						/* translators: %s: dashboard link */
-						__('Le compteur d’usage IA est affiché sur le %s.', 'lumen-wp'),
-						'<a href="' . esc_url(admin_url('admin.php?page=lumen-wp')) . '">' . esc_html__('Dashboard', 'lumen-wp') . '</a>'
-					),
-					[
-						'a' => [
-							'href' => true,
-						],
-					]
-				);
-				?>
-			</p>
 			</div>
 			</div>
 		</div>

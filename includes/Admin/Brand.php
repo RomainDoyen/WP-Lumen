@@ -92,6 +92,8 @@ final class Brand
 		}
 		$keys  = array_keys($visible);
 		$index = array_search($current, $keys, true);
+		// WordPress déplace les notices après ce marqueur, hors de la fenêtre.
+		echo '<hr class="wp-header-end" />';
 		?>
 		<div class="lumen-wp-shell">
 			<nav class="lumen-wp-nav" aria-label="<?php esc_attr_e('Navigation Lumen', 'lumen-wp'); ?>">
@@ -174,11 +176,13 @@ final class Brand
 				<h2 id="lumen-wp-modal-title" class="lumen-wp-modal__title"></h2>
 				<p id="lumen-wp-modal-message" class="lumen-wp-modal__message"></p>
 				<div class="lumen-wp-modal__actions">
-					<a id="lumen-wp-modal-action" class="button" hidden href="#"></a>
+					<a id="lumen-wp-modal-action" class="button" hidden href="#"><?php self::icon('external'); ?></a>
 					<button type="button" class="button" id="lumen-wp-modal-cancel" data-lumen-modal-close hidden>
+						<?php self::icon('close'); ?>
 						<?php esc_html_e('Annuler', 'lumen-wp'); ?>
 					</button>
 					<button type="button" class="button button-primary" id="lumen-wp-modal-ok" data-lumen-modal-close>
+						<?php self::icon('validate'); ?>
 						<?php esc_html_e('OK', 'lumen-wp'); ?>
 					</button>
 				</div>
@@ -323,6 +327,72 @@ final class Brand
 				'M5 4h11l3 3v13H5z',
 				'M8 4v5h8V4',
 				'M8 20v-6h8v6',
+			],
+			'refresh' => [
+				'M20 12a8 8 0 1 1-2.3-5.6',
+				'M20 4v5h-5',
+			],
+			'forward' => [
+				'M5 12h12',
+				'M13 7l5 5-5 5',
+			],
+			'back' => [
+				'M19 12H7',
+				'M11 7l-5 5 5 5',
+			],
+			'pause' => [
+				'M9 5v14',
+				'M15 5v14',
+			],
+			'play' => [
+				'M8 5.5v13l11-6.5-11-6.5z',
+			],
+			'stop' => [
+				'M7 7h10v10H7z',
+			],
+			'close' => [
+				'M6 6l12 12',
+				'M18 6L6 18',
+			],
+			'trash' => [
+				'M4 7h16',
+				'M9 7V5h6v2',
+				'M7 7l1 12h8l1-12',
+			],
+			'repair' => [
+				'M14.7 6.3a4 4 0 0 0-5.6 5.6L4 17v3h3l5.1-5.1a4 4 0 0 0 5.6-5.6L15 12l-3-3 2.7-2.7z',
+			],
+			'search' => [
+				'M17 11c0 3.314-2.686 6-6 6s-6-2.686-6-6 2.686-6 6-6 6 2.686 6 6z',
+				'M15.6 15.6L20.4 20.4',
+			],
+			'external' => [
+				'M14 5h5v5',
+				'M10 14L19 5',
+				'M18 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
+			],
+			'copy' => [
+				'M8 8h11v11H8z',
+				'M5 16V5h11',
+			],
+			'restore' => [
+				'M4 12a8 8 0 1 0 2.2-5.5',
+				'M4 4v5h5',
+			],
+			'eye' => [
+				'M2 12s4-6 10-6 10 6 10 6-4 6-10 6S2 12 2 12z',
+				'M12 15a3 3 0 1 0 0.01 0',
+			],
+			'eye-off' => [
+				'M3 3l18 18',
+				'M10.5 10.7a3 3 0 0 0 4.2 4.1',
+				'M9.9 5.2A11 11 0 0 1 12 5c6 0 10 7 10 7a18 18 0 0 1-3.1 4',
+				'M6.1 6.2C3.9 7.9 2 12 2 12s3.2 5.6 8.2 6.7',
+			],
+			'details' => [
+				'M4 6h16',
+				'M4 12h16',
+				'M4 18h10',
 			],
 		];
 	}

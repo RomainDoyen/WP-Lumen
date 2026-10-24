@@ -44,6 +44,49 @@
     window.alert(message);
   }
 
+  function lumenIcon(name) {
+    var paths = {
+      image: ['M4 5h16v14H4z', 'M4 15l4.5-4.5 3 3L15 10l5 5', 'M9 9.2h.01'],
+      bulk: ['M12 3l8 4-8 4-8-4 8-4z', 'M4 12l8 4 8-4', 'M4 16l8 4 8-4'],
+      save: ['M5 4h11l3 3v13H5z', 'M8 4v5h8V4', 'M8 20v-6h8v6'],
+      export: ['M12 4v10', 'M8 10l4 4 4-4', 'M5 19h14']
+    };
+    var body = (paths[name] || [])
+      .map(function (d) {
+        return '<path pathLength="1" d="' + d + '"/>';
+      })
+      .join('');
+    return (
+      '<svg class="lumen-wp-icon lumen-wp-icon--' +
+      name +
+      '" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+      body +
+      '</svg>'
+    );
+  }
+
+  function buttonPlainText($btn) {
+    if (!$btn || !$btn.length) return '';
+    return $.trim($btn.clone().children('svg').remove().end().text());
+  }
+
+  function setButtonLabel($btn, label) {
+    if (!$btn || !$btn.length) return;
+    var icons = $btn.children('svg').detach();
+    $btn.text(label);
+    if (icons.length) $btn.prepend(icons);
+  }
+
+  function setControlLabel(el, label) {
+    if (!el) return;
+    var icons = Array.prototype.slice.call(el.querySelectorAll('svg.lumen-wp-icon'));
+    el.textContent = '';
+    icons.forEach(function (svg) {
+      el.appendChild(svg);
+    });
+    el.appendChild(document.createTextNode(label || ''));
+  }
+
   // —— Custom select (options au thème Lumen) ——
   function closeAllCustomSelects(except) {
     $('.lumen-wp-csel.is-open').each(function () {
@@ -263,7 +306,7 @@
     action.setAttribute('aria-hidden', 'true');
     action.setAttribute('tabindex', '-1');
     action.removeAttribute('href');
-    action.textContent = '';
+    setControlLabel(action, '');
   }
 
   function showModalAction(action, url, label) {
@@ -276,7 +319,7 @@
     action.setAttribute('aria-hidden', 'false');
     action.removeAttribute('tabindex');
     action.setAttribute('href', url);
-    action.textContent = label || '';
+    setControlLabel(action, label || '');
   }
 
   function resetModalConfirmUi(el) {
@@ -288,7 +331,7 @@
       cancel.setAttribute('aria-hidden', 'true');
     }
     if (ok) {
-      ok.textContent = i18n.okLabel || 'OK';
+      setControlLabel(ok, i18n.okLabel || 'OK');
       ok.setAttribute('data-lumen-modal-close', '');
       ok.classList.remove('lumen-wp-modal__confirm');
     }
@@ -332,10 +375,10 @@
       if (cancel) {
         cancel.hidden = false;
         cancel.setAttribute('aria-hidden', 'false');
-        cancel.textContent = opts.cancelLabel || i18n.cancelLabel || 'Annuler';
+        setControlLabel(cancel, opts.cancelLabel || i18n.cancelLabel || 'Annuler');
       }
       if (ok) {
-        ok.textContent = opts.confirmLabel || i18n.confirmLabel || 'Confirmer';
+        setControlLabel(ok, opts.confirmLabel || i18n.confirmLabel || 'Confirmer');
         ok.removeAttribute('data-lumen-modal-close');
         ok.classList.add('lumen-wp-modal__confirm');
       }
@@ -485,20 +528,19 @@
     setNativeMediaField('description', typeof seo.description === 'string' ? seo.description : null);
     setNativeMediaField('alt', alt !== '' ? alt : null);
 
-    // 3) Après le re-render WP (compat HTML mis en cache), réappliquer la carte Lumen.
+    // 3) Après le re-render WP (compat HTML mis en cache), réappliquer les champs.
     var boxEl = resolveMetaboxEl(root);
-    window.setTimeout(function () {
+    var refresh = function () {
       var live = boxEl && document.contains(boxEl) ? boxEl : findMetaboxByAttachment(root);
       applyLumenSeoInputs(seo, live || document);
       setNativeMediaField('title', typeof seo.title === 'string' ? seo.title : null);
       setNativeMediaField('caption', typeof seo.caption === 'string' ? seo.caption : null);
       setNativeMediaField('description', typeof seo.description === 'string' ? seo.description : null);
       setNativeMediaField('alt', alt !== '' ? alt : null);
-    }, 0);
-    window.setTimeout(function () {
-      var live = boxEl && document.contains(boxEl) ? boxEl : findMetaboxByAttachment(root);
-      applyLumenSeoInputs(seo, live || document);
-    }, 50);
+    };
+    window.setTimeout(refresh, 0);
+    window.setTimeout(refresh, 50);
+    window.setTimeout(refresh, 250);
   }
 
   function resolveMetaboxEl(root) {
@@ -627,13 +669,69 @@
       });
   });
 
+  function lumenStatusLabel(status) {
+    var map = (lumenWp.i18n && lumenWp.i18n.statuses) || {};
+    if (!status) return '—';
+    return map[status] || status;
+  }
+
+  function setMetaboxStatus(box, status) {
+    box
+      .find('.lumen-wp-status')
+      .attr('class', 'lumen-wp-status lumen-wp-status--' + (status || 'none'))
+      .text(lumenStatusLabel(status));
+    box.find('.lumen-wp-approve').prop('hidden', status !== 'awaiting_validation');
+  }
+
+  function seoPayload(box) {
+    var seo = {};
+    box.find('[data-lumen-seo]').each(function () {
+      seo[this.getAttribute('data-lumen-seo')] = $(this).val();
+    });
+    return seo;
+  }
+
+  $(document).on('click', '.lumen-wp-approve', function (e) {
+    e.preventDefault();
+    var box = $(this).closest('.lumen-wp-metabox');
+    var id = box.data('attachment-id');
+    var btn = $(this).data('label', buttonPlainText($(this))).prop('disabled', true);
+    setButtonLabel(btn, lumenWp.i18n.processing);
+    ajax('lumen_wp_approve', { id: id, seo: seoPayload(box) })
+      .done(function (res) {
+        if (!res || !res.success) {
+          window.lumenWpModal.error(
+            (res && res.data && res.data.message) || lumenWp.i18n.error
+          );
+          return;
+        }
+        var data = res.data || {};
+        var seo = data.seo || seoPayload(box);
+        fillSeoFields(seo, box.get(0));
+        setMetaboxStatus(box, data.status || 'ok');
+        window.setTimeout(function () {
+          var live = findMetaboxByAttachment(box.get(0));
+          if (live) setMetaboxStatus($(live), data.status || 'ok');
+        }, 60);
+        window.lumenWpModal.success(data.message || lumenWp.i18n.approved);
+      })
+      .fail(function (xhr) {
+        window.lumenWpModal.error(ajaxErrorMessage(xhr, lumenWp.i18n.error));
+      })
+      .always(function () {
+        btn.prop('disabled', false);
+        setButtonLabel(btn, btn.data('label'));
+      });
+  });
+
   $(document).on('click', '.lumen-wp-suggest, #lumen-wp-suggest', function (e) {
     e.preventDefault();
     var box = $(this).closest('.lumen-wp-metabox');
     var id = box.data('attachment-id');
     var banner = box.find('.lumen-wp-mistral-banner, #lumen-wp-mistral-banner').first();
     banner.prop('hidden', true).text('');
-    var btn = $(this).data('label', $(this).text()).prop('disabled', true).text(lumenWp.i18n.processing);
+    var btn = $(this).data('label', buttonPlainText($(this))).prop('disabled', true);
+    setButtonLabel(btn, lumenWp.i18n.processing);
 
     ajax('lumen_wp_suggest', { id: id })
       .done(function (res) {
@@ -644,7 +742,7 @@
           return;
         }
         fillSeoFields(res.data.seo, box.get(0));
-        box.find('.lumen-wp-status').text('ok');
+        setMetaboxStatus(box, 'ok');
         box.find('.lumen-wp-error').remove();
         if (res.data.gutenberg) {
           $('#lumen-wp-gutenberg').val(res.data.gutenberg);
@@ -667,7 +765,8 @@
         window.lumenWpModal.error(msg);
       })
       .always(function () {
-        btn.prop('disabled', false).text(btn.data('label'));
+        btn.prop('disabled', false);
+        setButtonLabel(btn, btn.data('label'));
       });
   });
 
@@ -677,7 +776,8 @@
     var box = $btn.closest('.lumen-wp-metabox');
     var id = box.data('attachment-id');
     var run = function () {
-      var btn = $btn.data('label', $btn.text()).prop('disabled', true).text(lumenWp.i18n.processing);
+      var btn = $btn.data('label', buttonPlainText($btn)).prop('disabled', true);
+      setButtonLabel(btn, lumenWp.i18n.processing);
       ajax('lumen_wp_reprocess', { id: id, use_mistral: 0 })
         .done(function (res) {
           var data = res && res.data ? res.data : {};
@@ -685,7 +785,7 @@
           if (data.gutenberg) $('#lumen-wp-gutenberg').val(data.gutenberg);
           if (data.jsonld) $('#lumen-wp-jsonld').val(data.jsonld);
           if (data.status) {
-            box.find('.lumen-wp-status').text(data.status);
+            setMetaboxStatus(box, data.status);
           }
           if (data.has_backup) {
             box.attr('data-has-backup', '1');
@@ -701,7 +801,8 @@
           window.lumenWpModal.error(lumenWp.i18n.error);
         })
         .always(function () {
-          btn.prop('disabled', false).text(btn.data('label'));
+          btn.prop('disabled', false);
+          setButtonLabel(btn, btn.data('label'));
         });
     };
 
@@ -734,7 +835,8 @@
     }
     var box = $(this).closest('.lumen-wp-metabox');
     var id = box.data('attachment-id');
-    var btn = $(this).prop('disabled', true).text(lumenWp.i18n.processing);
+    var btn = $(this).prop('disabled', true);
+    setButtonLabel(btn, lumenWp.i18n.processing);
 
     ajax('lumen_wp_restore_original', { id: id })
       .done(function (res) {
@@ -743,7 +845,7 @@
           window.lumenWpModal.error(data.message || lumenWp.i18n.error);
           return;
         }
-        if (data.status) box.find('.lumen-wp-status').text(data.status);
+        if (data.status) setMetaboxStatus(box, data.status);
         $('#lumen-wp-gutenberg').val(data.gutenberg || '');
         $('#lumen-wp-jsonld').val(data.jsonld || '');
         window.lumenWpModal.success(data.message || lumenWp.i18n.restored);
@@ -755,7 +857,8 @@
         );
       })
       .always(function () {
-        btn.prop('disabled', false).text('Restaurer l’original');
+        btn.prop('disabled', false);
+        setButtonLabel(btn, 'Restaurer l’original');
       });
   });
 
@@ -773,7 +876,11 @@
     $ul.empty();
     var rows = log || [];
     if ($meta.length) {
-      $meta.text(rows.length ? rows.length + ' message(s)' : '30 derniers messages');
+      $meta.text(
+        rows.length
+          ? rows.length + (rows.length === 1 ? ' message' : ' messages')
+          : '30 derniers messages'
+      );
     }
     if ($empty.length) {
       $empty.prop('hidden', rows.length > 0);
@@ -837,7 +944,7 @@
     var rows = errors || [];
     $ul.empty();
     if ($meta.length) {
-      $meta.text(rows.length ? rows.length + ' erreur(s)' : '0');
+      $meta.text(rows.length ? rows.length + (rows.length === 1 ? ' erreur' : ' erreurs') : '0');
     }
     $shell.prop('hidden', rows.length === 0);
     rows.forEach(function (err) {
@@ -920,7 +1027,7 @@
             (entry.ok || 0) +
             ' OK · ' +
             (entry.err || 0) +
-            ' erreur(s)'
+            ((parseInt(entry.err, 10) || 0) === 1 ? ' erreur' : ' erreurs')
         )
       );
       $li.append($('<p class="lumen-wp-history__opts"/>').text(opts.join(' · ')));
@@ -956,6 +1063,7 @@
 
     $('#lumen-wp-bulk-progress').prop('hidden', status === 'idle');
     $('#lumen-wp-progress-bar').val(pct);
+    $('#lumen-wp-progress-pct').text(pct + ' %');
     var progressLabel = total
       ? processed + ' / ~' + total
       : processed + ' traités';
@@ -997,19 +1105,20 @@
 
     // Modale uniquement sur une vraie transition vers « done » pendant la session.
     if (bulkStatusReady && status === 'done' && bulkLastStatus !== 'done') {
+      var okCount = parseInt(job.ok, 10) || 0;
+      var errCount = parseInt(job.err, 10) || 0;
       var msg =
-        (lumenWp.i18n.bulkDone || 'Terminé.') +
-        ' ' +
-        (job.ok || 0) +
-        ' OK / ' +
-        (job.err || 0) +
-        ' erreur(s).';
-      if ((job.err || 0) > 0 && (job.ok || 0) === 0) {
-        window.lumenWpModal.error(msg);
-      } else if ((job.err || 0) > 0) {
-        window.lumenWpModal.show({ type: 'error', title: lumenWp.i18n.done, message: msg });
+        okCount +
+        ' OK, ' +
+        errCount +
+        (errCount === 1 ? ' erreur.' : ' erreurs.');
+      var doneTitle = lumenWp.i18n.done || 'Terminé.';
+      if (errCount > 0 && okCount === 0) {
+        window.lumenWpModal.error(msg, doneTitle);
+      } else if (errCount > 0) {
+        window.lumenWpModal.info(msg, doneTitle);
       } else {
-        window.lumenWpModal.success(msg);
+        window.lumenWpModal.success(msg, doneTitle);
       }
       if (meta && meta.history) {
         renderBulkHistory(meta.history);
@@ -1258,7 +1367,8 @@
         var $input = $(this).find('.lumen-wp-api-key__input');
         var $btn = $(this).find('.lumen-wp-api-key__toggle');
         $input.attr('type', 'password');
-        $btn.attr('aria-pressed', 'false').text($btn.data('label-show') || 'Afficher');
+        $btn.attr('aria-pressed', 'false');
+        setButtonLabel($btn, $btn.data('label-show') || 'Afficher');
       }
     });
 
@@ -1321,13 +1431,14 @@
     if (provider === 'none') return;
 
     var $btn = $(this).prop('disabled', true);
-    var label = $btn.text();
+    var label = buttonPlainText($btn);
     var apiKey = getVisibleApiKey(provider);
-    $btn.text(lumenWp.i18n.processing || 'Traitement…');
+    setButtonLabel($btn, lumenWp.i18n.processing || 'Traitement…');
 
     if (!apiKey && !hasStoredApiKey(provider)) {
       window.lumenWpModal.error('Renseignez d’abord la clé API du fournisseur.');
-      $btn.prop('disabled', false).text(label);
+      $btn.prop('disabled', false);
+      setButtonLabel($btn, label);
       return;
     }
 
@@ -1365,7 +1476,8 @@
         );
       })
       .always(function () {
-        $btn.prop('disabled', false).text(label);
+        $btn.prop('disabled', false);
+        setButtonLabel($btn, label);
       });
   });
 
@@ -1399,9 +1511,11 @@
     if (!$input.length) return;
     var show = $input.attr('type') === 'password';
     $input.attr('type', show ? 'text' : 'password');
-    $btn
-      .attr('aria-pressed', show ? 'true' : 'false')
-      .text(show ? $btn.data('label-hide') || 'Masquer' : $btn.data('label-show') || 'Afficher');
+    $btn.attr('aria-pressed', show ? 'true' : 'false');
+    setButtonLabel(
+      $btn,
+      show ? $btn.data('label-hide') || 'Masquer' : $btn.data('label-show') || 'Afficher'
+    );
   });
 
   $(document).on('click', '#lumen-wp-ai-usage-reset', function (e) {
@@ -1455,7 +1569,7 @@
       card.find('img').attr({ src: item.url, alt: item.size + 'px' });
       card.find('strong').text(item.size + '×' + item.size + ' px');
       card.find('span').text(formatBytes(item.bytes));
-      card.find('a').attr({ href: item.url, download: 'icon-' + item.size + '.png' }).text('PNG');
+      card.find('a').attr({ href: item.url, download: 'icon-' + item.size + '.png' }).html(lumenIcon('export') + 'PNG');
       grid.append(card);
     });
 
@@ -1560,7 +1674,8 @@
       return;
     }
 
-    var btn = $(this).prop('disabled', true).text(lumenWp.i18n.processing);
+    var btn = $(this).prop('disabled', true);
+    setButtonLabel(btn, lumenWp.i18n.processing);
     var fd = new FormData();
     fd.append('action', 'lumen_wp_icons_generate');
     fd.append('nonce', lumenWp.nonce);
@@ -1594,7 +1709,8 @@
         window.lumenWpModal.error(msg);
       })
       .always(function () {
-        btn.prop('disabled', false).text('Générer le kit');
+        btn.prop('disabled', false);
+        setButtonLabel(btn, 'Générer le kit');
       });
   });
 
@@ -1629,15 +1745,7 @@
   }
 
   function lumenStatIcon(name) {
-    var paths = {
-      image: ['M4 5h16v14H4z', 'M4 15l4.5-4.5 3 3L15 10l5 5', 'M9 9.2h.01'],
-      bulk: ['M12 3l8 4-8 4-8-4 8-4z', 'M4 12l8 4 8-4', 'M4 16l8 4 8-4'],
-      save: ['M5 4h11l3 3v13H5z', 'M8 4v5h8V4', 'M8 20v-6h8v6']
-    };
-    var body = (paths[name] || []).map(function (d) {
-      return '<path pathLength="1" d="' + d + '"/>';
-    }).join('');
-    return '<svg class="lumen-wp-icon lumen-wp-icon--' + name + '" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + body + '</svg>';
+    return lumenIcon(name);
   }
 
   function renderCleanupPreview(p) {
@@ -1773,7 +1881,8 @@
     if (!window.confirm(lumenWp.i18n.cleanupConfirm || 'Lancer le nettoyage ?')) {
       return;
     }
-    var btn = $(this).prop('disabled', true).text(lumenWp.i18n.processing);
+    var btn = $(this).prop('disabled', true);
+    setButtonLabel(btn, lumenWp.i18n.processing);
     ajax('lumen_wp_cleanup_run', {
       sidecars: $('#lumen-wp-cleanup-sidecars').is(':checked') ? 1 : 0,
       backups: $('#lumen-wp-cleanup-backups').is(':checked') ? 1 : 0,
@@ -1797,7 +1906,8 @@
         );
       })
       .always(function () {
-        btn.prop('disabled', false).text('Lancer le nettoyage');
+        btn.prop('disabled', false);
+        setButtonLabel(btn, 'Lancer le nettoyage');
       });
   });
 
@@ -1926,7 +2036,9 @@
         (row.edit_url
           ? '<a class="button button-small" href="' +
             row.edit_url +
-            '" target="_blank" rel="noopener">Fiche</a>'
+            '" target="_blank" rel="noopener">' +
+            lumenIcon('image') +
+            'Fiche</a>'
           : '') +
         '</td>' +
         '</tr>';
@@ -2031,9 +2143,8 @@
 
     $('#lumen-wp-urls-diagnose').prop('disabled', running);
     $('#lumen-wp-urls-rewrite').prop('disabled', running);
-    $('#lumen-wp-urls-retry')
-      .prop('disabled', running || !errIds.length)
-      .text('Réessayer les erreurs (' + errIds.length + ')');
+    $('#lumen-wp-urls-retry').prop('disabled', running || !errIds.length);
+    setButtonLabel($('#lumen-wp-urls-retry'), 'Réessayer les erreurs (' + errIds.length + ')');
     $('#lumen-wp-urls-force-full').prop('disabled', running);
     $('#lumen-wp-urls-force-tick').prop('disabled', !running);
     $('#lumen-wp-urls-stop').prop('disabled', !running);
@@ -2111,11 +2222,12 @@
   }
 
   function startUrlsJob(mode, $btn, forceRestart) {
-    var label = $btn && $btn.length ? $btn.text() : '';
+    var label = $btn && $btn.length ? buttonPlainText($btn) : '';
     var forceFull =
       mode !== 'retry' && $('#lumen-wp-urls-force-full').is(':checked') ? 1 : 0;
     if ($btn && $btn.length) {
-      $btn.prop('disabled', true).text('Démarrage…');
+      $btn.prop('disabled', true);
+      setButtonLabel($btn, 'Démarrage…');
     }
     $('#lumen-wp-urls-progress').prop('hidden', false);
     $('#lumen-wp-urls-status-text').text('Démarrage…');
@@ -2142,7 +2254,10 @@
             }
           }
           showModalError(msg);
-          if ($btn && $btn.length) $btn.prop('disabled', false).text(label);
+          if ($btn && $btn.length) {
+            $btn.prop('disabled', false);
+            setButtonLabel($btn, label);
+          }
           if (res && res.data && res.data.job) {
             applyUrlsJob(res.data.job, res.data.health, res.data.last_errors);
           }
@@ -2163,7 +2278,10 @@
           return;
         }
         showModalError(ajaxErrorMessage(xhr, 'Démarrage impossible'));
-        if ($btn && $btn.length) $btn.prop('disabled', false).text(label);
+        if ($btn && $btn.length) {
+          $btn.prop('disabled', false);
+          setButtonLabel($btn, label);
+        }
       });
   }
 
@@ -2575,11 +2693,9 @@
     var panels = root.querySelectorAll('[data-lumen-settings-panel]');
     function show(name) {
       panels.forEach(function (panel) {
-        if (panel.getAttribute('data-lumen-settings-panel') === name) {
-          panel.removeAttribute('hidden');
-        } else {
-          panel.setAttribute('hidden', '');
-        }
+        var on = panel.getAttribute('data-lumen-settings-panel') === name;
+        panel.classList.toggle('is-active', on);
+        panel.hidden = !on;
       });
       seg.querySelectorAll('[data-lumen-settings-tab]').forEach(function (btn) {
         var on = btn.getAttribute('data-lumen-settings-tab') === name;

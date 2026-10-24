@@ -91,22 +91,77 @@ ZIP_STABLE_PATH="$DIST_DIR/$ZIP_STABLE"
 
 rm -f "$ZIP_VERSIONED_PATH" "$ZIP_STABLE_PATH"
 
-(
-	cd "$TMP"
-	zip -r -q "$ZIP_VERSIONED_PATH" "$PLUGIN_SLUG"
-)
+# zip/unzip ne sont pas toujours là (WSL minimal). python3 est le repli.
+zip_tree() {
+	local src_dir="$1"
+	local dest="$2"
+	local parent base
+	parent="$(dirname "$src_dir")"
+	base="$(basename "$src_dir")"
+	if command -v zip >/dev/null 2>&1; then
+		( cd "$parent" && zip -r -q "$dest" "$base" )
+		return
+	fi
+	if ! command -v python3 >/dev/null 2>&1; then
+		echo "❌ Commande zip absente, et python3 non disponible. Installez : sudo apt install zip unzip" >&2
+		exit 1
+	fi
+	python3 - "$parent" "$base" "$dest" <<'PY'
+import os, sys, zipfile
+parent, base, dest = sys.argv[1], sys.argv[2], sys.argv[3]
+root = os.path.join(parent, base)
+with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames.sort()
+        for name in sorted(filenames):
+            full = os.path.join(dirpath, name)
+            arc = os.path.relpath(full, parent).replace(os.sep, "/")
+            zf.write(full, arc)
+PY
+}
+
+zip_read() {
+	local archive="$1"
+	local member="$2"
+	if command -v unzip >/dev/null 2>&1; then
+		unzip -p "$archive" "$member"
+		return
+	fi
+	python3 - "$archive" "$member" <<'PY'
+import sys, zipfile
+archive, member = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(archive) as zf:
+    sys.stdout.buffer.write(zf.read(member))
+PY
+}
+
+zip_list() {
+	local archive="$1"
+	if command -v unzip >/dev/null 2>&1; then
+		unzip -Z1 "$archive"
+		return
+	fi
+	python3 - "$archive" <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as zf:
+    for name in zf.namelist():
+        print(name)
+PY
+}
+
+zip_tree "$STAGE" "$ZIP_VERSIONED_PATH"
 
 # Alias stable (compat workflow / docs existants)
 cp -f "$ZIP_VERSIONED_PATH" "$ZIP_STABLE_PATH"
 
 # Vérifications rapides
-if ! unzip -p "$ZIP_STABLE_PATH" "${PLUGIN_SLUG}/lumen.php" >/dev/null 2>&1; then
+if ! zip_read "$ZIP_STABLE_PATH" "${PLUGIN_SLUG}/lumen.php" >/dev/null 2>&1; then
 	echo "❌ ZIP invalide : ${PLUGIN_SLUG}/lumen.php absent" >&2
 	exit 1
 fi
 
 ZIP_VER="$(
-	unzip -p "$ZIP_STABLE_PATH" "${PLUGIN_SLUG}/lumen.php" \
+	zip_read "$ZIP_STABLE_PATH" "${PLUGIN_SLUG}/lumen.php" \
 		| grep -E "^\s*\*\s*Version:" \
 		| head -1 \
 		| sed -E 's/.*Version:[[:space:]]*//' \
@@ -118,9 +173,9 @@ if [[ "$ZIP_VER" != "$VERSION" ]]; then
 fi
 
 # Pas de docs / tooling / worktrees / SDD dans le zip
-if unzip -Z1 "$ZIP_STABLE_PATH" 2>/dev/null | grep -E -q '(^|/ )docs/|\.github/|bin/build-zip|\.worktrees/|\.superpowers/'; then
+if zip_list "$ZIP_STABLE_PATH" 2>/dev/null | grep -E -q '(^|/ )docs/|\.github/|bin/build-zip|\.worktrees/|\.superpowers/'; then
 	echo "❌ ZIP contient des chemins exclus (docs/.github/bin/.worktrees/.superpowers)" >&2
-	unzip -Z1 "$ZIP_STABLE_PATH" | grep -E 'docs/|\.github/|bin/|\.worktrees/|\.superpowers/' || true
+	zip_list "$ZIP_STABLE_PATH" | grep -E 'docs/|\.github/|bin/|\.worktrees/|\.superpowers/' || true
 	exit 1
 fi
 

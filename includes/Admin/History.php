@@ -132,7 +132,7 @@ final class History
 										type="button"
 										class="button lumen-wp-history-detail"
 										data-id="<?php echo esc_attr((string) $row['id']); ?>"
-									><?php esc_html_e('Détails', 'lumen-wp'); ?></button>
+									><?php Brand::icon('details'); ?><?php esc_html_e('Détails', 'lumen-wp'); ?></button>
 								</div>
 							</li>
 						<?php endforeach; ?>
@@ -142,12 +142,14 @@ final class History
 						<p class="lumen-wp-actions-row">
 							<?php if ($page > 1) : ?>
 								<a class="button" href="<?php echo esc_url(add_query_arg(['status' => $filter === 'all' ? false : $filter, 'paged' => $page - 1], $base)); ?>">
+									<?php Brand::icon('back'); ?>
 									<?php esc_html_e('Précédent', 'lumen-wp'); ?>
 								</a>
 							<?php endif; ?>
 							<span class="description"><?php echo esc_html($page . ' / ' . $pages); ?></span>
 							<?php if ($page < $pages) : ?>
 								<a class="button" href="<?php echo esc_url(add_query_arg(['status' => $filter === 'all' ? false : $filter, 'paged' => $page + 1], $base)); ?>">
+									<?php Brand::icon('forward'); ?>
 									<?php esc_html_e('Suivant', 'lumen-wp'); ?>
 								</a>
 							<?php endif; ?>
@@ -171,9 +173,9 @@ final class History
 						<p class="description"><?php esc_html_e('Chargement…', 'lumen-wp'); ?></p>
 					</div>
 					<div class="lumen-wp-modal__actions">
-						<a id="lumen-wp-history-modal-validate" class="button" href="#" hidden><?php esc_html_e('Ouvrir à valider', 'lumen-wp'); ?></a>
-						<a id="lumen-wp-history-modal-edit" class="button" href="#" target="_blank" rel="noopener noreferrer"><?php esc_html_e('Fiche média', 'lumen-wp'); ?></a>
-						<button type="button" class="button button-primary" data-lumen-history-close><?php esc_html_e('Fermer', 'lumen-wp'); ?></button>
+						<a id="lumen-wp-history-modal-validate" class="button" href="#" hidden><?php Brand::icon('validate'); ?><?php esc_html_e('Ouvrir à valider', 'lumen-wp'); ?></a>
+						<a id="lumen-wp-history-modal-edit" class="button" href="#" target="_blank" rel="noopener noreferrer"><?php Brand::icon('image'); ?><?php esc_html_e('Fiche média', 'lumen-wp'); ?></a>
+						<button type="button" class="button button-primary" data-lumen-history-close><?php Brand::icon('close'); ?><?php esc_html_e('Fermer', 'lumen-wp'); ?></button>
 					</div>
 				</div>
 			</div>

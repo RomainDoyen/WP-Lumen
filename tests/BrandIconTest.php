@@ -30,6 +30,16 @@ class BrandIconTest extends WP_UnitTestCase
 		$this->assertStringContainsString('aria-hidden="true"', $html);
 	}
 
+	public function test_action_icons_render_svg(): void
+	{
+		foreach (['refresh', 'pause', 'play', 'stop', 'close', 'trash', 'eye', 'eye-off'] as $name) {
+			$html = $this->capture(static function () use ($name): void {
+				Brand::icon($name);
+			});
+			$this->assertStringContainsString('lumen-wp-icon--' . $name, $html);
+		}
+	}
+
 	public function test_icon_unknown_name_renders_nothing(): void
 	{
 		$html = $this->capture(static function (): void {

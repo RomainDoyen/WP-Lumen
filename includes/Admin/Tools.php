@@ -53,10 +53,12 @@ final class Tools
 		ob_start();
 		if ($tab === 'maintenance') {
 			echo '<button type="button" class="button button-primary" id="lumen-wp-cleanup-run">';
+			Brand::icon('trash');
 			esc_html_e('Lancer le nettoyage', 'lumen-wp');
 			echo '</button>';
 		} elseif ($tab === 'urls') {
 			echo '<button type="submit" class="button button-primary" id="lumen-wp-urls-rewrite" form="lumen-wp-urls-rewrite-form">';
+			Brand::icon('repair');
 			esc_html_e('Réécrire', 'lumen-wp');
 			echo '</button>';
 		}
@@ -163,9 +165,11 @@ final class Tools
 				</ul>
 				<p class="lumen-wp-actions-row">
 					<button type="button" class="button" id="lumen-wp-cron-refresh">
+						<?php Brand::icon('refresh'); ?>
 						<?php esc_html_e('Actualiser', 'lumen-wp'); ?>
 					</button>
 					<button type="button" class="button button-primary" id="lumen-wp-cron-force-tick">
+						<?php Brand::icon('forward'); ?>
 						<?php esc_html_e('Avancer maintenant', 'lumen-wp'); ?>
 					</button>
 				</p>
@@ -224,6 +228,7 @@ final class Tools
 
 				<p class="lumen-wp-actions-row">
 					<button type="button" class="button" id="lumen-wp-cleanup-refresh">
+						<?php Brand::icon('refresh'); ?>
 						<?php esc_html_e('Recalculer', 'lumen-wp'); ?>
 					</button>
 				</p>
@@ -235,7 +240,7 @@ final class Tools
 				<h2 class="lumen-wp-panel__title"><?php esc_html_e('Journal jobs', 'lumen-wp'); ?></h2>
 				<p class="description"><?php esc_html_e('Supprime l’historique tokens/jobs Lumen (table + cache médias). Ne touche pas aux fichiers.', 'lumen-wp'); ?></p>
 				<p class="lumen-wp-actions-row">
-					<button type="button" class="button" id="lumen-wp-jobs-purge"><?php esc_html_e('Vider le journal jobs', 'lumen-wp'); ?></button>
+					<button type="button" class="button lumen-wp-btn-danger" id="lumen-wp-jobs-purge"><?php Brand::icon('trash'); ?><?php esc_html_e('Vider le journal jobs', 'lumen-wp'); ?></button>
 				</p>
 			</section>
 			<section class="lumen-wp-panel">
@@ -245,6 +250,7 @@ final class Tools
 				</p>
 				<p class="lumen-wp-actions-row">
 					<button type="button" class="button button-primary" id="lumen-wp-repair-processing">
+						<?php Brand::icon('repair'); ?>
 						<?php esc_html_e('Réparer les statuts processing', 'lumen-wp'); ?>
 					</button>
 				</p>
@@ -294,6 +300,7 @@ final class Tools
 						<input type="hidden" name="force_restart" value="0" class="lumen-wp-urls-force-restart" />
 						<input type="hidden" name="force_full" value="0" class="lumen-wp-urls-force-full-field" />
 						<button type="submit" class="button" id="lumen-wp-urls-diagnose">
+							<?php Brand::icon('search'); ?>
 							<?php esc_html_e('Diagnostiquer', 'lumen-wp'); ?>
 						</button>
 					</form>
@@ -328,6 +335,7 @@ final class Tools
 							id="lumen-wp-urls-retry"
 							<?php echo ( $urls_running || $urls_last_errors === [] ) ? 'disabled' : ''; ?>
 						>
+							<?php Brand::icon('refresh'); ?>
 							<?php
 							printf(
 								/* translators: %d: error id count */
@@ -341,13 +349,15 @@ final class Tools
 						<?php wp_nonce_field('lumen_wp_urls'); ?>
 						<input type="hidden" name="action" value="lumen_wp_urls_tick" />
 						<button type="submit" class="button" id="lumen-wp-urls-force-tick" <?php echo $urls_running ? '' : 'disabled'; ?>>
+							<?php Brand::icon('forward'); ?>
 							<?php esc_html_e('Avancer maintenant', 'lumen-wp'); ?>
 						</button>
 					</form>
 					<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-inline-form" id="lumen-wp-urls-stop-form">
 						<?php wp_nonce_field('lumen_wp_urls'); ?>
 						<input type="hidden" name="action" value="lumen_wp_urls_stop" />
-						<button type="submit" class="button" id="lumen-wp-urls-stop" <?php echo $urls_running ? '' : 'disabled'; ?>>
+						<button type="submit" class="button lumen-wp-btn-danger" id="lumen-wp-urls-stop" <?php echo $urls_running ? '' : 'disabled'; ?>>
+							<?php Brand::icon('stop'); ?>
 							<?php esc_html_e('Arrêter', 'lumen-wp'); ?>
 						</button>
 					</form>

@@ -201,7 +201,7 @@ final class Dashboard
 								);
 								?>
 							</span>
-							<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-bulk&tab=launch')); ?>"><?php esc_html_e('Suivre la file', 'lumen-wp'); ?></a>
+							<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-bulk&tab=launch')); ?>"><?php Brand::icon('bulk'); ?><?php esc_html_e('Suivre la file', 'lumen-wp'); ?></a>
 						</li>
 					<?php elseif ((int) $stats['pending'] > 0) : ?>
 						<li>
@@ -232,13 +232,13 @@ final class Dashboard
 								);
 								?>
 							</span>
-							<a class="button" href="#lumen-wp-failed-media"><?php esc_html_e('Voir les erreurs', 'lumen-wp'); ?></a>
+							<a class="button" href="#lumen-wp-failed-media"><?php Brand::icon('alert'); ?><?php esc_html_e('Voir les erreurs', 'lumen-wp'); ?></a>
 						</li>
 					<?php endif; ?>
 					<?php if (current_user_can('manage_options') && $audit_score === null) : ?>
 						<li>
 							<span class="lumen-wp-next-actions__label"><?php esc_html_e('Aucun audit SEO/GEO lancé pour l’instant.', 'lumen-wp'); ?></span>
-							<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-audit')); ?>"><?php esc_html_e('Lancer un audit', 'lumen-wp'); ?></a>
+							<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-audit')); ?>"><?php Brand::icon('audit'); ?><?php esc_html_e('Lancer un audit', 'lumen-wp'); ?></a>
 						</li>
 					<?php endif; ?>
 					<?php if (
@@ -250,7 +250,7 @@ final class Dashboard
 					) : ?>
 						<li>
 							<span class="lumen-wp-next-actions__label"><?php esc_html_e('Rien d’urgent — consultez l’historique des médias.', 'lumen-wp'); ?></span>
-							<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-history')); ?>"><?php esc_html_e('Ouvrir Historique', 'lumen-wp'); ?></a>
+							<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-history')); ?>"><?php Brand::icon('history'); ?><?php esc_html_e('Ouvrir Historique', 'lumen-wp'); ?></a>
 						</li>
 					<?php endif; ?>
 				</ul>
@@ -290,7 +290,7 @@ final class Dashboard
 			<section class="lumen-wp-panel lumen-wp-dash-runs">
 				<div class="lumen-wp-dash-runs__head">
 					<h2 class="lumen-wp-panel__title"><?php esc_html_e('Derniers traitements', 'lumen-wp'); ?></h2>
-					<a class="button" href="<?php echo esc_url($runs_url); ?>"><?php esc_html_e('Voir tout', 'lumen-wp'); ?></a>
+					<a class="button" href="<?php echo esc_url($runs_url); ?>"><?php Brand::icon('forward'); ?><?php esc_html_e('Voir tout', 'lumen-wp'); ?></a>
 				</div>
 				<ul class="lumen-wp-history">
 					<?php if ($runs === []) : ?>
@@ -362,14 +362,17 @@ final class Dashboard
 					<p class="lumen-wp-actions-row">
 						<?php if (current_user_can('manage_options')) : ?>
 							<button type="button" class="button" id="lumen-wp-ai-usage-reset">
+								<?php Brand::icon('refresh'); ?>
 								<?php esc_html_e('Réinitialiser', 'lumen-wp'); ?>
 							</button>
 							<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-settings')); ?>">
+								<?php Brand::icon('settings'); ?>
 								<?php esc_html_e('Réglages IA', 'lumen-wp'); ?>
 							</a>
 						<?php endif; ?>
 						<?php if (isset($consoles[$ai_prov])) : ?>
 							<a class="button" href="<?php echo esc_url($consoles[$ai_prov]); ?>" target="_blank" rel="noopener noreferrer">
+								<?php Brand::icon('external'); ?>
 								<?php esc_html_e('Console', 'lumen-wp'); ?>
 							</a>
 						<?php endif; ?>

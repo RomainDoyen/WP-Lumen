@@ -78,6 +78,7 @@ final class Audit
 		}
 		ob_start();
 		echo '<button type="submit" class="button button-primary" form="lumen-wp-audit-form" name="lumen_wp_run_audit" value="1">';
+		Brand::icon('audit');
 		esc_html_e('Lancer l’analyse', 'lumen-wp');
 		echo '</button>';
 		$header_actions = (string) ob_get_clean();
@@ -121,7 +122,7 @@ final class Audit
 							>
 								<input type="hidden" name="action" value="lumen_wp_audit_fix_all" />
 								<?php wp_nonce_field('lumen_wp_audit_fix_all'); ?>
-								<button type="submit" class="button"><?php esc_html_e('Tout corriger', 'lumen-wp'); ?></button>
+								<button type="submit" class="button"><?php Brand::icon('repair'); ?><?php esc_html_e('Tout corriger', 'lumen-wp'); ?></button>
 							</form>
 						</div>
 						<ul class="lumen-wp-audit-list">
@@ -150,10 +151,10 @@ final class Audit
 													<input type="hidden" name="issue_id" value="<?php echo esc_attr((string) ($item['id'] ?? '')); ?>" />
 													<input type="hidden" name="entity_ids" value="<?php echo esc_attr(implode(',', $ids)); ?>" />
 													<?php wp_nonce_field('lumen_wp_audit_fix'); ?>
-													<button type="submit" class="button button-primary"><?php esc_html_e('Corriger', 'lumen-wp'); ?></button>
+													<button type="submit" class="button button-primary"><?php Brand::icon('repair'); ?><?php esc_html_e('Corriger', 'lumen-wp'); ?></button>
 												</form>
 											<?php elseif (! empty($item['link'])) : ?>
-												<a class="button" href="<?php echo esc_url((string) $item['link']); ?>"><?php esc_html_e('Ouvrir', 'lumen-wp'); ?></a>
+												<a class="button" href="<?php echo esc_url((string) $item['link']); ?>"><?php Brand::icon('external'); ?><?php esc_html_e('Ouvrir', 'lumen-wp'); ?></a>
 											<?php endif; ?>
 										</div>
 									</header>
@@ -265,9 +266,9 @@ final class Audit
 						<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="lumen-wp-actions-row">
 							<input type="hidden" name="action" value="lumen_wp_llms_generate" />
 							<?php wp_nonce_field('lumen_wp_llms_generate'); ?>
-							<button type="submit" class="button" <?php disabled(! $llms->is_enabled()); ?>><?php esc_html_e('Générer', 'lumen-wp'); ?></button>
+							<button type="submit" class="button" <?php disabled(! $llms->is_enabled()); ?>><?php Brand::icon('bolt'); ?><?php esc_html_e('Générer', 'lumen-wp'); ?></button>
 							<?php if ($llms->exists()) : ?>
-								<a class="button" href="<?php echo esc_url($llms->public_url()); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e('Ouvrir', 'lumen-wp'); ?></a>
+								<a class="button" href="<?php echo esc_url($llms->public_url()); ?>" target="_blank" rel="noopener noreferrer"><?php Brand::icon('external'); ?><?php esc_html_e('Ouvrir', 'lumen-wp'); ?></a>
 							<?php endif; ?>
 						</form>
 					</div>

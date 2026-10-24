@@ -408,7 +408,7 @@ final class Bulk_Queue
 			$job['last_tick_at']   = gmdate('c');
 			$job['user_id']        = (int) $user->ID;
 			$job['user_name']      = (string) ($user->display_name !== '' ? $user->display_name : $user->user_login);
-			$job['last_message']   = __('Démarré — estimation du total en arrière-plan…', 'lumen-wp');
+			$job['last_message']   = __('Démarré — premier passage en cours…', 'lumen-wp');
 			$job['log']            = [$this->log_line($job['last_message'], true)];
 			self::save($job);
 
@@ -495,10 +495,29 @@ final class Bulk_Queue
 		$job = self::job();
 
 		if (($job['status'] ?? '') === 'running') {
-			// Pas de run_pending ici : sur Hostinger ça provoque des HTTP 503 (poll toutes les 2s).
 			self::recover_stale_processing(60);
-			$this->schedule_soon();
-			$this->spawn();
+			// La page ouverte fait le passage. spawn_cron seul ne part souvent pas
+			// (loopback bloqué, DISABLE_WP_CRON) : le job restait à 0 % indéfiniment.
+			// Un seul tick, pas run_pending — vider toute la file AS sur le poll
+			// provoquait des HTTP 503.
+			try {
+				$this->tick();
+			} catch (\Throwable $e) {
+				$failed = self::job();
+				if (($failed['status'] ?? '') === 'running') {
+					$failed['last_message'] = sprintf(
+						/* translators: %s: error message */
+						__('Passage interrompu : %s', 'lumen-wp'),
+						$e->getMessage()
+					);
+					$failed['log'] = $this->push_log($failed['log'] ?? [], $failed['last_message'], false);
+					self::save($failed);
+				}
+			}
+			if ((self::job()['status'] ?? '') === 'running') {
+				$this->schedule_soon();
+				$this->spawn();
+			}
 		}
 
 		wp_send_json_success([
@@ -609,14 +628,23 @@ final class Bulk_Queue
 					return;
 				}
 
+				$job['last_message'] = __('Recherche du prochain média…', 'lumen-wp');
+				self::save($job);
+
 				$next = $this->next_id((int) $job['cursor'], $force, $types);
 				if ($next <= 0) {
 					$job['status'] = 'done';
+					$done_err = (int) $job['err'];
 					$job['last_message'] = sprintf(
 						/* translators: 1: ok count, 2: error count */
-						__('Terminé — %1$d OK / %2$d erreur(s).', 'lumen-wp'),
+						_n(
+							'Terminé — %1$d OK / %2$d erreur.',
+							'Terminé — %1$d OK / %2$d erreurs.',
+							$done_err,
+							'lumen-wp'
+						),
 						(int) $job['ok'],
-						(int) $job['err']
+						$done_err
 					);
 					$job['log'] = $this->push_log($job['log'] ?? [], $job['last_message'], true);
 					self::push_history($job, 'done');

@@ -23,6 +23,7 @@ final class Media_Meta_Box
 		add_action('wp_ajax_lumen_wp_suggest', [$this, 'ajax_suggest']);
 		add_action('wp_ajax_lumen_wp_reprocess', [$this, 'ajax_reprocess']);
 		add_action('wp_ajax_lumen_wp_restore_original', [$this, 'ajax_restore']);
+		add_action('wp_ajax_lumen_wp_approve', [$this, 'ajax_approve']);
 		add_filter('attachment_fields_to_edit', [$this, 'attachment_fields'], 10, 2);
 		add_filter('attachment_fields_to_save', [$this, 'save_attachment_fields'], 10, 2);
 	}
@@ -83,7 +84,7 @@ final class Media_Meta_Box
 				·
 				<strong><?php esc_html_e('Statut :', 'lumen-wp'); ?></strong>
 				<span class="lumen-wp-status lumen-wp-status--<?php echo esc_attr($status !== '' ? $status : 'none'); ?>">
-					<?php echo esc_html($status !== '' ? $status : '—'); ?>
+					<?php echo esc_html(\LumenWp\History_Query::status_label($status)); ?>
 				</span>
 				<?php if ($error !== '') : ?>
 					<br /><span class="lumen-wp-error"><?php echo esc_html($error); ?></span>
@@ -130,12 +131,15 @@ final class Media_Meta_Box
 			</p>
 
 			<p class="lumen-wp-actions">
+				<?php $this->render_approve_button($status); ?>
 				<?php if ($can_ai) : ?>
 					<button type="button" class="button lumen-wp-suggest" id="lumen-wp-suggest">
+						<?php Brand::icon('bolt'); ?>
 						<?php esc_html_e('Suggérer (IA)', 'lumen-wp'); ?>
 					</button>
 				<?php endif; ?>
 				<button type="button" class="button lumen-wp-reprocess" id="lumen-wp-reprocess">
+					<?php Brand::icon('refresh'); ?>
 					<?php
 					echo esc_html(
 						$is_image
@@ -146,6 +150,7 @@ final class Media_Meta_Box
 				</button>
 				<?php if ($is_image) : ?>
 					<button type="button" class="button lumen-wp-restore" id="lumen-wp-restore" <?php echo $has_bak ? '' : 'hidden'; ?>>
+						<?php Brand::icon('restore'); ?>
 						<?php esc_html_e('Restaurer l’original', 'lumen-wp'); ?>
 					</button>
 				<?php endif; ?>
@@ -161,6 +166,7 @@ final class Media_Meta_Box
 				<label><?php esc_html_e('Bloc Gutenberg', 'lumen-wp'); ?></label>
 				<textarea id="lumen-wp-gutenberg" class="widefat code" rows="10" readonly><?php echo esc_textarea($gutenberg); ?></textarea>
 				<button type="button" class="button lumen-wp-copy" data-target="lumen-wp-gutenberg">
+					<?php Brand::icon('copy'); ?>
 					<?php esc_html_e('Copier Gutenberg', 'lumen-wp'); ?>
 				</button>
 			</p>
@@ -170,6 +176,7 @@ final class Media_Meta_Box
 				<label><?php echo esc_html($kind === Media_Types::KIND_VIDEO ? __('JSON-LD VideoObject', 'lumen-wp') : __('JSON-LD ImageObject', 'lumen-wp')); ?></label>
 				<textarea id="lumen-wp-jsonld" class="widefat code" rows="10" readonly><?php echo esc_textarea((string) $json_text); ?></textarea>
 				<button type="button" class="button lumen-wp-copy" data-target="lumen-wp-jsonld">
+					<?php Brand::icon('copy'); ?>
 					<?php esc_html_e('Copier JSON-LD', 'lumen-wp'); ?>
 				</button>
 			</p>
@@ -367,6 +374,11 @@ final class Media_Meta_Box
 			return $form_fields;
 		}
 
+		// La fiche média a déjà la boîte complète. La carte compacte reste pour la modale.
+		if ($this->is_attachment_edit_screen()) {
+			return $form_fields;
+		}
+
 		$form_fields['lumen_seo_card'] = [
 			'label' => __('Lumen', 'lumen-wp'),
 			'input' => 'html',
@@ -436,6 +448,79 @@ final class Media_Meta_Box
 		return $post;
 	}
 
+	private function render_approve_button(string $status): void
+	{
+		$pending = $status === 'awaiting_validation';
+		?>
+		<button type="button" class="button button-primary lumen-wp-approve" <?php echo $pending ? '' : 'hidden'; ?>>
+			<?php Brand::icon('validate'); ?>
+			<?php esc_html_e('Valider', 'lumen-wp'); ?>
+		</button>
+		<?php
+	}
+
+	public function ajax_approve(): void
+	{
+		$this->guard_ajax();
+
+		$id = isset($_POST['id']) ? (int) $_POST['id'] : 0; // phpcs:ignore WordPress.Security.NonceVerification
+		if ($id <= 0 || ! Media_Types::is_supported($id)) {
+			wp_send_json_error(['message' => __('Attachment invalide.', 'lumen-wp')], 400);
+		}
+		if (! current_user_can('edit_post', $id)) {
+			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
+		}
+
+		$status = (string) get_post_meta($id, Plugin::META_STATUS, true);
+		if ($status !== 'awaiting_validation') {
+			wp_send_json_error(['message' => __('Ce média n’est pas en attente de validation.', 'lumen-wp')], 400);
+		}
+
+		$raw = isset($_POST['seo']) && is_array($_POST['seo']) ? wp_unslash($_POST['seo']) : []; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$overrides = [];
+		foreach (['title', 'alt_text_seo', 'alt_text_wcag', 'alt_text_short', 'caption', 'description'] as $key) {
+			if (! array_key_exists($key, $raw)) {
+				continue;
+			}
+			$overrides[$key] = $key === 'caption' || $key === 'description'
+				? sanitize_textarea_field((string) $raw[$key])
+				: sanitize_text_field((string) $raw[$key]);
+		}
+
+		$ok = (new Seo())->approve_pending($id, $overrides);
+		if (! $ok) {
+			wp_send_json_error(['message' => __('Rien à valider pour ce média.', 'lumen-wp')], 400);
+		}
+
+		$saved = get_post_meta($id, Plugin::META_SEO, true);
+		$seo   = [];
+		if (is_array($saved)) {
+			foreach ($saved as $key => $value) {
+				$seo[(string) $key] = is_scalar($value) ? (string) $value : '';
+			}
+		}
+
+		wp_send_json_success(
+			[
+				'status'  => 'ok',
+				'message' => __('Métadonnées validées.', 'lumen-wp'),
+				'seo'     => $seo,
+			]
+		);
+	}
+
+	private function is_attachment_edit_screen(): bool
+	{
+		if (! function_exists('get_current_screen')) {
+			return false;
+		}
+		$screen = get_current_screen();
+
+		return $screen instanceof \WP_Screen
+			&& $screen->base === 'post'
+			&& $screen->post_type === 'attachment';
+	}
+
 	private function render_modal_card(int $attachment_id): string
 	{
 		$kind     = Media_Types::kind($attachment_id);
@@ -468,7 +553,7 @@ final class Media_Meta_Box
 				·
 				<strong><?php esc_html_e('Statut :', 'lumen-wp'); ?></strong>
 				<span class="lumen-wp-status lumen-wp-status--<?php echo esc_attr($status !== '' ? $status : 'none'); ?>">
-					<?php echo esc_html($status !== '' ? $status : '—'); ?>
+					<?php echo esc_html(\LumenWp\History_Query::status_label($status)); ?>
 				</span>
 				<?php if ($error !== '') : ?>
 					<br /><span class="lumen-wp-error"><?php echo esc_html($error); ?></span>
@@ -491,10 +576,12 @@ final class Media_Meta_Box
 				</label>
 			</p>
 			<p class="lumen-wp-actions">
+				<?php $this->render_approve_button($status); ?>
 				<?php if ($can_ai) : ?>
-					<button type="button" class="button lumen-wp-suggest"><?php esc_html_e('Suggérer (IA)', 'lumen-wp'); ?></button>
+					<button type="button" class="button lumen-wp-suggest"><?php Brand::icon('bolt'); ?><?php esc_html_e('Suggérer (IA)', 'lumen-wp'); ?></button>
 				<?php endif; ?>
 				<button type="button" class="button lumen-wp-reprocess">
+					<?php Brand::icon('refresh'); ?>
 					<?php
 					echo esc_html(
 						$is_image

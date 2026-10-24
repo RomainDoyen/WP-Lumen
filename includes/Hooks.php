@@ -581,6 +581,7 @@ final class Hooks
 					'restoreConfirm' => __('Restaurer l’original ? Les variantes Lumen seront supprimées.', 'lumen-wp'),
 					'reprocessConfirm' => __('Re-traiter remplacera les métadonnées SEO par une nouvelle génération. Continuer ?', 'lumen-wp'),
 					'restored'       => __('Original restauré.', 'lumen-wp'),
+					'approved'       => __('Métadonnées validées.', 'lumen-wp'),
 					'tickForced'     => __('Un média a été traité.', 'lumen-wp'),
 					'cronOk'         => __('Tout va bien. Le traitement avance tout seul en arrière-plan.', 'lumen-wp'),
 					'cronDisabled'   => __('Traitement automatique désactivé — utilisez « Avancer maintenant » si besoin.', 'lumen-wp'),
@@ -590,6 +591,15 @@ final class Hooks
 					'statusRunning'  => __('En cours', 'lumen-wp'),
 					'statusPaused'   => __('En pause', 'lumen-wp'),
 					'statusDone'     => __('Terminé', 'lumen-wp'),
+					'statuses'       => [
+						'ok'                  => \LumenWp\History_Query::status_label('ok'),
+						'error'               => \LumenWp\History_Query::status_label('error'),
+						'processing'          => \LumenWp\History_Query::status_label('processing'),
+						'awaiting_validation' => \LumenWp\History_Query::status_label('awaiting_validation'),
+						'unsupported'         => \LumenWp\History_Query::status_label('unsupported'),
+						'busy'                => \LumenWp\History_Query::status_label('busy'),
+						'skipped'             => \LumenWp\History_Query::status_label('skipped'),
+					],
 					'bulkRateLimited'=> __('Limite API Vision atteinte — file mise en pause. Reprenez plus tard, ou désactivez l’IA.', 'lumen-wp'),
 				],
 			]

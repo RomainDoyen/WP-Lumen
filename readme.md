@@ -5,7 +5,7 @@
 **Plugin WordPress** — optimise les images (WebP / AVIF / JPEG), enrichit les médias  
 (images, SVG, PDF, vidéos) et génère un pack SEO (alts, JSON-LD, Gutenberg).
 
-![Version](https://img.shields.io/badge/version-1.9.10-e879f9?style=flat-square)![WordPress](https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square)![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square)![License](https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.9.11-e879f9?style=flat-square)![WordPress](https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square)![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square)![License](https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square)
 
 ---
 
@@ -161,6 +161,16 @@ lumen-wp/
 ## Changelog
 
 
+
+### 1.9.11
+
+- Admin : icônes sur les boutons, actions destructives en rose
+- Traitement : pourcentage sur la barre, la page ouverte fait avancer la file
+- Réglages : la note d’usage IA colle sous la carte du thème
+- Notices WordPress au-dessus de la fenêtre de contenu
+- Fiche média : une seule boîte, fond clair, statuts en français, bouton Valider
+- Validation : titre, alt, légende et description se remplissent sans recharger
+- Build ZIP : repli sur Python si `zip` est absent
 
 ### 1.9.10
 

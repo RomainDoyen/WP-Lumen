@@ -49,6 +49,7 @@ final class Icons
 		} else {
 			echo '<a class="button" id="lumen-wp-icons-zip" href="#" hidden>';
 		}
+		Brand::icon('export');
 		esc_html_e('Télécharger tout (ZIP)', 'lumen-wp');
 		echo '</a>';
 		$header_actions = (string) ob_get_clean();
@@ -98,6 +99,7 @@ final class Icons
 
 				<p class="lumen-wp-actions-row">
 					<button type="button" class="button" id="lumen-wp-icons-reset">
+						<?php Brand::icon('refresh'); ?>
 						<?php esc_html_e('Réinitialiser', 'lumen-wp'); ?>
 					</button>
 				</p>
@@ -125,6 +127,7 @@ final class Icons
 									<span><?php echo esc_html(size_format($bytes)); ?></span>
 								</div>
 								<a class="button" href="<?php echo esc_url($url); ?>" download="<?php echo esc_attr('icon-' . $size . '.png'); ?>">
+									<?php Brand::icon('export'); ?>
 									<?php esc_html_e('PNG', 'lumen-wp'); ?>
 								</a>
 							</article>

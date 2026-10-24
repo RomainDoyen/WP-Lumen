@@ -169,11 +169,11 @@ final class Validation
 					<?php if ($pages > 1) : ?>
 						<p class="lumen-wp-actions-row">
 							<?php if ($page > 1) : ?>
-								<a class="button" href="<?php echo esc_url(add_query_arg('paged', $page - 1, $base)); ?>"><?php esc_html_e('Précédent', 'lumen-wp'); ?></a>
+								<a class="button" href="<?php echo esc_url(add_query_arg('paged', $page - 1, $base)); ?>"><?php Brand::icon('back'); ?><?php esc_html_e('Précédent', 'lumen-wp'); ?></a>
 							<?php endif; ?>
 							<span class="description"><?php echo esc_html($page . ' / ' . $pages); ?></span>
 							<?php if ($page < $pages) : ?>
-								<a class="button" href="<?php echo esc_url(add_query_arg('paged', $page + 1, $base)); ?>"><?php esc_html_e('Suivant', 'lumen-wp'); ?></a>
+								<a class="button" href="<?php echo esc_url(add_query_arg('paged', $page + 1, $base)); ?>"><?php Brand::icon('forward'); ?><?php esc_html_e('Suivant', 'lumen-wp'); ?></a>
 							<?php endif; ?>
 						</p>
 					<?php endif; ?>
@@ -195,7 +195,8 @@ final class Validation
 							<?php wp_nonce_field('lumen_wp_validation_bulk'); ?>
 							<input type="hidden" name="action" value="lumen_wp_validation_bulk" />
 							<input type="hidden" name="ids" value="<?php echo esc_attr(implode(',', $ids)); ?>" />
-							<button type="submit" name="bulk_action" value="reject" class="button">
+							<button type="submit" name="bulk_action" value="reject" class="button lumen-wp-btn-danger">
+								<?php Brand::icon('close'); ?>
 								<?php esc_html_e('Rejeter la page', 'lumen-wp'); ?>
 							</button>
 						</form>
@@ -285,10 +286,12 @@ final class Validation
 							<?php Brand::icon('validate'); ?>
 							<?php esc_html_e('Approuver', 'lumen-wp'); ?>
 						</button>
-						<button type="submit" name="item_action" value="reject" class="button">
+						<button type="submit" name="item_action" value="reject" class="button lumen-wp-btn-danger">
+							<?php Brand::icon('close'); ?>
 							<?php esc_html_e('Rejeter', 'lumen-wp'); ?>
 						</button>
 						<a class="button" href="<?php echo esc_url(get_edit_post_link($id, 'raw') ?: '#'); ?>">
+							<?php Brand::icon('image'); ?>
 							<?php esc_html_e('Fiche média', 'lumen-wp'); ?>
 						</a>
 					</div>

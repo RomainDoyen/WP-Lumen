@@ -55,12 +55,15 @@ final class Bulk
 				esc_html_e('Démarrer', 'lumen-wp');
 				echo '</button>';
 				echo '<button type="button" class="button" id="lumen-wp-bulk-pause" disabled>';
+				Brand::icon('pause');
 				esc_html_e('Pause', 'lumen-wp');
 				echo '</button>';
 				echo '<button type="button" class="button" id="lumen-wp-bulk-resume" disabled>';
+				Brand::icon('play');
 				esc_html_e('Reprendre', 'lumen-wp');
 				echo '</button>';
-				echo '<button type="button" class="button" id="lumen-wp-bulk-stop" disabled>';
+				echo '<button type="button" class="button lumen-wp-btn-danger" id="lumen-wp-bulk-stop" disabled>';
+				Brand::icon('stop');
 				esc_html_e('Arrêter', 'lumen-wp');
 				echo '</button>';
 			}
@@ -211,8 +214,25 @@ final class Bulk
 					</tr>
 				</table>
 
-				<div class="lumen-wp-progress" id="lumen-wp-bulk-progress" <?php echo in_array($job['status'], ['running', 'paused', 'done'], true) ? '' : 'hidden'; ?>>
-					<progress id="lumen-wp-progress-bar" max="100" value="0"></progress>
+				<?php
+				$bulk_processed = (int) ($job['processed'] ?? 0);
+				$bulk_total     = (int) ($job['total_estimate'] ?? 0);
+				$bulk_status    = (string) ($job['status'] ?? 'idle');
+				if ($bulk_status === 'done') {
+					$bulk_pct = 100;
+				} elseif ($bulk_total > 0) {
+					$bulk_pct = min(99, (int) round(($bulk_processed / $bulk_total) * 100));
+				} elseif ($bulk_processed > 0) {
+					$bulk_pct = min(95, max(3, (int) round(log10($bulk_processed + 1) * 20)));
+				} else {
+					$bulk_pct = 0;
+				}
+				?>
+				<div class="lumen-wp-progress" id="lumen-wp-bulk-progress" <?php echo in_array($bulk_status, ['running', 'paused', 'done'], true) ? '' : 'hidden'; ?>>
+					<div class="lumen-wp-progress__row">
+						<progress id="lumen-wp-progress-bar" max="100" value="<?php echo esc_attr((string) $bulk_pct); ?>"></progress>
+						<span id="lumen-wp-progress-pct"><?php echo esc_html($bulk_pct . ' %'); ?></span>
+					</div>
 					<p id="lumen-wp-progress-label">—</p>
 					<p id="lumen-wp-bulk-status-text" class="description"></p>
 				</div>
@@ -255,9 +275,11 @@ final class Bulk
 				</p>
 				<p class="lumen-wp-actions-row">
 					<button type="button" class="button" id="lumen-wp-bulk-force-tick">
+						<?php Brand::icon('forward'); ?>
 						<?php esc_html_e('Avancer maintenant', 'lumen-wp'); ?>
 					</button>
 					<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=lumen-wp-tools')); ?>">
+						<?php Brand::icon('tools'); ?>
 						<?php esc_html_e('Outils', 'lumen-wp'); ?>
 					</a>
 				</p>
@@ -350,7 +372,14 @@ final class Bulk
 				<?php
 				printf(
 					/* translators: 1: processed, 2: total estimate, 3: ok, 4: errors */
-					esc_html__('%1$d / %2$d traités — %3$d OK · %4$d erreur(s)', 'lumen-wp'),
+					esc_html(
+						_n(
+							'%1$d / %2$d traités — %3$d OK · %4$d erreur',
+							'%1$d / %2$d traités — %3$d OK · %4$d erreurs',
+							$err,
+							'lumen-wp'
+						)
+					),
 					$proc,
 					$tot,
 					$ok,
