@@ -17,6 +17,7 @@ final class Settings
 		add_action('admin_init', [$this, 'register_settings']);
 		add_action('wp_ajax_lumen_wp_ai_usage_reset', [$this, 'ajax_reset_usage']);
 		add_action('wp_ajax_lumen_wp_ai_models_refresh', [$this, 'ajax_refresh_models']);
+		add_action('wp_ajax_lumen_wp_api_key_reveal', [$this, 'ajax_reveal_key']);
 	}
 
 	public function add_menu(): void
@@ -192,6 +193,26 @@ final class Settings
 				'ok'         => ! empty($result['ok']),
 			]
 		);
+	}
+
+	public function ajax_reveal_key(): void
+	{
+		if (! current_user_can('manage_options')) {
+			wp_send_json_error(['message' => __('Permission refusée.', 'lumen-wp')], 403);
+		}
+		check_ajax_referer('lumen_wp_admin', 'nonce');
+
+		$provider = sanitize_key((string) ($_POST['provider'] ?? '')); // phpcs:ignore WordPress.Security.NonceVerification
+		if (! in_array($provider, ['mistral', 'openai', 'anthropic', 'gemini'], true)) {
+			wp_send_json_error(['message' => __('Fournisseur invalide.', 'lumen-wp')], 400);
+		}
+
+		$key = Vision_Ai::api_key_for($provider);
+		if ($key === '') {
+			wp_send_json_error(['message' => __('Aucune clé enregistrée.', 'lumen-wp')], 404);
+		}
+
+		wp_send_json_success(['key' => $key]);
 	}
 
 	private function clamp_int($value, int $min, int $max): int

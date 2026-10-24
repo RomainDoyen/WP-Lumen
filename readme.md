@@ -5,7 +5,7 @@
 **Plugin WordPress** — optimise les images (WebP / AVIF / JPEG), enrichit les médias  
 (images, SVG, PDF, vidéos) et génère un pack SEO (alts, JSON-LD, Gutenberg).
 
-![Version](https://img.shields.io/badge/version-1.9.12-e879f9?style=flat-square)![WordPress](https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square)![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square)![License](https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.9.13-e879f9?style=flat-square)![WordPress](https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square)![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square)![License](https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square)
 
 ---
 
@@ -161,6 +161,12 @@ lumen-wp/
 ## Changelog
 
 
+
+### 1.9.13
+
+- Listes déroulantes : les options s’ouvrent par-dessus les cartes
+- Clé API : Afficher révèle la clé enregistrée
+- Boutons Valider et Lancer : le fond magenta remplit toute la pastille
 
 ### 1.9.12
 

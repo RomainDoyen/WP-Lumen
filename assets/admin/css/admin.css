@@ -1377,6 +1377,12 @@ button.lumen-wp-seg__item {
 	scrollbar-color: rgba(232, 121, 249, 0.35) transparent;
 }
 
+.lumen-wp-csel__menu.is-fixed {
+	position: fixed;
+	right: auto;
+	z-index: 100080;
+}
+
 .lumen-wp-csel__menu[hidden] {
 	display: none !important;
 }
@@ -2022,12 +2028,19 @@ button.lumen-wp-seg__item {
 
 .lumen-wp-wrap .button-primary,
 .lumen-wp-metabox .button-primary,
+.lumen-wp-wrap a.button.button-primary,
+.lumen-wp-metabox a.button.button-primary,
 .lumen-wp-wrap .button-primary:hover,
 .lumen-wp-wrap .button-primary:focus,
+.lumen-wp-wrap a.button.button-primary:hover,
+.lumen-wp-wrap a.button.button-primary:focus,
 .lumen-wp-metabox .button-primary:hover,
-.lumen-wp-metabox .button-primary:focus {
+.lumen-wp-metabox .button-primary:focus,
+.lumen-wp-metabox a.button.button-primary:hover,
+.lumen-wp-metabox a.button.button-primary:focus {
 	background: linear-gradient(135deg, #c026d3, #e879f9);
-	border-color: transparent;
+	background-clip: border-box;
+	border: 1px solid transparent;
 	color: #ffffff;
 	border-radius: 999px;
 	box-shadow: 0 8px 18px rgba(192, 38, 211, 0.28);
@@ -3846,25 +3859,26 @@ body.lumen-wp-theme-light .lumen-wp-brand__eyebrow {
 	color: #57534e !important;
 }
 
-/* Boutons secondaires — bordure et texte lisibles */
-body.lumen-wp-theme-light .lumen-wp-wrap .button,
-body.lumen-wp-theme-light .lumen-wp-metabox .button,
-body.lumen-wp-theme-light .lumen-wp-wrap a.button,
-body.lumen-wp-theme-light .lumen-wp-metabox a.button,
+/* Boutons secondaires — bordure et texte lisibles (pas les primaires) */
+body.lumen-wp-theme-light .lumen-wp-wrap .button:not(.button-primary),
+body.lumen-wp-theme-light .lumen-wp-metabox .button:not(.button-primary),
+body.lumen-wp-theme-light .lumen-wp-wrap a.button:not(.button-primary),
+body.lumen-wp-theme-light .lumen-wp-metabox a.button:not(.button-primary),
 body.lumen-wp-theme-light .lumen-wp-modal__actions .button:not(.button-primary) {
 	background: #ffffff !important;
+	background-clip: border-box !important;
 	border: 1px solid rgba(28, 25, 23, 0.28) !important;
 	color: #1c1917 !important;
 	box-shadow: none !important;
 	text-shadow: none !important;
 }
 
-body.lumen-wp-theme-light .lumen-wp-wrap .button:hover,
-body.lumen-wp-theme-light .lumen-wp-metabox .button:hover,
-body.lumen-wp-theme-light .lumen-wp-wrap .button:focus,
-body.lumen-wp-theme-light .lumen-wp-metabox .button:focus,
-body.lumen-wp-theme-light .lumen-wp-wrap a.button:hover,
-body.lumen-wp-theme-light .lumen-wp-metabox a.button:hover {
+body.lumen-wp-theme-light .lumen-wp-wrap .button:not(.button-primary):hover,
+body.lumen-wp-theme-light .lumen-wp-metabox .button:not(.button-primary):hover,
+body.lumen-wp-theme-light .lumen-wp-wrap .button:not(.button-primary):focus,
+body.lumen-wp-theme-light .lumen-wp-metabox .button:not(.button-primary):focus,
+body.lumen-wp-theme-light .lumen-wp-wrap a.button:not(.button-primary):hover,
+body.lumen-wp-theme-light .lumen-wp-metabox a.button:not(.button-primary):hover {
 	background: #faf5ff !important;
 	border-color: rgba(162, 28, 175, 0.55) !important;
 	color: #1c1917 !important;
@@ -3896,22 +3910,37 @@ body.lumen-wp-theme-light .lumen-wp-metabox .button.lumen-wp-btn-danger:hover {
 	border-color: #be123c !important;
 }
 
-/* Boutons primaires — fond magenta opaque + texte blanc (évite blanc sur blanc) */
+/* Boutons primaires — fond magenta jusqu’au bord (les liens a.button sont plus spécifiques) */
 body.lumen-wp-theme-light .lumen-wp-wrap .button-primary,
 body.lumen-wp-theme-light .lumen-wp-metabox .button-primary,
+body.lumen-wp-theme-light .lumen-wp-wrap a.button.button-primary,
+body.lumen-wp-theme-light .lumen-wp-metabox a.button.button-primary,
 body.lumen-wp-theme-light .lumen-wp-wrap .button-primary:hover,
 body.lumen-wp-theme-light .lumen-wp-wrap .button-primary:focus,
+body.lumen-wp-theme-light .lumen-wp-wrap a.button.button-primary:hover,
+body.lumen-wp-theme-light .lumen-wp-wrap a.button.button-primary:focus,
 body.lumen-wp-theme-light .lumen-wp-metabox .button-primary:hover,
 body.lumen-wp-theme-light .lumen-wp-metabox .button-primary:focus,
+body.lumen-wp-theme-light .lumen-wp-metabox a.button.button-primary:hover,
+body.lumen-wp-theme-light .lumen-wp-metabox a.button.button-primary:focus,
 body.lumen-wp-theme-light .lumen-wp-modal__actions .button-primary,
 body.lumen-wp-theme-light .lumen-wp-modal__actions .button-primary:hover,
 body.lumen-wp-theme-light .lumen-wp-modal__actions .button-primary:focus,
 body.lumen-wp-theme-light #lumen-wp-modal-action.is-visible {
 	background: linear-gradient(135deg, #86198f 0%, #a21caf 45%, #c026d3 100%) !important;
-	border-color: #86198f !important;
+	background-clip: border-box !important;
+	border: 1px solid transparent !important;
+	border-radius: 999px !important;
 	color: #ffffff !important;
 	box-shadow: 0 4px 16px rgba(162, 28, 175, 0.28) !important;
 	text-shadow: none !important;
+}
+
+body.lumen-wp-theme-light .lumen-wp-wrap .button-primary .lumen-wp-icon,
+body.lumen-wp-theme-light .lumen-wp-metabox .button-primary .lumen-wp-icon,
+body.lumen-wp-theme-light .lumen-wp-wrap a.button.button-primary .lumen-wp-icon,
+body.lumen-wp-theme-light .lumen-wp-metabox a.button.button-primary .lumen-wp-icon {
+	color: #ffffff !important;
 }
 
 body.lumen-wp-theme-light .lumen-wp-wrap .button:disabled,

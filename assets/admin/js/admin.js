@@ -106,11 +106,46 @@
   }
 
   // —— Custom select (options au thème Lumen) ——
+  function clearCustomSelectMenu($wrap) {
+    var menu = $wrap.find('.lumen-wp-csel__menu')[0];
+    if (!menu) return;
+    menu.classList.remove('is-fixed');
+    menu.style.left = '';
+    menu.style.top = '';
+    menu.style.bottom = '';
+    menu.style.width = '';
+    menu.style.maxHeight = '';
+  }
+
+  function placeCustomSelectMenu($wrap) {
+    var trigger = $wrap.find('.lumen-wp-csel__trigger')[0];
+    var menu = $wrap.find('.lumen-wp-csel__menu')[0];
+    if (!trigger || !menu) return;
+    var rect = trigger.getBoundingClientRect();
+    var gap = 6;
+    var maxH = 264;
+    var spaceBelow = window.innerHeight - rect.bottom - gap;
+    var spaceAbove = rect.top - gap;
+    var openUp = spaceBelow < 160 && spaceAbove > spaceBelow;
+    menu.classList.add('is-fixed');
+    menu.style.left = Math.max(8, rect.left) + 'px';
+    menu.style.width = rect.width + 'px';
+    menu.style.maxHeight = Math.max(120, Math.min(maxH, openUp ? spaceAbove : spaceBelow)) + 'px';
+    if (openUp) {
+      menu.style.top = 'auto';
+      menu.style.bottom = (window.innerHeight - rect.top + gap) + 'px';
+    } else {
+      menu.style.bottom = 'auto';
+      menu.style.top = (rect.bottom + gap) + 'px';
+    }
+  }
+
   function closeAllCustomSelects(except) {
     $('.lumen-wp-csel.is-open').each(function () {
       if (except && this === except) return;
       var $wrap = $(this);
       $wrap.removeClass('is-open');
+      clearCustomSelectMenu($wrap);
       $wrap.find('.lumen-wp-csel__menu').prop('hidden', true);
       $wrap.find('.lumen-wp-csel__trigger').attr('aria-expanded', 'false');
     });
@@ -186,6 +221,8 @@
     closeAllCustomSelects(open ? $wrap[0] : null);
     $wrap.toggleClass('is-open', open);
     $wrap.find('.lumen-wp-csel__menu').prop('hidden', !open);
+    if (open) placeCustomSelectMenu($wrap);
+    else clearCustomSelectMenu($wrap);
     $(this).attr('aria-expanded', open ? 'true' : 'false');
   });
 
@@ -208,6 +245,15 @@
   $(document).on('keydown', function (e) {
     if (e.key === 'Escape') closeAllCustomSelects();
   });
+
+  function repositionOpenCustomSelects() {
+    $('.lumen-wp-csel.is-open').each(function () {
+      placeCustomSelectMenu($(this));
+    });
+  }
+
+  window.addEventListener('resize', repositionOpenCustomSelects);
+  window.addEventListener('scroll', repositionOpenCustomSelects, true);
 
   // —— Number steppers (flèches au thème Lumen) ——
   function stepNumberInput($input, direction) {
@@ -1540,14 +1586,48 @@
     e.preventDefault();
     var $btn = $(this);
     var $input = $('#' + $btn.attr('aria-controls'));
-    if (!$input.length) return;
+    if (!$input.length || $btn.prop('disabled')) return;
     var show = $input.attr('type') === 'password';
-    $input.attr('type', show ? 'text' : 'password');
-    $btn.attr('aria-pressed', show ? 'true' : 'false');
-    setButtonLabel(
-      $btn,
-      show ? $btn.data('label-hide') || 'Masquer' : $btn.data('label-show') || 'Afficher'
-    );
+    var $box = $btn.closest('.lumen-wp-api-key');
+
+    function paint(visible) {
+      $input.attr('type', visible ? 'text' : 'password');
+      $btn.attr('aria-pressed', visible ? 'true' : 'false');
+      setButtonLabel(
+        $btn,
+        visible ? $btn.data('label-hide') || 'Masquer' : $btn.data('label-show') || 'Afficher'
+      );
+    }
+
+    if (!show) {
+      paint(false);
+      return;
+    }
+    if (String($input.val() || '') !== '' || $box.attr('data-has-key') !== '1') {
+      paint(true);
+      return;
+    }
+
+    $btn.prop('disabled', true);
+    setButtonBusy($btn, true);
+    ajax('lumen_wp_api_key_reveal', { provider: $box.attr('data-provider') || '' })
+      .done(function (res) {
+        if (!res || !res.success || !res.data || !res.data.key) {
+          window.lumenWpModal.error(
+            (res && res.data && res.data.message) || 'Impossible d’afficher la clé.'
+          );
+          return;
+        }
+        $input.val(res.data.key);
+        paint(true);
+      })
+      .fail(function (xhr) {
+        window.lumenWpModal.error(ajaxErrorMessage(xhr, 'Impossible d’afficher la clé.'));
+      })
+      .always(function () {
+        setButtonBusy($btn, false);
+        $btn.prop('disabled', false);
+      });
   });
 
   $(document).on('click', '#lumen-wp-ai-usage-reset', function (e) {
