@@ -72,7 +72,8 @@ final class Optimizer
 		$basename = pathinfo($file, PATHINFO_FILENAME);
 		$slug     = sanitize_title($basename) ?: 'image';
 
-		$variants = [];
+		$variants     = [];
+		$source_bytes = (int) (@filesize($file) ?: 0);
 
 		foreach (self::SIZES as $size) {
 			$dims = $this->compute_dims($src_w, $src_h, $size['max'], (bool) $size['crop']);
@@ -105,6 +106,10 @@ final class Optimizer
 					$settings,
 					$caps
 				);
+
+				if (! $this->keep_if_smaller($dest, $source_bytes)) {
+					continue;
+				}
 
 				$row['files'][$format] = [
 					'filename' => $filename,
@@ -403,6 +408,51 @@ final class Optimizer
 	}
 
 	/**
+	 * Drop a derivative that is missing or not strictly smaller than the source.
+	 */
+	private function keep_if_smaller(string $dest, int $source_bytes): bool
+	{
+		$written = (int) (@filesize($dest) ?: 0);
+		if ($source_bytes > 0 && ($written <= 0 || $written >= $source_bytes)) {
+			@unlink($dest);
+
+			return false;
+		}
+
+		return $written > 0;
+	}
+
+	/**
+	 * Encoder effort. Large edges get the slower, smaller settings.
+	 */
+	private function tune_imagick(\Imagick $image, string $format, int $width, int $height): void
+	{
+		$long = max($width, $height);
+		$slow = $long >= 1024;
+
+		try {
+			if ($format === 'jpeg') {
+				$image->setOption('jpeg:optimize-coding', 'true');
+				if (method_exists($image, 'setSamplingFactors')) {
+					$image->setSamplingFactors(['2x2', '1x1', '1x1']);
+				}
+				if ($long >= 400 && defined('Imagick::INTERLACE_JPEG')) {
+					$image->setInterlaceScheme(\Imagick::INTERLACE_JPEG);
+				}
+			} elseif ($format === 'webp') {
+				$image->setOption('webp:method', $slow ? '6' : '4');
+				$image->setOption('webp:auto-filter', 'true');
+				$image->setOption('webp:sns-strength', '80');
+				$image->setOption('webp:preprocessing', '1');
+			} else {
+				$image->setOption('heic:speed', $slow ? '4' : '6');
+			}
+		} catch (\Throwable $e) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch
+			// Older Imagick builds reject unknown coder options.
+		}
+	}
+
+	/**
 	 * @param array{engine: string, resource: mixed, width: int, height: int} $source
 	 * @param array<string, mixed>                                           $settings
 	 * @param array{imagick: bool, gd: bool, webp: bool, avif: bool}         $caps
@@ -483,6 +533,8 @@ final class Optimizer
 			$clone->setImageCompressionQuality((int) ($settings['avif_quality'] ?? 65));
 		}
 
+		$this->tune_imagick($clone, $format, $width, $height);
+
 		if (! $clone->writeImage($dest)) {
 			$clone->clear();
 			$clone->destroy();
@@ -538,7 +590,8 @@ final class Optimizer
 		} elseif ($format === 'webp') {
 			$ok = imagewebp($dst, $dest, (int) ($settings['webp_quality'] ?? 82));
 		} elseif ($format === 'avif' && function_exists('imageavif')) {
-			$ok = imageavif($dst, $dest, (int) ($settings['avif_quality'] ?? 65));
+			$speed = max($width, $height) >= 1024 ? 4 : 6;
+			$ok    = imageavif($dst, $dest, (int) ($settings['avif_quality'] ?? 65), $speed);
 		}
 
 		imagedestroy($dst);

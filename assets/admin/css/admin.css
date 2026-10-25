@@ -456,8 +456,11 @@ p:has(.lumen-wp-scene),
 
 /* Navigation interne : le menu reste, seule la fenêtre change. */
 .lumen-wp-sheet.is-switching {
-	opacity: 0.72;
 	pointer-events: none;
+}
+
+.lumen-wp-sheet.is-switching > * {
+	opacity: 0.72;
 	transition: opacity 0.12s ease;
 }
 
@@ -489,12 +492,12 @@ p:has(.lumen-wp-scene),
 	height: 1.25rem;
 }
 
-.lumen-wp-wrap:has(.lumen-wp-sheet.is-switching)::after {
+.lumen-wp-sheet.is-switching::after {
 	content: '';
 	position: fixed;
-	z-index: 100000;
-	top: 50%;
-	left: 50%;
+	z-index: 30;
+	top: var(--lumen-spin-y, 50%);
+	left: var(--lumen-spin-x, 50%);
 	width: 1.6rem;
 	height: 1.6rem;
 	margin: -0.8rem 0 0 -0.8rem;
@@ -3635,10 +3638,10 @@ body.lumen-wp-theme-light .lumen-wp-urls-results {
 	.lumen-wp-nav__link,
 	.lumen-wp-dropzone,
 	.lumen-wp-modal__dialog,
-	.lumen-wp-sheet.is-switching,
+	.lumen-wp-sheet.is-switching > *,
 	.lumen-wp-icon path,
 	.lumen-wp-spinner,
-	.lumen-wp-wrap:has(.lumen-wp-sheet.is-switching)::after,
+	.lumen-wp-sheet.is-switching::after,
 	.lumen-wp-scene,
 	.lumen-wp-scene__plate,
 	.lumen-wp-wrap .lumen-wp-brand,

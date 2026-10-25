@@ -3054,6 +3054,19 @@
     }
   }
 
+  function placeNavSpinner(sheet) {
+    var rect = sheet.getBoundingClientRect();
+    var viewH = window.innerHeight || 0;
+    var viewW = window.innerWidth || 0;
+    var top = Math.max(rect.top, 0);
+    var bottom = Math.min(rect.bottom, viewH);
+    var left = Math.max(rect.left, 0);
+    var right = Math.min(rect.right, viewW);
+    if (bottom <= top || right <= left) return;
+    sheet.style.setProperty('--lumen-spin-x', ((left + right) / 2) + 'px');
+    sheet.style.setProperty('--lumen-spin-y', ((top + bottom) / 2) + 'px');
+  }
+
   function navigateLumen(url, push, keyboard) {
     var seq = ++lumenNavSeq;
     var wrap = document.querySelector('.lumen-wp-wrap');
@@ -3064,6 +3077,7 @@
     }
     sheet.classList.add('is-switching');
     sheet.setAttribute('aria-busy', 'true');
+    placeNavSpinner(sheet);
     paintLumenActive(url);
 
     var cached = cachedLumenPage(url);

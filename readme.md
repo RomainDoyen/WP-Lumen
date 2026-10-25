@@ -5,7 +5,7 @@
 **Plugin WordPress** — optimise les images (WebP / AVIF / JPEG), enrichit les médias  
 (images, SVG, PDF, vidéos) et génère un pack SEO (alts, JSON-LD, Gutenberg).
 
-![Version](https://img.shields.io/badge/version-1.9.13-e879f9?style=flat-square)![WordPress](https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square)![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square)![License](https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.9.14-e879f9?style=flat-square)![WordPress](https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square)![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square)![License](https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square)
 
 ---
 
@@ -161,6 +161,12 @@ lumen-wp/
 ## Changelog
 
 
+
+### 1.9.14
+
+- Images : encodage WebP, JPEG et AVIF plus serré, original conservé s’il n’y a pas de gain
+- Navigation : le spinner se place au milieu de la fenêtre de contenu
+- README : logo limité à 72 px
 
 ### 1.9.13
 
