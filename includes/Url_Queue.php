@@ -638,8 +638,7 @@ final class Url_Queue
 						(int) $pair['id'],
 						(string) $pair['old_abs'],
 						(string) $pair['new_abs'],
-						true,
-						false
+						true
 					);
 					$job['posts']        = (int) $job['posts'] + (int) ($r['posts'] ?? 0);
 					$job['metas']        = (int) $job['metas'] + (int) ($r['metas'] ?? 0);
@@ -760,10 +759,9 @@ final class Url_Queue
 	private function finalize(array $job, string $mode): void
 	{
 		if ($mode === 'rewrite' || $mode === 'retry') {
-			Content_Url_Rewriter::clear_elementor_cache();
 			$job['last_message'] = sprintf(
 				/* translators: 1: attachments 2: replacements 3: css 4: errors */
-				__('Réécriture terminée — %1$d média(s), %2$d remplacement(s), %3$d CSS, %4$d erreur(s). Pensez à régénérer le CSS Elementor.', 'lumen-wp'),
+				__('Réécriture terminée — %1$d média(s), %2$d remplacement(s), %3$d CSS, %4$d erreur(s). Le cache CSS Elementor n’est pas vidé : régénérez-le dans Elementor si besoin.', 'lumen-wp'),
 				(int) ($job['attachments'] ?? 0),
 				(int) ($job['replacements'] ?? 0),
 				(int) ($job['css_files'] ?? 0),

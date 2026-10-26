@@ -5,7 +5,7 @@
 **Plugin WordPress** — optimise les images (WebP / AVIF / JPEG), enrichit les médias  
 (images, SVG, PDF, vidéos) et génère un pack SEO (alts, JSON-LD, Gutenberg).
 
-![Version](https://img.shields.io/badge/version-1.9.14-e879f9?style=flat-square)![WordPress](https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square)![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square)![License](https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square)
+![Version](https://img.shields.io/badge/version-1.9.15-e879f9?style=flat-square)![WordPress](https://img.shields.io/badge/WordPress-6.0%2B-21759b?style=flat-square)![PHP](https://img.shields.io/badge/PHP-7.4%2B-777bb4?style=flat-square)![License](https://img.shields.io/badge/license-UNLICENSED-0c0a09?style=flat-square)
 
 ---
 
@@ -161,6 +161,11 @@ lumen-wp/
 ## Changelog
 
 
+
+### 1.9.15
+
+- Elementor : le traitement ne vide plus le cache CSS (à régénérer dans Elementor si besoin)
+- Elementor : la réécriture d’URL préserve les réglages sérialisés du kit (couleurs, CSS)
 
 ### 1.9.14
 

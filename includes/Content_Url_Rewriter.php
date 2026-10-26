@@ -19,7 +19,7 @@ final class Content_Url_Rewriter
 	/**
 	 * @return array{posts: int, metas: int, options: int, replacements: int}
 	 */
-	public static function rewrite_paths(string $old_abs, string $new_abs, bool $force = false, bool $clear_elementor = true): array
+	public static function rewrite_paths(string $old_abs, string $new_abs, bool $force = false): array
 	{
 		$empty = ['posts' => 0, 'metas' => 0, 'options' => 0, 'replacements' => 0];
 
@@ -38,12 +38,8 @@ final class Content_Url_Rewriter
 			return $empty;
 		}
 
-		$result = self::apply_pairs($pairs, $old_abs);
-		if ($clear_elementor && $result['replacements'] > 0) {
-			self::maybe_clear_elementor_cache();
-		}
-
-		return $result;
+		// Le cache CSS Elementor n'est pas vidé : à régénérer dans Elementor si besoin.
+		return self::apply_pairs($pairs, $old_abs);
 	}
 
 	/**
@@ -55,10 +51,9 @@ final class Content_Url_Rewriter
 		int $attachment_id,
 		string $old_abs,
 		string $new_abs,
-		bool $force = false,
-		bool $clear_elementor = true
+		bool $force = false
 	): array {
-		$result = self::rewrite_paths($old_abs, $new_abs, $force, $clear_elementor);
+		$result = self::rewrite_paths($old_abs, $new_abs, $force);
 
 		if ((! $force && ! self::enabled()) || $attachment_id <= 0) {
 			return $result;
@@ -258,7 +253,7 @@ final class Content_Url_Rewriter
 			}
 			$seen[$key] = true;
 
-			$r = self::after_attachment_path_change($pair['id'], $pair['old_abs'], $pair['new_abs'], true, false);
+			$r = self::after_attachment_path_change($pair['id'], $pair['old_abs'], $pair['new_abs'], true);
 			$sum['posts']        += $r['posts'];
 			$sum['metas']        += $r['metas'];
 			$sum['options']      += $r['options'];
@@ -267,8 +262,6 @@ final class Content_Url_Rewriter
 				$done++;
 			}
 		}
-
-		self::maybe_clear_elementor_cache();
 
 		$after = self::diagnose_stale_urls(min(100, $limit));
 
@@ -477,12 +470,6 @@ final class Content_Url_Rewriter
 			'refs'        => $refs,
 			'edit_url'    => Bulk_Queue::edit_url_for((int) ($pair['id'] ?? 0)),
 		];
-	}
-
-	/** Public wrapper for end-of-job Elementor purge. */
-	public static function clear_elementor_cache(): void
-	{
-		self::maybe_clear_elementor_cache();
 	}
 
 	/**
@@ -867,8 +854,8 @@ final class Content_Url_Rewriter
 				if ($meta_id <= 0 || $value === '') {
 					continue;
 				}
-				$updated = self::replace_all($value, $pairs);
-				if ($updated !== $value) {
+				$updated = self::replace_stored_value($value, $pairs);
+				if ($updated !== null && $updated !== $value) {
 					$wpdb->update(
 						$wpdb->postmeta,
 						['meta_value' => $updated],
@@ -909,8 +896,8 @@ final class Content_Url_Rewriter
 				if ($option_id <= 0 || $value === '') {
 					continue;
 				}
-				$updated = self::replace_all($value, $pairs);
-				if ($updated !== $value) {
+				$updated = self::replace_stored_value($value, $pairs);
+				if ($updated !== null && $updated !== $value) {
 					$wpdb->update(
 						$wpdb->options,
 						['option_value' => $updated],
@@ -948,6 +935,66 @@ final class Content_Url_Rewriter
 	}
 
 	/**
+	 * Replace URLs in a raw DB value.
+	 * Serialized PHP (kit Elementor, options) is unserialized first so the s:N lengths stay valid.
+	 * A broken serialized blob is left untouched. Returns null when the value must not be written.
+	 *
+	 * @param array<string, string> $pairs
+	 */
+	private static function replace_stored_value(string $value, array $pairs): ?string
+	{
+		if (! function_exists('is_serialized') || ! is_serialized($value)) {
+			return self::replace_all($value, $pairs);
+		}
+
+		$data = @unserialize($value); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_unserialize, WordPress.PHP.NoSilencedErrors.Discouraged
+		if ($data === false && $value !== 'b:0;') {
+			return null;
+		}
+
+		$changed = false;
+		$updated = self::replace_in_mixed($data, $pairs, $changed);
+		if (! $changed) {
+			return $value;
+		}
+
+		return serialize($updated); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize
+	}
+
+	/**
+	 * @param mixed                 $value
+	 * @param array<string, string> $pairs
+	 * @return mixed
+	 */
+	private static function replace_in_mixed($value, array $pairs, bool &$changed)
+	{
+		if (is_string($value)) {
+			$updated = self::replace_all($value, $pairs);
+			if ($updated !== $value) {
+				$changed = true;
+			}
+
+			return $updated;
+		}
+
+		if (is_array($value)) {
+			foreach ($value as $key => $item) {
+				$value[$key] = self::replace_in_mixed($item, $pairs, $changed);
+			}
+
+			return $value;
+		}
+
+		if ($value instanceof \stdClass) {
+			foreach (get_object_vars($value) as $key => $item) {
+				$value->{$key} = self::replace_in_mixed($item, $pairs, $changed);
+			}
+		}
+
+		return $value;
+	}
+
+	/**
 	 * @param array<string, string> $pairs
 	 */
 	private static function count_replacements(string $before, string $after, array $pairs): int
@@ -964,21 +1011,6 @@ final class Content_Url_Rewriter
 		}
 
 		return $total;
-	}
-
-	private static function maybe_clear_elementor_cache(): void
-	{
-		if (! class_exists('\Elementor\Plugin')) {
-			return;
-		}
-		try {
-			$plugin = \Elementor\Plugin::$instance;
-			if (isset($plugin->files_manager) && is_object($plugin->files_manager) && method_exists($plugin->files_manager, 'clear_cache')) {
-				$plugin->files_manager->clear_cache();
-			}
-		} catch (\Throwable $e) { // phpcs:ignore Generic.CodeAnalysis.EmptyStatement.DetectedCatch
-			// Optional integration — never break the pipeline.
-		}
 	}
 
 	private static function abs_to_url(string $abs): string
